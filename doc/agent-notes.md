@@ -187,6 +187,11 @@ that a document now states, and link the document instead.
 - The rip's front end is a seam: `analysis` and `ripmodel` both fill `RipFrames`,
   and the decoders read nothing else, so a front end is checked by the frames it
   makes and the rip they give, as `ripmodel`'s test does with an untrained model.
+- The trainer's `ripmodel.features` and `features` agree bit for bit on the
+  PCEN plane, but on a piano recording 63 of the dB plane's 534,520 floats
+  differed in the last bits (up to 1.4e-14, all near zero): numpy's `mean` sums
+  pairwise, Go in order. Compare the planes with that in mind, not the whole
+  frame for equality.
 - A head trained with a positive weight w (`bce(..., pos_weight)` in
   `train.py`) scores a posterior p as wp/(wp + 1 - p): the strike head's
   (w 20) half-sure is 0.95 and the pitch head's (w 12) 0.92. Sweep a

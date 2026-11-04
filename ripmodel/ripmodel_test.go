@@ -12,7 +12,8 @@ import (
 // TestAnUntrainedModelHearsFramesTheRipReads is the contract between the model
 // and the decoders: a model of Spec's shape, however weighted, yields frames on
 // the rip's grid with every field the rip reads, and the rip runs on them; one
-// from before the strike, release or velocity head loads without them.
+// from before the strike, release or velocity head loads without them, one of
+// two channels hears too, and one of three is refused.
 func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 	cfg := Spec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window = 16, 2, 1, 32, 8 // a small one for the test's sake
@@ -60,6 +61,23 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 			t.Errorf("a model without its last %d heads heard strikes %v, releases %v, velocities %v: %v", lack, of.Strike != nil, of.Release != nil, of.Velocity != nil, err)
 		}
 	}
+	planes := cfg
+	planes.Channels = 2
+	p, _ := transformer.NewRandom(planes, 1)
+	pfe, err := New(p)
+	if err != nil {
+		t.Fatalf("a model of two channels: %v", err)
+	}
+	if pf, err := pfe.Hear(x, audio.AudioSampleRate, audio.DefaultRipParams()); err != nil {
+		t.Errorf("a model of two channels: %v", err)
+	} else if len(pf.Flux) != n {
+		t.Errorf("a model of two channels heard %d frames of %d", len(pf.Flux), n)
+	}
+	planes.Channels = 3
+	p, _ = transformer.NewRandom(planes, 1)
+	if _, err := New(p); err == nil {
+		t.Error("a model of three channels passed")
+	}
 	wrong := cfg
 	wrong.Outputs = wrong.Outputs[:3]
 	w, _ := transformer.NewRandom(wrong, 1)
@@ -77,7 +95,7 @@ func TestAGainMovesOnlyTheLevel(t *testing.T) {
 		e := math.Pow(10, -float64(b%5)) // bands from full scale to 40 dB down
 		loud[b], soft[b] = float32(math.Log1p(100*e)), float32(math.Log1p(100*e/100))
 	}
-	f := features([][]float32{loud, soft})
+	f := features([][]float32{loud, soft}, false)
 	for b := range audio.RipMelBands {
 		if d := math.Abs(float64(f[0][b] - f[1][b])); d > 2e-3 {
 			t.Fatalf("band %d moved by %.4f with the gain", b, d)
@@ -85,5 +103,43 @@ func TestAGainMovesOnlyTheLevel(t *testing.T) {
 	}
 	if d := float64(f[0][audio.RipMelBands]-f[1][audio.RipMelBands]) * 80; math.Abs(d-20) > 0.1 {
 		t.Errorf("the level input moved %.2f dB for a 20 dB gain", d)
+	}
+}
+
+// TestPCENHoldsWhatIsSteadyAndLiftsAStrike: a steady band reads nearly the same
+// 40 dB softer, a band fading under a pedal falls away, and an attack stands far
+// over what it strikes through, even one only 6 dB over a band already sounding.
+func TestPCENHoldsWhatIsSteadyAndLiftsAStrike(t *testing.T) {
+	const frames, at, band = 200, 150, 7 // 2.3 s, read at 1.7 s
+	perSecond := audio.RipRate / audio.RipHop
+	// the band's PCEN at frame at, from its energy per frame, the others silent
+	pcen := func(energy func(f int) float64) float32 {
+		mel := make([][]float32, frames)
+		for f := range mel {
+			mel[f] = make([]float32, audio.RipMelBands)
+			mel[f][band] = float32(math.Log1p(100 * energy(f)))
+		}
+		return features(mel, true)[at][audio.RipMelBands+1+band]
+	}
+	step := func(before, after float64) float32 {
+		return pcen(func(f int) float64 {
+			if f < at {
+				return before
+			}
+			return after
+		})
+	}
+	held := step(1, 1)
+	if soft := step(1e-4, 1e-4); soft < 0.8*held || soft > held {
+		t.Errorf("a steady band reads %.3f, and %.3f 40 dB softer", held, soft)
+	}
+	if fade := pcen(func(f int) float64 { return math.Pow(10, -2*float64(max(f-at+perSecond, 0))*audio.RipFrameSec) }); fade > held/4 {
+		t.Errorf("a band fading 20 dB a second for a second reads %.3f, held %.3f", fade, held)
+	}
+	if s, under := step(0.25, 1), step(0.25, 0.25); s < 2.5*under {
+		t.Errorf("a strike 6 dB over a sounding band reads %.3f over its %.3f", s, under)
+	}
+	if s := step(0, 1e-2); s < 10*held {
+		t.Errorf("a strike 20 dB under full scale from silence reads %.3f, a full-scale band held %.3f", s, held)
 	}
 }

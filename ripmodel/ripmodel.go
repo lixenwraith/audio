@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 
 	"github.com/lixenwraith/audio"
 	"github.com/lixenwraith/transformer"
@@ -28,7 +29,8 @@ const (
 )
 
 // Spec is the model the trainer builds and a weight file must match in its
-// inputs and heads; its width, depth and window may differ.
+// inputs and heads; its width, depth and window may differ, and it may read a
+// second channel, each band's PCEN (features).
 func Spec() transformer.Config {
 	return transformer.Config{
 		Inputs: audio.RipMelBands + 1, Dim: 256, Heads: 8, Layers: 4, FFN: 1024, Window: 64,
@@ -59,11 +61,12 @@ func Load(r io.Reader) (*FrontEnd, error) {
 // from what it has
 const optionalHeads = 3
 
-// New wraps a model, refusing one whose inputs or heads are not a prefix of Spec's.
+// New wraps a model, refusing one whose inputs or heads are not a prefix of
+// Spec's, or that reads more than two channels.
 func New(m *transformer.Model) (*FrontEnd, error) {
 	want, got := Spec(), m.Config()
-	if got.Inputs != want.Inputs {
-		return nil, fmt.Errorf("ripmodel: model reads %d inputs, want %d, the bands in dB over the frame's level and the level", got.Inputs, want.Inputs)
+	if got.Inputs != want.Inputs || got.Channels > 2 {
+		return nil, fmt.Errorf("ripmodel: model reads %d inputs in %d channels, want %d in one or two, the bands in dB over the frame's level and the level, then each band's PCEN and their mean", got.Inputs, got.Channels, want.Inputs)
 	}
 	if n := len(got.Outputs); n > len(want.Outputs) || n < len(want.Outputs)-optionalHeads {
 		return nil, fmt.Errorf("ripmodel: model has %d heads, want %d", n, len(want.Outputs))
@@ -81,7 +84,7 @@ func New(m *transformer.Model) (*FrontEnd, error) {
 // salience, the chroma folded from them, the wave scores and voice genes as they
 // are, and the strike, release and velocity scores when the model has them.
 func (fe *FrontEnd) Hear(x []float64, rate int, _ audio.RipParams) (*audio.RipFrames, error) {
-	out := fe.Model.Forward(features(audio.MelFrames(x, rate)))
+	out := fe.Model.Forward(features(audio.MelFrames(x, rate), fe.Model.Config().Channels == 2))
 	n := len(out)
 	f := &audio.RipFrames{Hop: audio.RipFrameSec, Flux: make([]float64, n),
 		Salience:   make([]float32, 0, n*audio.RipPitches),
@@ -133,25 +136,57 @@ func (fe *FrontEnd) Hear(x []float64, rate int, _ audio.RipParams) (*audio.RipFr
 // melFloor is the energy 80 dB under a full-scale sine's, where the logarithm floors
 const melFloor = 1e-8
 
+// PCEN (Wang et al. 2017) is a band's energy over its own average of the last
+// moments: what a room or a microphone holds steady fades, and what is struck
+// stands out at any level. These are the paper's values, as librosa keeps them.
+const (
+	pcenTime  = 0.4 // seconds the average's time constant spans
+	pcenGain  = 0.98
+	pcenBias  = 2.0
+	pcenPower = 0.5
+	pcenEps   = 1e-6
+)
+
 // features is the model's input from MelFrames: each band's energy in dB over
 // melFloor less the frame's mean, and the mean itself, both over 80 dB, so a
 // frame's loudness is one input and the bands are level-free: a soft phrase
-// reaches the model as clearly as a loud one
-func features(mel [][]float32) [][]float32 {
+// reaches the model as clearly as a loud one. With pcen, a second channel: each
+// band's PCEN and their mean; it only looks back, so a live rip can compute it.
+func features(mel [][]float32, pcen bool) [][]float32 {
 	out := make([][]float32, len(mel))
+	smooth, channels := 1-math.Exp(-audio.RipFrameSec/pcenTime), 1
+	if pcen {
+		channels = 2
+	}
+	var avg []float64
 	for t, row := range mel {
-		db := make([]float64, len(row))
+		n := len(row)
+		e, db := make([]float64, n), make([]float64, n)
 		var level float64
 		for b, v := range row {
-			db[b] = 10 * math.Log10(math.Expm1(float64(v))/100+melFloor)
+			e[b] = math.Expm1(float64(v)) / 100
+			db[b] = 10 * math.Log10(e[b]+melFloor)
 			level += db[b]
 		}
-		level /= float64(len(row))
-		f := make([]float32, len(row)+1)
+		level /= float64(n)
+		f := make([]float32, n+1, channels*(n+1))
 		for b, d := range db {
 			f[b] = float32((d - level) / 80)
 		}
-		f[len(row)] = float32((level + 80) / 80)
+		f[n] = float32((level + 80) / 80)
+		if pcen {
+			if avg == nil {
+				avg = slices.Clone(e)
+			}
+			var sum float64
+			for b, v := range e {
+				avg[b] = (1-smooth)*avg[b] + smooth*v
+				p := math.Pow(v/math.Pow(pcenEps+avg[b], pcenGain)+pcenBias, pcenPower) - math.Pow(pcenBias, pcenPower)
+				f = append(f, float32(p))
+				sum += p
+			}
+			f = append(f, float32(sum/float64(n)))
+		}
 		out[t] = f
 	}
 	return out
