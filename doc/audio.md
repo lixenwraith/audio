@@ -493,6 +493,24 @@ tone either side, leaves the pitch's sounding note ringing. `ripmodel.Load` read
 a weight file into a front end; rip-train, stapes' trainer, writes one from loops
 the engine renders.
 
+The model's input (`features`) is each band in dB less the frame's mean, over
+80, and the mean, so the bands are level-free and loudness is one input. A model
+of two channels (`transformer.Config.Channels`) reads a second plane: each
+band's PCEN, per-channel energy normalization (Wang et al. 2017), and their
+mean. No band looks at another: PCEN divides a band's energy e by its own leaky
+average M of about the last 0.4 s, M(t) = (1 - s)·M(t-1) + s·e(t) with s = 1 -
+exp(-11.6 ms / 400 ms), and compresses it, (e / (ε + M)^α + δ)^r - δ^r with α
+0.98, δ 2, r 0.5 and ε 1e-6, librosa's values. A steady band reads 0.31 at -6
+dB and 0.25 at -46 dB, while a strike multiplies it, 0.29 to 0.90 for one 6 dB
+over a band already sounding and 0.27 to 3.5 for one from -40 to -20 dB: a fan
+or a room's hum holds near 0.3 and a note over it still stands out. It is a
+second plane, not a replacement, because a note still ringing fades towards zero
+in it (a band falling 60 dB over 5 s reads 0.08 after a second), so PCEN alone
+cannot say what is sounding; the first convolution reads both planes at once. M
+only looks back, from the first frame's energy, so a live rip can compute it as
+the sound arrives. [Stapes' rip design](https://github.com/lixenwraith/stapes/blob/main/doc/rip-design.md#8-measured-on-the-sample-recording)
+has what it gained on the recordings.
+
 A rip also keeps its transcript, every note heard in seconds of the recording
 before the grid (`Rip.Notes`), each note of the melody register with its
 brightness (`RipNote.Bright`): its fundamental's share of its first six
