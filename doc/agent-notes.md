@@ -181,6 +181,21 @@ that a document now states, and link the document instead.
   frame and the tempo prior degenerate. `Samples` and `Hear` take the defaults
   for the zero value now; a scratch tool that forgot `DefaultRipParams` ran
   for ten minutes on a twelve-second clip.
+- The beat tracker can lock onto six sixteenths: it reads three of thirty 4/4
+  renders of the bank's patterns at two thirds of their tempo (165, 176 and 190
+  as 110, 117 and 126). Their eighths fall on the tracked beat's thirds, so the
+  meter's `thirds` check reads those beats as dotted quarters and the 4/4
+  reading at three halves restores the tempo; rerun those renders after any
+  change to how the thirds are weighed.
+- A bass accent counted over two bars as well as one hears 3/4 in a half-note
+  bass in 4/4: its notes fall on every line six beats apart as on every line
+  eight apart, with fewer pulses between to dilute them. `accent` counts one bar.
+- A meter or grid change is held to 4/4 by hashing what it must not move, before
+  and after: renders, the drawn music `Generate` plays with tiers and tempo
+  moving, rips of the renders with their documents and MIDI bytes, and the
+  project's recordings' rips. `%+v` of a struct holding pointers hashes
+  addresses: hash `MarshalPatternFile`'s document instead. `Rip.Notes` is the
+  transcript before the grid, so it hashes the same when only the bars move.
 
 ## Front ends and fidelity
 

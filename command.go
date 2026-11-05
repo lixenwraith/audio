@@ -10,6 +10,7 @@ type cmdOp uint8
 const (
 	cmdPlay cmdOp = iota
 	cmdBPM
+	cmdMeter
 	cmdSwing
 	cmdTuning
 	cmdMusicVol
@@ -42,8 +43,8 @@ type audioCmd struct {
 	tier    Intensity // arrangement tier
 	slot    int8      // sequencer slot
 	f1      float64   // play volume | swing | music volume | note velocity
-	i1      int       // bpm | crossfade | midi note | harmony root
-	i2      int       // duration samples | scale | mask value
+	i1      int       // bpm | crossfade | midi note | harmony root | meter's beats
+	i2      int       // duration samples | scale | mask value | meter's note
 	ints    []int     // harmony progression
 	seed    int64     // sequencer rng seed (explicit width, no int-size assumption)
 	b       bool      // quantize | auto-fill on

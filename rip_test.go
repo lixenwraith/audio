@@ -3,6 +3,7 @@ package audio
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"math"
 	"reflect"
 	"slices"
@@ -58,11 +59,11 @@ func startLoopEngine(t *testing.T) (*AudioEngine, [MusicSlots]PatternID) {
 func TestRipHearsTheLoop(t *testing.T) {
 	const bpm, bars = 140, 8
 	ae, slots := startLoopEngine(t)
-	buf, err := ae.RenderMusic(slots, bpm, bars, DefaultRootNote, ScalePhrygian, nil, 1)
+	buf, err := ae.RenderMusic(slots, bpm, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := ExpectedRip(slots, bpm, bars, DefaultRootNote, ScalePhrygian, nil)
+	want := ExpectedRip(slots, bpm, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil)
 	if self := CompareRips(want, want); self.Total != 1 {
 		t.Fatalf("the truth grades itself %+v", self)
 	}
@@ -97,8 +98,8 @@ func TestRipHearsTheLoop(t *testing.T) {
 	if ts := CompareRips(tempoed, want); tempoed.BPM != bpm || ts.Total < score.Total-0.05 || other.BPM != 100 || len(other.Bars) < bars*100/bpm-1 || len(other.Bars) > bars*100/bpm+1 {
 		t.Errorf("tempo pinned: bpm %d score %+v; at 100: bpm %d bars %d", tempoed.BPM, ts, other.BPM, len(other.Bars))
 	}
-	if score.Tempo < 1 || score.Bars < 0.85 || score.Drums < 0.9 || score.Melody < 0.8 || score.Bass < 0.8 {
-		t.Errorf("score %+v", score)
+	if r.Meter != (Meter{}) || score.Tempo < 1 || score.Bars < 0.85 || score.Drums < 0.9 || score.Melody < 0.8 || score.Bass < 0.8 {
+		t.Errorf("in %s, score %+v", r.Meter, score)
 	}
 	if n := len(r.Patterns("loop", 4)); n < 3 {
 		t.Errorf("%d patterns written, want a beat, a melody and a bass at least", n)
@@ -109,14 +110,118 @@ func TestRipHearsTheLoop(t *testing.T) {
 	// a timeline that empties every slot after the first bar falls near silent
 	// there, and plays on when the third bar fills them again
 	timeline := [][MusicSlots]PatternID{slots, {}, slots}
-	tl, err := ae.RenderTimeline(timeline, bpm, DefaultRootNote, ScalePhrygian, nil, 1)
+	tl, err := ae.RenderTimeline(timeline, bpm, Meter{}, DefaultRootNote, ScalePhrygian, nil, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	n := SamplesPerBar(bpm)
+	n := SamplesPerBar(bpm, Meter{})
 	full, empty, again := energy(tl[:n]), energy(tl[n:2*n]), energy(tl[2*n:])
 	if empty > full/10 || again < full/2 {
 		t.Errorf("timeline bars carry %g, %g and %g", full, empty, again)
+	}
+}
+
+// TestRipHearsTheMeter: a waltz rips in three and a jig, its beats dotted
+// quarters, in 6/8 at three halves of the tempo they are tracked at, each on
+// the bar lines a perfect listener's rip of the same patterns holds
+func TestRipHearsTheMeter(t *testing.T) {
+	ae, _ := startLoopEngine(t)
+	define := func(p *Pattern) PatternID {
+		id, err := ae.DefinePattern(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	hit := func(vel float64, pos ...int) []Step {
+		var s []Step
+		for _, p := range pos {
+			s = append(s, Step{Pos: p, Vel: vel})
+		}
+		return s
+	}
+	three, six := Meter{3, 4}, Meter{6, 8}
+	waltz := [MusicSlots]PatternID{
+		define(&Pattern{Name: "waltz", Steps: 12, Meter: three, Tracks: []Track{
+			{Instr: InstrKick, Events: hit(1, 0)}, {Instr: InstrSnare, Events: hit(0.8, 4, 8)}, {Instr: InstrHihat, Events: hit(0.5, 2, 6, 10)}}}),
+		define(&Pattern{Name: "waltz_tune", Steps: 12, Meter: three, Tracks: []Track{{Instr: InstrLead, Events: []Step{
+			{Pos: 0, Vel: 0.9, Oct: 2, Dur: 4}, {Pos: 4, Vel: 0.8, Deg: 2, Oct: 2, Dur: 2}, {Pos: 6, Vel: 0.8, Deg: 4, Oct: 2, Dur: 2}, {Pos: 8, Vel: 0.8, Deg: 3, Oct: 2, Dur: 4}}}}}),
+		PatternSilence,
+		define(&Pattern{Name: "waltz_low", Steps: 12, Meter: three, Tracks: []Track{{Instr: InstrBass, Events: []Step{{Pos: 0, Vel: 0.9, Dur: 8}}}}}),
+	}
+	jig := [MusicSlots]PatternID{
+		define(&Pattern{Name: "jig", Steps: 12, Meter: six, Tracks: []Track{
+			{Instr: InstrKick, Events: hit(1, 0)}, {Instr: InstrSnare, Events: hit(0.9, 6)}, {Instr: InstrHihat, Events: hit(0.5, 0, 2, 4, 6, 8, 10)}}}),
+		define(&Pattern{Name: "jig_tune", Steps: 12, Meter: six, Tracks: []Track{{Instr: InstrLead, Events: []Step{
+			{Pos: 0, Vel: 0.9, Oct: 2, Dur: 2}, {Pos: 2, Vel: 0.7, Deg: 1, Oct: 2, Dur: 2}, {Pos: 4, Vel: 0.7, Deg: 2, Oct: 2, Dur: 2}, {Pos: 6, Vel: 0.9, Deg: 4, Oct: 2, Dur: 4}, {Pos: 10, Vel: 0.7, Deg: 2, Oct: 2, Dur: 2}}}}}),
+		PatternSilence,
+		define(&Pattern{Name: "jig_low", Steps: 12, Meter: six, Tracks: []Track{{Instr: InstrBass, Events: []Step{{Pos: 0, Vel: 0.9, Dur: 6}, {Pos: 6, Vel: 0.8, Deg: 4, Dur: 6}}}}}),
+	}
+	const bars = 16
+	for _, c := range []struct {
+		slots [MusicSlots]PatternID
+		bpm   int
+		m     Meter
+	}{{waltz, 130, three}, {jig, 150, six}} {
+		buf, err := ae.RenderMusic(c.slots, c.bpm, c.m, bars, DefaultRootNote, ScalePhrygian, nil, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := RipSamples(buf, AudioSampleRate, DefaultRipParams())
+		if err != nil {
+			t.Fatal(err)
+		}
+		score := CompareRips(r, ExpectedRip(c.slots, c.bpm, c.m, bars, DefaultRootNote, ScalePhrygian, nil))
+		if r.Meter != c.m || r.BPM != c.bpm || score.Bars < 0.85 || score.Drums < 0.8 {
+			t.Errorf("%s at %d: ripped %s at %d bpm, %d bar(s), score %+v", c.m, c.bpm, r.Meter, r.BPM, len(r.Bars), score)
+		}
+	}
+}
+
+// TestASongInThreeEightChangesPatternsOnItsBarLines: a song in 3/8 swaps its
+// melody every six steps, past the 64 steps the step counter used to wrap
+// at, each bar's note sounding on its own bar line at its own pattern's pitch
+func TestASongInThreeEightChangesPatternsOnItsBarLines(t *testing.T) {
+	ae, _ := startLoopEngine(t)
+	m := Meter{3, 8}
+	var ids [2]PatternID
+	for i, deg := range []int{0, 4} {
+		id, err := ae.DefinePattern(&Pattern{Name: fmt.Sprint("note", deg), Steps: 6, Meter: m, Tracks: []Track{{Instr: InstrLead, Events: []Step{{Pos: 0, Vel: 0.9, Deg: deg, Oct: 2, Dur: 3}}}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids[i] = id
+	}
+	order := "011010011100101101110010" // 24 bars, 144 steps
+	timeline := make([][MusicSlots]PatternID, len(order))
+	for b, c := range order {
+		timeline[b][1] = ids[c-'0']
+	}
+	const bpm = 120
+	buf, err := ae.RenderTimeline(timeline, bpm, m, DefaultRootNote, ScalePhrygian, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := RipSamples(buf, AudioSampleRate, DefaultRipParams())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bar := float64(SamplesPerBar(bpm, m)) / AudioSampleRate
+	pitch := [2]int{-1, -1}
+	for b, c := range order {
+		i := slices.IndexFunc(r.Notes, func(n RipNote) bool { return !n.Bass && math.Abs(n.Start-float64(b)*bar) < 0.04 })
+		if i < 0 {
+			t.Fatalf("bar %d: no note within 40 ms of its line at %.2fs", b, float64(b)*bar)
+		}
+		if k := c - '0'; pitch[k] < 0 {
+			pitch[k] = r.Notes[i].MIDI
+		} else if r.Notes[i].MIDI != pitch[k] {
+			t.Errorf("bar %d plays %d, its pattern played %d before", b, r.Notes[i].MIDI, pitch[k])
+		}
+	}
+	melody := slices.DeleteFunc(slices.Clone(r.Notes), func(n RipNote) bool { return n.Bass })
+	if pitch[1] <= pitch[0] || len(melody) != len(order) {
+		t.Errorf("pitches %v, %d melody notes for %d bars", pitch, len(melody), len(order))
 	}
 }
 
@@ -141,7 +246,7 @@ func TestRipNoteBrightIsTheFundamentalsShare(t *testing.T) {
 		if _, err := ae.DefineVoice(&VoiceDef{Name: "lead", Wave: wave, Cutoff: 2500, Q: 0.5, Attack: 0.005, Decay: 0.1, Sustain: 0.7, Release: 0.08}); err != nil {
 			t.Fatal(err)
 		}
-		buf, err := ae.RenderMusic(slots, bpm, bars, DefaultRootNote, ScalePhrygian, nil, 1)
+		buf, err := ae.RenderMusic(slots, bpm, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -217,11 +322,11 @@ func TestRipHearsASecondVoice(t *testing.T) {
 		t.Fatal(err)
 	}
 	slots[2] = pad
-	buf, err := ae.RenderMusic(slots, bpm, bars, DefaultRootNote, ScalePhrygian, nil, 1)
+	buf, err := ae.RenderMusic(slots, bpm, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := ExpectedRip(slots, bpm, bars, DefaultRootNote, ScalePhrygian, nil)
+	want := ExpectedRip(slots, bpm, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil)
 	// on the render's own grid: the pad's change on the third beat moves the
 	// bar-line decoder, which is not the rule under test
 	one := DefaultRipParams()
@@ -287,7 +392,7 @@ func twoLines(t *testing.T, leadEvs, counterEvs []Step, lead LeadRule) (*Rip, ma
 		t.Fatal(err)
 	}
 	slots[1], slots[2] = l, c
-	buf, err := ae.RenderMusic(slots, bpm, bars, DefaultRootNote, ScalePhrygian, nil, 1)
+	buf, err := ae.RenderMusic(slots, bpm, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,12 +428,11 @@ func linesHeard(r *Rip, leadSet, counterSet map[int]bool) (leadIn, counterIn [2]
 	return
 }
 
-// TestRipKeepsTheLeadThroughACrossing: two lines in the melody register on one
-// voice, a louder lead in quarter notes and a quieter counter line in eighths,
-// a fourth under the lead one bar and a fifth over it the next; told the lead
-// is the louder, the rip keeps the lead's notes in the melody line and the
-// counter's in the under line through the crossing, where a line told by pitch
-// order or by the louder frame changes hands.
+// TestRipKeepsTheLeadThroughACrossing: a loud lead in quarters and a quieter
+// counter line in eighths on one voice, a fourth under the lead one bar and a
+// fifth over it the next. Told the lead is the louder, the rip keeps each line's
+// notes on its side through the crossing, where a line told by pitch order or by
+// the louder frame changes hands.
 func TestRipKeepsTheLeadThroughACrossing(t *testing.T) {
 	const bars = 8
 	var leadEvs, counterEvs []Step
@@ -405,7 +509,7 @@ func TestRipKeepsABassLineThatClimbs(t *testing.T) {
 	}
 	climb := slots
 	climb[3] = high
-	buf, err := ae.RenderMusic(climb, bpm, bars, DefaultRootNote, ScalePhrygian, nil, 1)
+	buf, err := ae.RenderMusic(climb, bpm, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -418,7 +522,7 @@ func TestRipKeepsABassLineThatClimbs(t *testing.T) {
 	}
 	dipped := slots
 	dipped[1] = dip
-	buf, err = ae.RenderMusic(dipped, bpm, bars, DefaultRootNote, ScalePhrygian, nil, 1)
+	buf, err = ae.RenderMusic(dipped, bpm, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -615,7 +719,7 @@ func TestMIDIRoundTrip(t *testing.T) {
 	}
 	hits := []RipHit{{Start: 0, Drum: InstrKick, Vel: 1}, {Start: 0.22, Drum: InstrHihat, Vel: 0.5}, {Start: 0.44, Drum: InstrSnare, Vel: 0.8}}
 	var file bytes.Buffer
-	if err := WriteMIDI(&file, in, hits, 137); err != nil {
+	if err := WriteMIDI(&file, in, hits, 137, Meter{}); err != nil {
 		t.Fatal(err)
 	}
 	m, err := ReadMIDI(&file)
@@ -709,7 +813,7 @@ func TestMIDIScoreRipsAsTheLoop(t *testing.T) {
 	step := 60.0 / bpm / StepsPerBeat
 	var notes []RipNote
 	var hits []RipHit
-	for _, e := range ExpectedEvents(slots, bars, DefaultRootNote, ScalePhrygian, nil) {
+	for _, e := range ExpectedEvents(slots, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil) {
 		at := float64(e.Bar*StepsPerBar+e.Step) * step
 		if e.Instr.IsDrum() {
 			hits = append(hits, RipHit{Start: at, Drum: e.Instr, Vel: e.Vel})
@@ -718,7 +822,7 @@ func TestMIDIScoreRipsAsTheLoop(t *testing.T) {
 		notes = append(notes, RipNote{Start: at, End: at + float64(e.Dur)*step, MIDI: e.MIDI, Vel: e.Vel, Bass: e.MIDI < RipBassTop})
 	}
 	var file bytes.Buffer
-	if err := WriteMIDI(&file, notes, hits, bpm); err != nil {
+	if err := WriteMIDI(&file, notes, hits, bpm, Meter{}); err != nil {
 		t.Fatal(err)
 	}
 	m, err := ReadMIDI(&file)
@@ -740,16 +844,16 @@ func TestMIDIScoreRipsAsTheLoop(t *testing.T) {
 		}
 		return pats
 	}
-	want := ExpectedRip(slots, bpm, bars, DefaultRootNote, ScalePhrygian, nil)
+	want := ExpectedRip(slots, bpm, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil)
 	if got, want := rounded(r.Patterns("loop", 4)), rounded(want.Patterns("loop", 4)); !reflect.DeepEqual(got, want) {
 		t.Errorf("patterns\n%+v\nwant\n%+v", got, want)
 	}
 }
 
-// TestMIDIScoreKeepsItsFirstTempo: a score that starts at 60 bpm and speeds to
-// 120 two quarters in rips at its first tempo, an octave up into the
-// sequencer's range, so a beat is an eighth; its beats and its notes follow its
-// ticks under the tempo map, the change counted.
+// TestMIDIScoreKeepsItsFirstTempo: a score in 4/4 that starts at 60 bpm and
+// speeds to 120 two quarters in rips at its first tempo, an octave up into the
+// sequencer's range, its bar its own, so in 4/2 there; its beats and its notes
+// follow its ticks under the tempo map, the change counted.
 func TestMIDIScoreKeepsItsFirstTempo(t *testing.T) {
 	file := append(smf(2), track(
 		0x00, 0xFF, 0x51, 3, 0x0F, 0x42, 0x40, // 60 bpm
@@ -766,24 +870,24 @@ func TestMIDIScoreKeepsItsFirstTempo(t *testing.T) {
 		t.Fatal(err)
 	}
 	r, _ := m.Rip()
-	if m.BPM != 60 || m.Changes != 1 || r.BPM != 120 || len(r.Bars) != 2 {
-		t.Fatalf("file at %.1f bpm with %d change(s); rip at %d bpm, %d bar(s)", m.BPM, m.Changes, r.BPM, len(r.Bars))
+	if m.BPM != 60 || m.Changes != 1 || r.BPM != 120 || r.Meter != (Meter{4, 2}) || len(r.Bars) != 1 {
+		t.Fatalf("file at %.1f bpm with %d change(s); rip at %d bpm in %s, %d bar(s)", m.BPM, m.Changes, r.BPM, r.Meter, len(r.Bars))
 	}
-	for i, want := range []float64{0, 0.5, 1, 1.5, 2, 2.25, 2.5, 2.75, 3} {
+	for i, want := range []float64{0, 1, 2, 2.5, 3} {
 		if math.Abs(r.Beats[i]-want) > 1e-6 {
 			t.Errorf("beat %d at %.3fs, want %.3fs", i, r.Beats[i], want)
 		}
 	}
-	// a crotchet is two beats before the change and after it
-	if mel := r.Bars[1].Melody; len(mel) != 1 || mel[0].Pos != 8 || mel[0].Dur != 8 || r.Bars[0].Melody[0].Dur != 8 {
-		t.Errorf("melody %+v then %+v", r.Bars[0].Melody, mel)
+	// a crotchet is a beat, eight steps, before the change and after it
+	if mel := r.Bars[0].Melody; len(mel) != 2 || mel[0].Dur != 8 || mel[1].Pos != 24 || mel[1].Dur != 8 {
+		t.Errorf("melody %+v", mel)
 	}
 }
 
 // TestMIDIScoreBarsFromItsTimeSignature: a file that names no time signature is
 // in 4/4 from its start; one whose first bar is shorter than its signature's,
-// a pickup, rips with its first bar line where the full bars begin and a bar
-// before it holding the pickup.
+// a pickup, rips in that signature with its first bar line where the full bars
+// begin and a bar before it holding the pickup.
 func TestMIDIScoreBarsFromItsTimeSignature(t *testing.T) {
 	notes := []byte{
 		0x00, 0x90, 72, 100, // C5 at 0 for a quarter
@@ -796,7 +900,7 @@ func TestMIDIScoreBarsFromItsTimeSignature(t *testing.T) {
 		t.Fatal(err)
 	}
 	r, _ := plain.Rip()
-	if plain.Meter != [2]int{4, 4} || r.Downbeat != 0 || len(r.Bars) != 2 || r.Bars[0].Melody[1].Pos != 4 {
+	if plain.Meter != (Meter{}) || r.Downbeat != 0 || len(r.Bars) != 2 || r.Bars[0].Melody[1].Pos != 4 {
 		t.Errorf("no signature: %v, first bar from %.2fs, %d bar(s), melody %+v", plain.Meter, r.Downbeat, len(r.Bars), r.Bars[0].Melody)
 	}
 	meters := []byte{
@@ -808,10 +912,10 @@ func TestMIDIScoreBarsFromItsTimeSignature(t *testing.T) {
 		t.Fatal(err)
 	}
 	r, _ = picked.Rip()
-	if picked.Meter != [2]int{3, 4} || math.Abs(r.Downbeat+1.5) > 1e-6 || len(r.Bars) != 2 {
-		t.Fatalf("a pickup: %v, first bar from %.2fs, %d bar(s)", picked.Meter, r.Downbeat, len(r.Bars))
+	if picked.Meter != (Meter{3, 4}) || r.Meter != picked.Meter || math.Abs(r.Downbeat+1) > 1e-6 || len(r.Bars) != 3 {
+		t.Fatalf("a pickup: %v ripped in %v, first bar from %.2fs, %d bar(s)", picked.Meter, r.Meter, r.Downbeat, len(r.Bars))
 	}
-	if mel := r.Bars[0].Melody; len(mel) != 1 || mel[0].Pos != 12 || len(r.Bars[1].Melody) != 1 || r.Bars[1].Melody[0].Pos != 0 {
+	if mel := r.Bars[0].Melody; len(mel) != 1 || mel[0].Pos != 8 || len(r.Bars[1].Melody) != 1 || r.Bars[1].Melody[0].Pos != 0 {
 		t.Errorf("pickup bar %+v, first full bar %+v", mel, r.Bars[1].Melody)
 	}
 }
@@ -834,7 +938,7 @@ func TestRenderLinesPlaysOnlyTheInstrumentsNamed(t *testing.T) {
 	ae, slots := startLoopEngine(t)
 	tl := [][MusicSlots]PatternID{slots, slots}
 	render := func(only []InstrumentType) float64 {
-		buf, err := ae.RenderLines(tl, 120, DefaultRootNote, ScalePhrygian, nil, 1, only)
+		buf, err := ae.RenderLines(tl, 120, Meter{}, DefaultRootNote, ScalePhrygian, nil, 1, only)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1051,11 +1155,11 @@ func TestStepAccidentalKeepsAPitchOffTheKey(t *testing.T) {
 func TestRipReadsADetunedRecording(t *testing.T) {
 	const bpm, bars = 140, 8
 	ae, slots := startLoopEngine(t)
-	buf, err := ae.RenderMusic(slots, bpm, bars, DefaultRootNote, ScalePhrygian, nil, 1)
+	buf, err := ae.RenderMusic(slots, bpm, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := ExpectedRip(slots, bpm, bars, DefaultRootNote, ScalePhrygian, nil)
+	want := ExpectedRip(slots, bpm, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil)
 	inTune, err := Ripper{Params: DefaultRipParams(), Grid: &RipGrid{BPM: bpm}}.Samples(buf, AudioSampleRate)
 	if err != nil {
 		t.Fatal(err)
@@ -1079,7 +1183,7 @@ func TestRipReadsADetunedRecording(t *testing.T) {
 	// the engine's own tuning: the loop rendered forty cents flat, as a corpus
 	// loop standing in for such a recording is, reads so and keeps its notes
 	ae.SetTuning(-40)
-	low, err := ae.RenderMusic(slots, bpm, bars, DefaultRootNote, ScalePhrygian, nil, 1)
+	low, err := ae.RenderMusic(slots, bpm, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil, 1)
 	ae.SetTuning(0)
 	if err != nil {
 		t.Fatal(err)
@@ -1102,12 +1206,12 @@ func TestRipReadsADetunedRecording(t *testing.T) {
 func TestRipOpensAPickupBar(t *testing.T) {
 	const bpm, bars = 140, 8
 	ae, slots := startLoopEngine(t)
-	buf, err := ae.RenderMusic(slots, bpm, bars, DefaultRootNote, ScalePhrygian, nil, 1)
+	buf, err := ae.RenderMusic(slots, bpm, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := ExpectedRip(slots, bpm, bars, DefaultRootNote, ScalePhrygian, nil)
-	cut := 10 * SamplesPerBar(bpm) / StepsPerBar // the recording starts on the tenth step
+	want := ExpectedRip(slots, bpm, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil)
+	cut := 10 * SamplesPerBar(bpm, Meter{}) / StepsPerBar // the recording starts on the tenth step
 	r, err := RipSamples(buf[cut:], AudioSampleRate, DefaultRipParams())
 	if err != nil {
 		t.Fatal(err)
@@ -1147,7 +1251,7 @@ func TestRipOpensAPickupBar(t *testing.T) {
 func TestFidelityHearsTheDifference(t *testing.T) {
 	const bpm, bars = 140, 4
 	ae, slots := startLoopEngine(t)
-	same, err := ae.RenderMusic(slots, bpm, bars, DefaultRootNote, ScalePhrygian, nil, 1)
+	same, err := ae.RenderMusic(slots, bpm, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1159,7 +1263,7 @@ func TestFidelityHearsTheDifference(t *testing.T) {
 	}
 	moved := slots
 	moved[1] = sharp
-	other, err := ae.RenderMusic(moved, bpm, bars, DefaultRootNote, ScalePhrygian, nil, 1)
+	other, err := ae.RenderMusic(moved, bpm, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil, 1)
 	if err != nil {
 		t.Fatal(err)
 	}

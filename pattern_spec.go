@@ -23,6 +23,7 @@ type PatternDef struct {
 	Name   string     `toml:"name"`
 	Desc   string     `toml:"desc,omitempty"`
 	Steps  int        `toml:"steps"`
+	Meter  string     `toml:"meter,omitempty"`  // its bars' time signature, 4/4 when absent
 	Role   string     `toml:"role,omitempty"`   // rhythm, melody, fill or bass
 	Groups []string   `toml:"groups,omitempty"` // none joins every group
 	Tiers  []string   `toml:"tiers,omitempty"`  // intensity names it is drawn at
@@ -51,6 +52,12 @@ type StepDef struct {
 	Prob float64 `toml:"prob,omitempty"` // 0 or 1 = always
 }
 
+// Signature is the pattern's meter, 4/4 when unnamed or unread
+func (d *PatternDef) Signature() Meter {
+	m, _ := ParseMeter(d.Meter)
+	return m
+}
+
 // Pattern converts an authored def to the render form, validating on the way.
 // The result is safe to hand to the mixer goroutine.
 func (d *PatternDef) Pattern() (*Pattern, error) {
@@ -61,6 +68,11 @@ func (d *PatternDef) Pattern() (*Pattern, error) {
 		return nil, errors.New("pattern: empty name")
 	}
 	p := &Pattern{Name: d.Name, Desc: d.Desc, Steps: d.Steps, Groups: slices.Clone(d.Groups), Motif: d.Motif}
+	m, err := ParseMeter(d.Meter)
+	if err != nil {
+		return nil, fmt.Errorf("pattern %q: %w", d.Name, err)
+	}
+	p.Meter = m
 	role := slices.Index(roleNames[:], d.Role)
 	if role < 0 {
 		return nil, fmt.Errorf("pattern %q: unknown role %q", d.Name, d.Role)
@@ -106,7 +118,7 @@ func (p *Pattern) Def() *PatternDef {
 	if p == nil {
 		return nil
 	}
-	d := &PatternDef{Name: p.Name, Desc: p.Desc, Steps: p.Steps, Role: p.Role.String(), Groups: slices.Clone(p.Groups), Motif: p.Motif}
+	d := &PatternDef{Name: p.Name, Desc: p.Desc, Steps: p.Steps, Meter: p.Meter.Doc(), Role: p.Role.String(), Groups: slices.Clone(p.Groups), Motif: p.Motif}
 	for _, t := range intensities() {
 		if p.Tiers&(1<<t) != 0 {
 			d.Tiers = append(d.Tiers, t.String())
@@ -149,6 +161,9 @@ func ValidatePattern(p *Pattern) error {
 	}
 	if p.Steps <= 0 || p.Steps > MaxPatternLen {
 		return e("steps %d outside [1,%d]", p.Steps, MaxPatternLen)
+	}
+	if err := p.Meter.check(); err != nil {
+		return e("%v", err)
 	}
 	if len(p.Tracks) > MaxPatternTracks {
 		return e("%d tracks, want at most %d", len(p.Tracks), MaxPatternTracks)
