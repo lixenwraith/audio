@@ -1206,29 +1206,41 @@ const (
 	ripThirds      = 1.5
 )
 
+// ripRepeatBars are the lags, in a reading's bars, its repetition is heard at
+var ripRepeatBars = [...]int{1, 2, 4}
+
+// ripRepeatMargin is how much less unlike itself (repeats) a reading within
+// ripMeterMargin of the best must sound to be taken over it
+const ripRepeatMargin = 0.03
+
 // meter decodes the bars over beats tracked at bpm, in the meter's own beats,
 // and their tempo: the first of the readings holds unless another's cues, the
-// grid's terms and the bass's accent on its lines, beat it by ripMeterMargin,
-// twice that for a bar of two of the best's, whose lines are the stronger half
-// of its. pin fixes the meter and leaves the bar line to decode.
+// grid's terms and the bass's accent on its lines, beat it by ripMeterMargin
+// (twice for a bar of two of the best's), or come within it at its tempo and
+// repeat more at their own bars. pin fixes the meter, the bar line decoded.
 func (f *RipFrames) meter(tracked []int, bpm float64, hits [InstrClap][]ripHit, rootPC int, bass []ripNote, pin *Meter) (ripGrid, float64, error) {
 	readings, err := f.readings(tracked, bpm, pin)
 	if err != nil {
 		return ripGrid{}, 0, err
 	}
 	var best ripGrid
-	var bestTempo float64
+	var bestTempo, bestUnlike float64
 	bestCues := math.Inf(-1)
 	for _, rd := range readings {
 		phase, cues := f.grid(rd.pulses, rd.unit, rd.lines, rd.m, hits, rootPC)
+		var unlike float64
 		if len(readings) > 1 {
 			cues += accent(rd, bass)
+			unlike = f.repeats(rd)
 		}
 		need := ripMeterMargin
-		if best.bars > 0 && rd.m.Steps()%best.m.Steps() == 0 { // its bars two of best's: only stronger lines
+		nested := best.bars > 0 && rd.m.Steps()%best.m.Steps() == 0 // its bars two of best's: only stronger lines
+		if nested {
 			need *= 2
 		}
-		if bestCues > math.Inf(-1) && cues <= bestCues+need {
+		// a bar of two of the best's shares its lags, so only its lines can tell it
+		closer := !nested && rd.tempo == bestTempo && cues > bestCues-need && unlike <= bestUnlike-ripRepeatMargin
+		if bestCues > math.Inf(-1) && cues <= bestCues+need && !closer {
 			continue
 		}
 		every := rd.m.Beat() / rd.unit
@@ -1237,9 +1249,61 @@ func (f *RipFrames) meter(tracked []int, bpm float64, hits [InstrClap][]ripHit, 
 			g.beats = append(g.beats, rd.pulses[i])
 		}
 		g.bars = (len(g.beats) - g.first - 1) / rd.m.Beats()
-		best, bestTempo, bestCues = g, rd.tempo, cues
+		best, bestTempo, bestCues, bestUnlike = g, rd.tempo, cues, unlike
 	}
 	return best, bestTempo, nil
+}
+
+// repeats is how unlike itself the recording sounds a bar, two and four bars of
+// a reading on, each sixteenth's chroma and onset against the one so many steps
+// later: music repeats at its own bar and that bar's doubles, where another
+// meter's bars fall out of step, so a loop of even beats still tells its bar.
+func (f *RipFrames) repeats(rd ripReading) float64 {
+	steps := split(rd.pulses, rd.unit)
+	o := f.onsets()
+	var loudest float64
+	for _, v := range o {
+		loudest = max(loudest, v)
+	}
+	at := make([][13]float64, max(len(steps)-1, 0)) // a sixteenth's unit chroma, and its onset against the loudest
+	for i := range at {
+		var c [12]float64
+		for t := steps[i]; t < steps[i+1] && t < f.frames(); t++ {
+			for pc := range c {
+				c[pc] += f.Chroma[t][pc]
+			}
+		}
+		var sq float64
+		for _, v := range c {
+			sq += v * v
+		}
+		for pc, v := range c {
+			if sq > 0 {
+				at[i][pc] = v / math.Sqrt(sq)
+			}
+		}
+		if loudest > 0 {
+			at[i][12] = peak(o, float64(steps[i])) / loudest
+		}
+	}
+	var unlike float64
+	for _, k := range ripRepeatBars {
+		lag := k * rd.m.Steps()
+		var dot, na, nb float64
+		for i := 0; i+lag < len(at); i++ {
+			for j := range at[i] {
+				dot += at[i][j] * at[i+lag][j]
+				na += at[i][j] * at[i][j]
+				nb += at[i+lag][j] * at[i+lag][j]
+			}
+		}
+		if na > 0 && nb > 0 {
+			unlike += 1 - dot/math.Sqrt(na*nb)
+		} else {
+			unlike++
+		}
+	}
+	return unlike / float64(len(ripRepeatBars))
 }
 
 // readings is the ways meter reads the tracked beats, 4/4 first: as quarters,

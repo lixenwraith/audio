@@ -56,18 +56,18 @@ meter out of time, and says so. The smallest close: a song bar that names a
 meter or a tempo, the sequencer taking it at that bar line as `SetMeter` already
 waits for one, `RenderLines` likewise, and the MIDI writers an event there.
 
-### Hear a bar by its repetition
+### Follow the bar line through a recording
 
-- Priority: P2
+- Priority: P3
 - Affected files: `rip.go`
 
-The meter's readings ([Audio §9](audio.md#9-ripping-a-recording)) are told
-apart by their bar lines' cues, a kick, no snare, the bass's root and its
-accent, which a loop whose kick and bass strike every quarter leaves even:
-stapes' `bench 24 16 meters` reads the bar of 7 of 10 rips of its 3/4 and 6/8
-loops, the two at 96 bpm as 4/4. The smallest close: a cue of how alike a
-reading's bars are, onsets and chroma at its pulses, since a loop repeats every
-bar of its own meter and of no other, graded on that bench and kept off 4/4's.
+The rip decodes one bar line for the whole recording ([Audio
+§9](audio.md#9-ripping-a-recording)), the phase whose lines carry the most cues,
+so a performance that drifts against its bars keeps a phase that fits only part
+of it: a played take of Für Elise spreads its bass notes evenly over the three
+beats of a bar, as rubato drifting from one phase would. The smallest close: the
+phase decoded over windows of a few bars, a change taken only where the next
+windows hold it.
 
 ### Read more meters
 
@@ -79,5 +79,9 @@ whole recording, 4/4, 3/4, 6/8 or 12/8: 2/4 reads as 4/4, and 5/4, 7/8 or 9/8 as
 whichever of those fits. A 12/8 reads as 6/8 unless its four-beat lines carry
 twice the margin; a waltz the beat tracker takes at half its tempo has no whole
 bar in its beats and reads 4/4; and a tracker that slips by a sixteenth hides the
-thirds a dotted beat holds. The smallest close: a reading per further meter in
-`readings`, each graded on renders as `TestRipHearsTheMeter` grades 3/4 and 6/8.
+thirds a dotted beat holds. A fast 4/4 opens the dotted readings where the
+tracker locks at 4/5 or 2/3 of its tempo or noise smears its sixteenths onto the
+beat's thirds: 4 of 56 4/4 loops of `corpus <dir> 48 16 gen meters`, clean and
+augmented, at 140 to 176 bpm read 6/8 or 12/8. The smallest close: a reading per
+further meter in `readings`, each graded on renders as `TestRipHearsTheMeter`
+grades 3/4 and 6/8.

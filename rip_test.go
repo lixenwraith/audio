@@ -178,6 +178,43 @@ func TestRipHearsTheMeter(t *testing.T) {
 	}
 }
 
+// TestRipHearsABarByItsRepetition: a waltz whose kick and bass strike every
+// quarter gives its bar lines no cue over 4/4's, and rips in three by how its
+// tune repeats at its own bars
+func TestRipHearsABarByItsRepetition(t *testing.T) {
+	ae, _ := startLoopEngine(t)
+	define := func(p *Pattern) PatternID {
+		id, err := ae.DefinePattern(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	three := Meter{3, 4}
+	slots := [MusicSlots]PatternID{
+		define(&Pattern{Name: "even", Steps: 12, Meter: three, Tracks: []Track{
+			{Instr: InstrKick, Events: []Step{{Pos: 0, Vel: 1}, {Pos: 4, Vel: 1}, {Pos: 8, Vel: 1}}},
+			{Instr: InstrHihat, Events: []Step{{Pos: 2, Vel: 0.5}, {Pos: 6, Vel: 0.5}, {Pos: 10, Vel: 0.5}}}}}),
+		define(&Pattern{Name: "even_tune", Steps: 24, Meter: three, Tracks: []Track{{Instr: InstrLead, Events: []Step{
+			{Pos: 0, Vel: 0.8, Oct: 2, Dur: 4}, {Pos: 4, Vel: 0.8, Deg: 2, Oct: 2, Dur: 2}, {Pos: 6, Vel: 0.8, Deg: 4, Oct: 2, Dur: 2}, {Pos: 8, Vel: 0.8, Deg: 2, Oct: 2, Dur: 4},
+			{Pos: 12, Vel: 0.8, Deg: 3, Oct: 2, Dur: 4}, {Pos: 16, Vel: 0.8, Deg: 1, Oct: 2, Dur: 2}, {Pos: 18, Vel: 0.8, Deg: 2, Oct: 2, Dur: 2}, {Pos: 20, Vel: 0.8, Deg: 1, Oct: 2, Dur: 4}}}}}),
+		PatternSilence,
+		define(&Pattern{Name: "even_low", Steps: 12, Meter: three, Tracks: []Track{{Instr: InstrBass, Events: []Step{
+			{Pos: 0, Vel: 0.9, Dur: 4}, {Pos: 4, Vel: 0.9, Dur: 4}, {Pos: 8, Vel: 0.9, Dur: 4}}}}}),
+	}
+	buf, err := ae.RenderMusic(slots, 96, three, 16, DefaultRootNote, ScalePhrygian, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := RipSamples(buf, AudioSampleRate, DefaultRipParams())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Meter != three || r.BPM != 96 {
+		t.Errorf("ripped %s at %d bpm, %d bar(s), want 3/4 at 96", r.Meter, r.BPM, len(r.Bars))
+	}
+}
+
 // TestASongInThreeEightChangesPatternsOnItsBarLines: a song in 3/8 swaps its
 // melody every six steps, past the 64 steps the step counter used to wrap
 // at, each bar's note sounding on its own bar line at its own pattern's pitch
