@@ -56,6 +56,19 @@ meter out of time, and says so. The smallest close: a song bar that names a
 meter or a tempo, the sequencer taking it at that bar line as `SetMeter` already
 waits for one, `RenderLines` likewise, and the MIDI writers an event there.
 
+### Hear a bar by its repetition
+
+- Priority: P2
+- Affected files: `rip.go`
+
+The meter's readings ([Audio §9](audio.md#9-ripping-a-recording)) are told
+apart by their bar lines' cues, a kick, no snare, the bass's root and its
+accent, which a loop whose kick and bass strike every quarter leaves even:
+stapes' `bench 24 16 meters` reads the bar of 7 of 10 rips of its 3/4 and 6/8
+loops, the two at 96 bpm as 4/4. The smallest close: a cue of how alike a
+reading's bars are, onsets and chroma at its pulses, since a loop repeats every
+bar of its own meter and of no other, graded on that bench and kept off 4/4's.
+
 ### Read more meters
 
 - Priority: P3
