@@ -166,9 +166,9 @@ func (m Meter) Compound() bool {
 	return m.Den >= 8 && m.Num%3 == 0 && m.Num > 3
 }
 
-// felt is the beats a bar is felt in and the steps of each: a compound meter's
-// are its dotted beats
-func (m Meter) felt() (beats, steps int) {
+// Felt is the beats a bar is felt in and the steps of each: a compound meter's
+// are its dotted beats, 6/8 two of six steps
+func (m Meter) Felt() (beats, steps int) {
 	if m.Compound() {
 		return m.Beats() / 3, 3 * m.Beat()
 	}

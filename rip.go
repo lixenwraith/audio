@@ -1432,7 +1432,7 @@ func (f *RipFrames) grid(pulses []int, unit, lines int, m Meter, hits [InstrClap
 		}
 		return c
 	}
-	felt, steps := m.felt()
+	felt, steps := m.Felt()
 	beat := steps / unit
 	bar := felt * beat
 	var backbeats []int // the felt beats a snare falls on: the even-numbered, or every one after the first in an odd bar
