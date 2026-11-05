@@ -56,6 +56,24 @@ meter out of time, and says so. The smallest close: a song bar that names a
 meter or a tempo, the sequencer taking it at that bar line as `SetMeter` already
 waits for one, `RenderLines` likewise, and the MIDI writers an event there.
 
+### Hear a played take's bar by its repetition
+
+- Priority: P2
+- Affected files: `rip.go`
+
+`repeats` ([Audio §9](audio.md#9-ripping-a-recording)) picks 3/4 over 4/4 for
+renders and loops whose bar lines' cues tie, but not for a played take: four
+takes of Für Elise, at 147 to 150 bpm over a hundred bars, still read 4/4 and
+need `Ripper.Meter` set to 3/4, which reads them right. Rubato may smear the
+frames' chroma that `repeats` compares at fixed lags; that is not confirmed. A
+bar's distance to its nearest other bar, over the rip's quantized notes and
+hits, does separate the readings: 3/4's against 4/4's is 0.527 against 0.570 on
+a clean take, and 0.671 against 0.706 and 0.611 against 0.667 on two phone
+recordings, while 4/4 recordings go the other way, by 0.006 to 0.09. The
+distance ties on a loop, whose bars in another meter repeat too, three bars on,
+where `repeats` decides. The smallest close: that distance as a cue beside
+`repeats`, graded on the played takes and on renders and loops of each meter.
+
 ### Follow the bar line through a recording
 
 - Priority: P3
@@ -85,3 +103,21 @@ beat's thirds: 4 of 56 4/4 loops of `corpus <dir> 48 16 gen meters`, clean and
 augmented, at 140 to 176 bpm read 6/8 or 12/8. The smallest close: a reading per
 further meter in `readings`, each graded on renders as `TestRipHearsTheMeter`
 grades 3/4 and 6/8.
+
+### Tell 3/4 from 6/8
+
+- Priority: P3
+- Affected files: `rip.go`
+
+3/4 and 6/8 share a bar of 12 steps ([Audio
+§9](audio.md#9-ripping-a-recording)), and the rip offers 6/8 only when it hears
+the tracked beats as dotted quarters (`thirds`), so a 6/8 whose beats are
+tracked as quarters can read 3/4, its bar right and its label wrong. `repeats`
+cannot split them, since their lags are the same. On stapes'
+`bench 96 16 meters`, 36 of the 48 rips in 3/4 or 6/8, clean and augmented, read
+the right bar and 25 the right label: 10 of the 11 with the bar right and the
+label wrong are 6/8 read as 3/4. A wrong label keeps the bar and its notes, and
+changes only the meter the song and its MIDI file name. The smallest close: a
+6/8 reading beside 3/4 where the beats read as quarters, at their tempo, its
+lines' cues weighing a snare and bass on the bar's step 6 against its steps 4
+and 8.
