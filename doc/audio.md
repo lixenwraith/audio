@@ -197,9 +197,20 @@ for its bar line lands with it, and another pattern begins whole.
 
 ## 7. Music sequencer
 
-The sequencer uses a 16th-note grid (`4` steps per beat), 4/4 bars, and four
-crossfading slots: 0 rhythm or drums, 1 melody or a harmony-following layer, 2 a
-free layer or the automatic phrase fill, 3 the bass, the group's anchor.
+The sequencer uses a 16th-note grid (`4` steps per beat) and four crossfading
+slots: 0 rhythm or drums, 1 melody or a harmony-following layer, 2 a free layer
+or the automatic phrase fill, 3 the bass, the group's anchor.
+
+A bar is its meter's (`Meter`, `SetMusicMeter`), 4/4 unless set. A step is a
+sixteenth in every meter and the tempo counts quarters, so a bar of n/d holds
+16n/d steps: 3/8 six, 3/4 and 6/8 twelve, 12/8 twenty-four, and a song in 6/8
+at 140 is felt in dotted quarters at 93. The patterns count their steps from the
+bar the meter took effect on, the next bar line when it is set while the music
+runs, and each plays that count modulo its length, so a pattern of whole bars
+starts each on a line; `Transport` reports the bar and the count, `MusicMeter`
+the meter. A pattern or a song names its meter in its document (`meter =
+"6/8"`, left out for 4/4): a song's is the bar its timeline plays in, a
+pattern's the bar its editor and its MIDI file show. The bank's music is 4/4.
 
 A pattern has up to 64 steps, 32 tracks, and 512 events per track. A track sets
 its instrument, chord-following, and humanization; its events set step position,
@@ -340,28 +351,24 @@ the program of the shipped voice nearest it, its wave first, then its genes
 (`midiProgram`).
 
 - Writing (`WriteSongMIDI`, `WritePatternMIDI`): a type-1 file whose first track
-  holds the tempo, the key signature and a time signature wherever the bar
-  changes, then a track a pattern track by slot, instrument and order, each note
-  its steps long at its velocity, resolved through the song's harmony as the
-  sequencer resolves it; a drum a sixteenth on channel 10. A pattern is a song
-  that plays it once through. A bar is 16 steps, else 12 (3/4) where the
-  pattern's length divides by 12, else the pattern whole (`barSteps`,
-  `timeSignature`). Probability, humanize and tuning are not written.
+  holds the tempo, the key signature and the song's meter as its time signature,
+  then a track a pattern track by slot, instrument and order, each note its steps
+  long at its velocity, resolved through the song's harmony as the sequencer
+  resolves it; a drum a sixteenth on channel 10. A pattern is a song in its meter
+  that plays it once through. Probability, humanize and tuning are not written.
 - Reading (`MIDIScore.Song`): the file's parts quantized on its ticks, a step its
   sixteenth at its first tempo folded by octaves into the sequencer's range, as
   `MIDIScore.Rip` folds; a pattern a part a bar, named and shared between bars as
   `Rip.Song` names them (§9), the drum channel the beat, a part on a bass
   program the bass and the rest the melody, a track a line, each note at its
-  velocity and length; and the song that plays them, in the key signed or the key
-  the notes hold. A bar is its signature's steps (3/4 and 6/8 twelve, 3/8 six);
-  one no pattern holds in whole steps is read in sixteen. It returns what it
-  could not keep, a line each: a tempo change and its bar, a meter, a program
-  played on its family's voice, a key the kit lacks, notes merged, cut or left
-  out.
-- The sequencer counts every bar 16 steps until songs carry a meter ([vif's
-  todo](https://github.com/lixenwraith/vif/blob/main/doc/todo.md#give-songs-and-patterns-a-meter)),
-  so a song read from 3/4 plays its bars out of time while each pattern loops
-  right on its own.
+  velocity and length; and the song that plays them, in the meter its music
+  starts in and the key signed or the key the notes hold. A signature is read at
+  the folded tempo (`foldMeter`): 3/8 at 70 is 3/4 at 140, and 4/4 at 60 is 4/2
+  at 120, as a bar is the same time and a step a sixteenth at the tempo played;
+  one no bar of the grid holds is read in 4/4. It returns what it could not keep,
+  a line each: a tempo change and its bar, a bar of another meter than the
+  song's, a program played on its family's voice, a key the kit lacks, notes
+  merged, cut or left out.
 - `ReadMIDI`'s transcript (§9) is the same with or without the programs, keys
   and signatures the reader takes for a song
   (`TestReadMIDIReadsTheSameTranscript`).
@@ -369,15 +376,17 @@ the program of the shipped voice nearest it, its wave first, then its genes
 ## 9. Ripping a recording
 
 `RipWAV` and `RipSamples` listen to a recording and estimate what the sequencer
-would need to play it: the tempo, where the bars fall, the key, the chord root
-each bar leans on, and per bar the kick, snare and hihat hits, the melody and the
-bass line as steps of the sixteenth grid (`Rip`). `Patterns` writes them as
-patterns of up to four bars, named `<name>_beat_<n>`, `<name>_melody_<n>` and
-`<name>_bass_<n>` in a group of their own and no tier. `ReadWAV` reads the file,
-any PCM or float width. A `Ripper` with a `Grid` pins the tempo and the downbeat,
-as a render's are known; a grid with a negative downbeat pins the tempo alone,
-the beats tracked at it and the bar line decoded, for a recording whose tempo the
-listener knows or wants on another metrical level.
+would need to play it: the tempo, the meter and where the bars fall, the key, the
+chord root each bar leans on, and per bar the kick, snare and hihat hits, the
+melody and the bass line as steps of the sixteenth grid (`Rip`). `Patterns`
+writes them as patterns of up to four bars, named `<name>_beat_<n>`,
+`<name>_melody_<n>` and `<name>_bass_<n>` in a group of their own and no tier.
+`ReadWAV` reads the file, any PCM or float width. A `Ripper` with a `Grid` pins
+the tempo and the downbeat, as a render's are known, in bars of its `Meter` or
+4/4; a grid with a negative downbeat pins the tempo alone, the beats tracked at
+it and the bar line decoded, for a recording whose tempo the listener knows or
+wants on another metrical level. `Ripper.Meter` alone pins the meter and leaves
+the rest to decode.
 
 The analysis runs at 22.05 kHz over 93 ms frames every 11.6 ms, each split into
 a harmonic and a percussive part by the medians across time and across frequency
@@ -398,6 +407,23 @@ into the time before the recording when it begins inside that bar
 (`Rip.Downbeat` is negative then), so a phrase that leads into the first bar is
 kept. The key is the root and scale whose tones hold the most chroma and whose
 others the least, the bass register voting for the tonic.
+
+The meter is a choice among readings of the tracked beats (`readings`): each
+lays one meter's bars on the beats, or on pulses split from them, and decodes its
+bar line as above, the snare's backbeats on its felt beats (a compound bar's
+dotted quarters). The first reading holds unless another's cues, with how much
+more often a bass note starts on its bar lines than on its other pulses
+(`accent`), beat it by 0.35, or by twice that for a bar a whole number of the
+best's, so 12/8 needs its lines plainly over 6/8's. Beats read as quarters give
+4/4, then 3/4. Beats whose onsets fall on both their thirds, each half again as
+strong as on the beats' quarters and half their middles (`thirds`), are dotted
+quarters, since a swung sixteenth sounds near one third alone and a dotted
+quarter's sixteenths on its middle: they are split into eighths at three halves
+of the tempo (sixteenths at three quarters when that passes 200 bpm) and read as
+4/4 from the strongest quarter, then 6/8 and 12/8 from a tracked beat. Under
+eight bars of beats a clip reads 4/4 as tracked. A pinned meter is read alone, a
+compound one on dotted quarters and a simple one as quarters and, where the
+thirds sound, on eighths too.
 
 Pitch salience sums a candidate's partials, the bass register's from its first
 three, read from a window four times longer as well as the rip's own, the two
@@ -448,7 +474,8 @@ harmonics' peak around its onset placed by the agreement's map (`Agreement.At`,
 through the notes the register matched), so the notes heard can be counted by
 level as well. A file read is a rip of its own too (`MIDIScore.Rip`): its notes
 quantized on its ticks, its first tempo folded by octaves into the sequencer's
-range, four-beat bars from where its time signature starts, the key `keyOf` its
+range, bars of its first time signature read at that tempo (§8) from where it
+starts, the key `keyOf` its
 notes' pitch classes as the analysis takes it of the chroma, and a note outside
 E1 to C7 dropped; each line plays on the shipped voice its program plays on
 (`MIDIScore.Voices`, through §8's table). `WriteMIDI` writes a transcript the
@@ -464,10 +491,12 @@ the power the harmonic spectrum is raised to before the salience, under one to
 flatten the partials a saturated mix piles on every note; a `[rip]` table in a
 TOML document carries a set (`LoadRipParams`, `MarshalRipParams`).
 `DefaultRipParams` is the hand-set start. The engine grades a set itself:
-`RenderMusic` plays registered patterns offline, `ExpectedRip` is the rip a
-perfect listener would make of them, and `CompareRips` scores a rip against it,
-tempo within two BPM, bars found, and the drums, melody and bass as the harmonic
-mean of recall and precision per step and pitch. `Fidelity` grades a render
+`RenderMusic` plays registered patterns offline in a meter, `ExpectedRip` is the
+rip a perfect listener would make of them, and `CompareRips` scores a rip against
+it, tempo within two BPM, the bar lines it shares, and the drums, melody and bass
+as the harmonic mean of recall and precision per step and pitch, the steps
+counted from each one's first bar, so a rip in another meter is graded on where
+its notes sound. `Fidelity` grades a render
 against the recording itself rather than against its rip, which cannot see its
 own mistakes: both are heard through one front end into a `RipSound`
 (`Ripper.Sound`: the frames, the log-mel bands and the beats, a rip's or a pinned
@@ -536,9 +565,9 @@ key, a `[[song]]` in the pattern document (`LoadPatternFile`,
 bar lines, or one line of it alone (`RenderLines`).
 
 What it does not yet tell apart: a bass note's attack from a kick, a plucked
-chord's attack from a snare, two voices in one register, and a note off the key
-from a change of key. What it writes is the engine's grid and scale, an estimate
-to edit, not a transcription.
+chord's attack from a snare, two voices in one register, a note off the key
+from a change of key, and one meter from another within a recording. What it
+writes is the engine's grid and scale, an estimate to edit, not a transcription.
 
 ## 10. Extension checklist
 

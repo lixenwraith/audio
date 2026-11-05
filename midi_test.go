@@ -83,14 +83,8 @@ func TestReadMIDIReadsTheSameTranscript(t *testing.T) {
 func sounding(t *testing.T, d *SongDef, pattern func(string) *PatternDef) []string {
 	t.Helper()
 	var out []string
-	at := 0
+	at, steps := 0, d.Signature().Steps()
 	for _, bar := range d.Bars {
-		steps := StepsPerBar
-		for _, n := range bar {
-			if n != "" {
-				steps = barSteps(pattern(n).Steps)
-			}
-		}
 		for _, n := range bar {
 			if n == "" {
 				continue
@@ -203,8 +197,9 @@ func TestSongRoundTripsThroughMIDI(t *testing.T) {
 }
 
 // TestMIDIReadsMetersInTheirSteps: 3/4 and 6/8 bars load as patterns of 12 steps
-// and 3/8 of 6; a meter no pattern holds in whole steps loads in 16 and is said,
-// as is a tempo change, with the bar it falls in
+// and 3/8 of 6, each in its meter, the song in its first; a meter no pattern
+// holds loads in 4/4 and is said, as are the bars the song's meter plays out of
+// time and a tempo change, with the bar it falls in
 func TestMIDIReadsMetersInTheirSteps(t *testing.T) {
 	file := smf(2)
 	file = append(file, track(
@@ -231,14 +226,19 @@ func TestMIDIReadsMetersInTheirSteps(t *testing.T) {
 	for _, bar := range song.Bars {
 		steps = append(steps, lookup(pats...)(bar[RipPartSlots[RipMelody]]).Steps)
 	}
-	if !slices.Equal(steps, []int{12, 12, 12, 6, 16}) || len(pats) != 3 {
-		t.Errorf("bars of %v steps in %d pattern(s), want 12 12 12 6 16 in 3", steps, len(pats))
+	if !slices.Equal(steps, []int{12, 12, 12, 6, 16}) || len(pats) != 4 {
+		t.Errorf("bars of %v steps in %d pattern(s), want 12 12 12 6 16 in 4", steps, len(pats))
+	}
+	var meters []string
+	for _, p := range pats {
+		meters = append(meters, p.Meter)
+	}
+	if song.Meter != "3/4" || !slices.Equal(meters, []string{"3/4", "6/8", "3/8", ""}) {
+		t.Errorf("song in %q, patterns in %q", song.Meter, meters)
 	}
 	for _, w := range []string{
-		"3/4 from bar 0 in patterns of 12 steps",
-		"6/8 from bar 2 in patterns of 12 steps",
-		"3/8 from bar 3 in patterns of 6 steps",
-		"5/32 from bar 4 is no whole number of steps a pattern holds: read in bars of 16",
+		"5/32 from bar 4 is no meter a pattern holds at 120 bpm: read in bars of 4/4",
+		"bar(s) 3, 4 not a whole bar of the song's 3/4: a song holds one meter, so it plays them out of time",
 		"1 tempo change(s) not kept, the song plays at 120 bpm throughout: to 60 at bar 3",
 	} {
 		if !slices.Contains(said, w) {
@@ -247,27 +247,84 @@ func TestMIDIReadsMetersInTheirSteps(t *testing.T) {
 	}
 }
 
-// TestMIDIWritesAPatternInTheMeterItsStepsMake: a pattern is written in bars of
-// 16 steps, else of 12 (3/4), else whole, and loads back in bars of as many
-func TestMIDIWritesAPatternInTheMeterItsStepsMake(t *testing.T) {
+// TestAMeterRoundTripsThroughTheDocumentAndMIDI: a pattern's and a song's meter
+// survive the pattern document, and a MIDI file of either loads back in it, the
+// bars its own and the score's rip in it
+func TestAMeterRoundTripsThroughTheDocumentAndMIDI(t *testing.T) {
+	p := &PatternDef{Name: "jig", Steps: 24, Meter: "6/8", Role: "bass", Track: []TrackDef{{Instr: "bass", Event: []StepDef{
+		{Pos: 0, Vel: 1, Oct: -1, Dur: 2}, {Pos: 6, Vel: 0.6, Deg: 4, Oct: -1}, {Pos: 12, Vel: 0.9, Oct: -1}, {Pos: 23, Vel: 0.5, Deg: 4, Oct: -1}}}}}
+	d := &SongDef{Name: "waltz", BPM: 150, Meter: "3/4", Root: 40, Scale: "major", Bars: [][]string{{"", "", "", "jig"}, {"", "", "", "jig"}}}
+	doc, err := MarshalPatternFile(&PatternSpecFile{Pattern: []*PatternDef{p}, Song: []*SongDef{d}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := LoadPatternFile(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := f.Pattern[0].Pattern(); err != nil || got.Meter != (Meter{6, 8}) || f.Song[0].Signature() != (Meter{3, 4}) {
+		t.Errorf("the document read back %v (%v) and %q", got, err, f.Song[0].Meter)
+	}
 	for _, c := range []struct {
-		steps, bars int
-		meter       [2]int
-	}{{12, 1, [2]int{3, 4}}, {24, 2, [2]int{3, 4}}, {6, 1, [2]int{3, 8}}, {10, 1, [2]int{5, 8}}, {64, 4, [2]int{4, 4}}} {
-		p := &PatternDef{Name: "riff", Steps: c.steps, Role: "bass", Track: []TrackDef{{Instr: "bass", Event: []StepDef{
-			{Pos: 0, Vel: 1, Oct: -1, Dur: 2}, {Pos: c.steps - 1, Vel: 0.5, Deg: 4, Oct: -1}}}}}
+		write   func(*bytes.Buffer) error
+		meter   string
+		bars    int
+		ripBars int
+	}{
+		{func(b *bytes.Buffer) error { return WritePatternMIDI(b, p, 100, 40, ScaleMajor, nil) }, "6/8", 2, 2},
+		{func(b *bytes.Buffer) error { return WriteSongMIDI(b, d, lookup(p)) }, "3/4", 2, 2},
+	} {
 		var b bytes.Buffer
-		if err := WritePatternMIDI(&b, p, 100, 40, ScaleMajor, nil); err != nil {
+		if err := c.write(&b); err != nil {
 			t.Fatal(err)
 		}
 		m, err := ReadMIDI(&b)
 		if err != nil {
 			t.Fatal(err)
 		}
-		pats, song, _ := m.Song("back")
-		if m.Meter != c.meter || len(song.Bars) != c.bars || pats[0].Steps != c.steps/c.bars {
-			t.Errorf("%d steps: %d/%d in %d bar(s) of %d, want %d/%d in %d of %d", c.steps, m.Meter[0], m.Meter[1], len(song.Bars), pats[0].Steps, c.meter[0], c.meter[1], c.bars, c.steps/c.bars)
+		pats, song, said := m.Song("back")
+		r, _ := m.Rip()
+		if m.Meter.String() != c.meter || song.Meter != c.meter || pats[0].Meter != c.meter || len(song.Bars) != c.bars || pats[0].Steps != 12 || len(said) > 0 {
+			t.Errorf("%s: read %s, the song in %q of %d bar(s), a pattern in %q of %d steps, said %q", c.meter, m.Meter, song.Meter, len(song.Bars), pats[0].Meter, pats[0].Steps, said)
 		}
+		if r.Meter.String() != c.meter || len(r.Bars) != c.ripBars || len(r.Beats) != r.Meter.Beats()*c.ripBars+1 {
+			t.Errorf("%s: the score rips in %s, %d bar(s) on %d beats", c.meter, r.Meter, len(r.Bars), len(r.Beats))
+		}
+	}
+}
+
+// TestAScoreInThreeCompressesToItsPatterns: an abcabd phrase of 3/4 bars,
+// written and read back, rips one file bar a bar, so compress groups its
+// bars into the four patterns it was written from and not the nine 4/4 bars
+// cutting across them made
+func TestAScoreInThreeCompressesToItsPatterns(t *testing.T) {
+	var pats []*PatternDef
+	for i, degs := range [][3]int{{0, 2, 4}, {4, 3, 2}, {1, 3, 5}, {5, 4, 0}} {
+		var ev []StepDef
+		for k, d := range degs {
+			ev = append(ev, StepDef{Pos: 4 * k, Vel: 0.8, Deg: d, Oct: 1, Dur: 4})
+		}
+		pats = append(pats, &PatternDef{Name: string(rune('a' + i)), Steps: 12, Meter: "3/4", Role: "melody", Track: []TrackDef{{Instr: "lead", Event: ev}}})
+	}
+	d := &SongDef{Name: "phrase", BPM: 120, Meter: "3/4", Root: 40, Scale: "major"}
+	for range 6 {
+		for _, c := range "abcabd" {
+			d.Bars = append(d.Bars, []string{"", string(c), "", ""})
+		}
+	}
+	var b bytes.Buffer
+	if err := WriteSongMIDI(&b, d, lookup(pats...)); err != nil {
+		t.Fatal(err)
+	}
+	m, err := ReadMIDI(&b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, _ := m.Rip()
+	groups := r.Cluster(RipMelody, 0.05)
+	slices.Sort(groups)
+	if r.Meter != (Meter{3, 4}) || len(r.Bars) != len(d.Bars) || len(slices.Compact(groups)) != 4 {
+		t.Errorf("ripped in %s, %d bar(s) for %d, %d pattern(s)", r.Meter, len(r.Bars), len(d.Bars), len(slices.Compact(groups)))
 	}
 }
 

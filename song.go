@@ -42,6 +42,7 @@ type SongDef struct {
 	Name   string     `toml:"name"`
 	Desc   string     `toml:"desc,omitempty"`
 	BPM    int        `toml:"bpm"`
+	Meter  string     `toml:"meter,omitempty"` // its bars' time signature, 4/4 when absent
 	Root   int        `toml:"root"`
 	Scale  string     `toml:"scale"`
 	Chords []int      `toml:"chords,omitempty"` // the chord degrees the key cycles, as key takes them
@@ -68,8 +69,15 @@ func (d *SongDef) ScaleID() ScaleID {
 	return ScalePhrygian
 }
 
-// ValidateSong is what a song must hold to play: a name, a tempo in range, a root
-// on the keyboard, a known scale and at least one bar of at most MusicSlots names
+// Signature is the song's meter, 4/4 when unnamed or unread
+func (d *SongDef) Signature() Meter {
+	m, _ := ParseMeter(d.Meter)
+	return m
+}
+
+// ValidateSong is what a song must hold to play: a name, a tempo in range, a meter
+// the grid plays, a root on the keyboard, a known scale and at least one bar of at
+// most MusicSlots names
 func ValidateSong(d *SongDef) error {
 	var errs []error
 	if d.Name == "" {
@@ -77,6 +85,9 @@ func ValidateSong(d *SongDef) error {
 	}
 	if d.BPM < MinBPM || d.BPM > MaxBPM {
 		errs = append(errs, fmt.Errorf("song %q: bpm %d out of %d..%d", d.Name, d.BPM, MinBPM, MaxBPM))
+	}
+	if _, err := ParseMeter(d.Meter); err != nil {
+		errs = append(errs, fmt.Errorf("song %q: %w", d.Name, err))
 	}
 	if d.Root < 0 || d.Root > 127 {
 		errs = append(errs, fmt.Errorf("song %q: root %d is not a MIDI note", d.Name, d.Root))
@@ -241,18 +252,18 @@ func (r *Rip) empty(part RipPart, b int) bool {
 }
 
 // Pattern writes one part over the bars lo to hi as a pattern of that many bars
-// named name, in a group of the rip's own and no tier; nil when the part is
-// silent there. A register's track names the voice heard for it, or the lead and
-// the bass when none was.
+// of the rip's meter named name, in a group of the rip's own and no tier; nil
+// when the part is silent there. A register's track names the voice heard for
+// it, or the lead and the bass when none was.
 func (r *Rip) Pattern(name, group string, part RipPart, lo, hi int) *PatternDef {
-	steps := (hi - lo) * StepsPerBar
-	p := &PatternDef{Name: name, Steps: steps, Role: [RipParts]string{"rhythm", "melody", "bass"}[part], Groups: []string{group}}
+	bar := r.Meter.Steps()
+	p := &PatternDef{Name: name, Steps: (hi - lo) * bar, Meter: r.Meter.Doc(), Role: [RipParts]string{"rhythm", "melody", "bass"}[part], Groups: []string{group}}
 	if part == RipBeat {
 		for d := InstrKick; d < InstrClap; d++ {
 			var evs []StepDef
 			for b := lo; b < hi; b++ {
 				for _, s := range r.Bars[b].Drums[d] {
-					evs = append(evs, StepDef{Pos: s.Pos + (b-lo)*StepsPerBar, Vel: s.Vel})
+					evs = append(evs, StepDef{Pos: s.Pos + (b-lo)*bar, Vel: s.Vel})
 				}
 			}
 			if len(evs) > 0 {
@@ -273,7 +284,7 @@ func (r *Rip) Pattern(name, group string, part RipPart, lo, hi int) *PatternDef 
 		var evs []StepDef
 		for b := lo; b < hi; b++ {
 			for _, s := range pick(&r.Bars[b]) {
-				evs = append(evs, StepDef{Pos: s.Pos + (b-lo)*StepsPerBar, Vel: s.Vel, Deg: s.Deg, Oct: s.Oct, Acc: s.Acc, Dur: min(s.Dur, MaxPatternLen)})
+				evs = append(evs, StepDef{Pos: s.Pos + (b-lo)*bar, Vel: s.Vel, Deg: s.Deg, Oct: s.Oct, Acc: s.Acc, Dur: min(s.Dur, MaxPatternLen)})
 			}
 		}
 		if len(evs) > 0 {
@@ -315,14 +326,13 @@ func (r *Rip) Cluster(part RipPart, threshold float64) []int {
 	return out
 }
 
-// Song writes the rip as a dictionary and a timeline: for each part, a pattern
-// of one bar for every bar that stands for others in assign, named
-// <name>_<part>_<letter> in order of first use, and a song named name whose
-// bars play them in the rip's order at its tempo and key. A bar assigned -1
-// leaves its slot silent; one assigned a bar that stands for no group of its own
-// still plays that bar's pattern.
+// Song writes the rip as a dictionary and a timeline: for each part, a pattern of
+// one bar for every bar that stands for others in assign, named
+// <name>_<part>_<letter> in order of first use, and a song named name playing them
+// in the rip's order, tempo, meter and key. A bar assigned -1 leaves its slot
+// silent; one assigned a bar standing for no group still plays that bar's pattern.
 func (r *Rip) Song(name string, assign [RipParts][]int) ([]*PatternDef, *SongDef) {
-	song := &SongDef{Name: name, BPM: r.BPM, Root: r.Root, Scale: ScaleName(r.Scale), Chords: slices.Clone(r.Progression), Tuning: r.Tuning, Bars: make([][]string, len(r.Bars))}
+	song := &SongDef{Name: name, BPM: r.BPM, Meter: r.Meter.Doc(), Root: r.Root, Scale: ScaleName(r.Scale), Chords: slices.Clone(r.Progression), Tuning: r.Tuning, Bars: make([][]string, len(r.Bars))}
 	for i := range song.Bars {
 		song.Bars[i] = make([]string, MusicSlots)
 	}

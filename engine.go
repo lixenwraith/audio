@@ -553,6 +553,16 @@ func (ae *AudioEngine) ResetMusic() { ae.send(audioCmd{op: cmdMusicReset}) }
 
 func (ae *AudioEngine) SetMusicBPM(bpm int) { ae.send(audioCmd{op: cmdBPM, i1: bpm, b: true}) }
 
+// SetMusicMeter sets the bar the transport counts, from its next bar line while
+// it runs: the patterns count their steps from there.
+func (ae *AudioEngine) SetMusicMeter(m Meter) error {
+	if err := m.check(); err != nil {
+		return err
+	}
+	ae.send(audioCmd{op: cmdMeter, i1: m.Num, i2: m.Den, b: true})
+	return nil
+}
+
 func (ae *AudioEngine) SetMusicSeed(seed int64) { ae.send(audioCmd{op: cmdSeed, seed: seed}) }
 
 func (ae *AudioEngine) SetMusicSwing(a float64) { ae.send(audioCmd{op: cmdSwing, f1: a}) }
@@ -707,14 +717,12 @@ func (ae *AudioEngine) DefinePattern(p *Pattern) (PatternID, error) {
 	return id, nil
 }
 
-// RenderMusic plays the registered patterns placed in slots for bars bars at bpm,
-// under the harmony given and the draws of seed, offline and without the
-// start's fade-in, and returns the music as the sequencer sums it: the engine's
-// own render of what it would play, for a test, a tuner or an offline conductor.
-// It needs a started engine, whose registries and shapes it reads, renders the
-// drums again rather than share the mixer's cache, and leaves the live sequencer
-// alone.
-func (ae *AudioEngine) RenderMusic(slots [MusicSlots]PatternID, bpm, bars, root int, scale ScaleID, prog []int, seed int64) ([]float64, error) {
+// RenderMusic plays the registered patterns placed in slots for bars bars of
+// meter m at bpm, under the harmony given and seed's draws, offline and without
+// the start's fade-in: the engine's own render of what it would play, for a test,
+// a tuner or an offline conductor. It needs a started engine, renders the drums
+// again rather than share the mixer's cache, and leaves the live sequencer alone.
+func (ae *AudioEngine) RenderMusic(slots [MusicSlots]PatternID, bpm int, m Meter, bars, root int, scale ScaleID, prog []int, seed int64) ([]float64, error) {
 	if bars < 1 {
 		return nil, fmt.Errorf("render: %d bars", bars)
 	}
@@ -722,24 +730,27 @@ func (ae *AudioEngine) RenderMusic(slots [MusicSlots]PatternID, bpm, bars, root 
 	for i := range timeline {
 		timeline[i] = slots
 	}
-	return ae.RenderTimeline(timeline, bpm, root, scale, prog, seed)
+	return ae.RenderTimeline(timeline, bpm, m, root, scale, prog, seed)
 }
 
 // RenderTimeline is RenderMusic over a timeline, the patterns each bar's slots
 // hold, changed at the bar line: what a song is once its bars are matched to a
 // dictionary of patterns.
-func (ae *AudioEngine) RenderTimeline(timeline [][MusicSlots]PatternID, bpm, root int, scale ScaleID, prog []int, seed int64) ([]float64, error) {
-	return ae.RenderLines(timeline, bpm, root, scale, prog, seed, nil)
+func (ae *AudioEngine) RenderTimeline(timeline [][MusicSlots]PatternID, bpm int, m Meter, root int, scale ScaleID, prog []int, seed int64) ([]float64, error) {
+	return ae.RenderLines(timeline, bpm, m, root, scale, prog, seed, nil)
 }
 
 // RenderLines is RenderTimeline with only the instruments named sounding, one
 // line of a song heard on its own; nil is every instrument, an empty list none.
-func (ae *AudioEngine) RenderLines(timeline [][MusicSlots]PatternID, bpm, root int, scale ScaleID, prog []int, seed int64, only []InstrumentType) ([]float64, error) {
+func (ae *AudioEngine) RenderLines(timeline [][MusicSlots]PatternID, bpm int, m Meter, root int, scale ScaleID, prog []int, seed int64, only []InstrumentType) ([]float64, error) {
 	if !ae.running.Load() {
 		return nil, errors.New("render needs a started engine")
 	}
 	if bpm < MinBPM || bpm > MaxBPM || len(timeline) < 1 {
 		return nil, fmt.Errorf("render: %d bpm or %d bars out of range", bpm, len(timeline))
+	}
+	if err := m.check(); err != nil {
+		return nil, fmt.Errorf("render: %w", err)
 	}
 	ae.mu.RLock()
 	shapes := ae.config.SoundShapes
@@ -760,6 +771,7 @@ func (ae *AudioEngine) RenderLines(timeline [][MusicSlots]PatternID, bpm, root i
 		}
 	}
 	s := NewSequencer(bpm, k)
+	s.SetMeter(m, false)
 	s.autoFill = false
 	s.Reseed(seed)
 	s.SetHarmonyCfg(root, scale, prog)
@@ -775,7 +787,7 @@ func (ae *AudioEngine) RenderLines(timeline [][MusicSlots]PatternID, bpm, root i
 	place(0)
 	s.Start()
 	s.startGain, s.startInc = 1, 0
-	n := SamplesPerBar(bpm)
+	n := SamplesPerBar(bpm, m)
 	buf := make([]float64, n*len(timeline))
 	for bar := range timeline {
 		if bar > 0 {
@@ -848,14 +860,25 @@ func (ae *AudioEngine) SetSfxLevel(name string, vol float64) {
 	ae.resolveLevels()
 }
 
-// Transport reports the sequencer playhead. The position freezes rather than
-// resetting on Stop, so a stopped readout still shows where playback left off.
+// Transport reports the sequencer playhead: the bar, and the step the patterns
+// are on, counted from where the meter began, so a pattern of n steps plays its
+// step%n and the bar its step%MusicMeter().Steps(). The position freezes rather
+// than resetting on Stop, so a stopped readout still shows where playback left off.
 func (ae *AudioEngine) Transport() (bar int64, step int, running bool) {
 	if ae.mixer == nil {
 		return 0, 0, false
 	}
 	p := ae.mixer.sequencer.pos.Load()
-	return int64(p >> 8), int(p & 0xff), ae.mixer.musicRunning.Load()
+	return int64(p >> 32), int(p & 0x7fffffff), ae.mixer.musicRunning.Load()
+}
+
+// MusicMeter is the meter the transport counts its bars in
+func (ae *AudioEngine) MusicMeter() Meter {
+	if ae.mixer == nil {
+		return Meter{}
+	}
+	p := ae.mixer.sequencer.meterPub.Load()
+	return meterOf(int(p>>8), int(p&0xff))
 }
 
 // MusicGroup names the group the sequencer draws from; "" before any tier is applied

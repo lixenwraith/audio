@@ -1,6 +1,9 @@
 package audio
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // Engine constants: every value the mixer, sequencer and synthesis path read.
 // An embedder's policy (what moves the tiers, its per-sound levels) stays with it.
@@ -92,9 +95,94 @@ func SamplesPerStep(bpm int) int {
 	return AudioSampleRate * 60 / (bpm * StepsPerBeat)
 }
 
-// SamplesPerBar returns samples per bar at the given tempo
-func SamplesPerBar(bpm int) int {
-	return SamplesPerStep(bpm) * StepsPerBar
+// SamplesPerBar returns samples per bar of meter m at the given tempo
+func SamplesPerBar(bpm int, m Meter) int {
+	return SamplesPerStep(bpm) * m.Steps()
+}
+
+// Meter is a bar's time signature, Num beats of a 1/Den note; the zero value is
+// 4/4, as ParseMeter gives it. A step stays a sixteenth and the tempo counts
+// quarters, so a bar holds StepsPerBar*Num/Den steps (3/4 and 6/8 twelve, 3/8
+// six) and a beat 16/Den.
+type Meter struct{ Num, Den int }
+
+// ParseMeter reads "n/d", "" being 4/4
+func ParseMeter(s string) (Meter, error) {
+	if s == "" {
+		return Meter{}, nil
+	}
+	var m Meter
+	if n, err := fmt.Sscanf(s, "%d/%d", &m.Num, &m.Den); n != 2 || err != nil || m.String() != s {
+		return Meter{}, fmt.Errorf("meter %q: want beats/note, as 3/4 or 6/8", s)
+	}
+	if err := m.check(); err != nil {
+		return Meter{}, err
+	}
+	return meterOf(m.Num, m.Den), nil
+}
+
+// meterOf is n/d with 4/4 the zero value
+func meterOf(n, d int) Meter {
+	if n == 4 && d == 4 {
+		return Meter{}
+	}
+	return Meter{n, d}
+}
+
+// check holds a meter to what the grid plays: the note a power of two to a
+// sixteenth, so a beat is whole steps, and a bar of at most MaxPatternLen steps
+func (m Meter) check() error {
+	switch {
+	case m == Meter{}:
+		return nil
+	case m.Den < 1 || m.Den > StepsPerBar || m.Den&(m.Den-1) != 0:
+		return fmt.Errorf("meter %d/%d: the note is 1, 2, 4, 8 or 16", m.Num, m.Den)
+	case m.Num < 1 || m.Num > MaxPatternLen || m.Steps() > MaxPatternLen:
+		return fmt.Errorf("meter %d/%d: a bar of 1 to %d sixteenths", m.Num, m.Den, MaxPatternLen)
+	}
+	return nil
+}
+
+func (m Meter) norm() Meter {
+	if m.Num == 0 || m.Den == 0 {
+		return Meter{4, 4}
+	}
+	return m
+}
+
+// Steps is the steps a bar holds
+func (m Meter) Steps() int { m = m.norm(); return StepsPerBar * m.Num / m.Den }
+
+// Beat is the steps a beat holds, the denominator's note
+func (m Meter) Beat() int { return StepsPerBar / m.norm().Den }
+
+// Beats is the beats a bar holds
+func (m Meter) Beats() int { return m.norm().Num }
+
+// Compound is whether the bar is felt in dotted beats of three of its notes:
+// 6/8, 9/8, 12/8
+func (m Meter) Compound() bool {
+	m = m.norm()
+	return m.Den >= 8 && m.Num%3 == 0 && m.Num > 3
+}
+
+// felt is the beats a bar is felt in and the steps of each: a compound meter's
+// are its dotted beats
+func (m Meter) felt() (beats, steps int) {
+	if m.Compound() {
+		return m.Beats() / 3, 3 * m.Beat()
+	}
+	return m.Beats(), m.Beat()
+}
+
+func (m Meter) String() string { m = m.norm(); return fmt.Sprintf("%d/%d", m.Num, m.Den) }
+
+// Doc is the meter as a document writes it, "" for 4/4
+func (m Meter) Doc() string {
+	if m.norm() == (Meter{4, 4}) {
+		return ""
+	}
+	return m.String()
 }
 
 // --- Transitions / generative ---

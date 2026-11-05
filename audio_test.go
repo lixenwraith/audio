@@ -659,7 +659,7 @@ func TestHeldTierVariesDrawnSlots(t *testing.T) {
 	s.Start()
 
 	// Phrase downbeats take melody (bar 8), rhythm (bar 16) and bass (bar 24) in turn
-	s.Generate(make([]float64, 3*PhraseBars*SamplesPerBar(MaxBPM)+1))
+	s.Generate(make([]float64, 3*PhraseBars*SamplesPerBar(MaxBPM, Meter{})+1))
 	if got := s.slots[0].activeID(); got == rhythm {
 		t.Errorf("drawn rhythm still on %d after three phrases", got)
 	}
@@ -692,7 +692,7 @@ func TestDrawsHoldOneGroup(t *testing.T) {
 	first := groupOf[s.slots[0].activeID()]
 	s.Start()
 
-	bar := make([]float64, SamplesPerBar(MaxBPM))
+	bar := make([]float64, SamplesPerBar(MaxBPM, Meter{}))
 	for b := range GroupPhrases * PhraseBars {
 		s.Generate(bar)
 		if r, m := groupOf[s.slots[0].activeID()], groupOf[s.slots[1].activeID()]; r != m && s.slots[1].activeID() != PatternSilence {
@@ -722,7 +722,7 @@ func TestMutedSlotPlaysOnInTime(t *testing.T) {
 		s := NewSequencer(MaxBPM, nil)
 		s.SetPattern(3, id, 0, false)
 		s.Start()
-		bar := SamplesPerBar(MaxBPM)
+		bar := SamplesPerBar(MaxBPM, Meter{})
 		s.Generate(make([]float64, bar))
 		s.SetSlotMuted(3, mute)
 		s.Generate(make([]float64, bar))
@@ -766,7 +766,7 @@ func TestTrackMaskHoldsForItsPattern(t *testing.T) {
 	if mask() != ^uint32(0) {
 		t.Fatalf("a, playing to the bar line, took b's mask: %b", mask())
 	}
-	s.Generate(make([]float64, SamplesPerBar(MaxBPM)+1))
+	s.Generate(make([]float64, SamplesPerBar(MaxBPM, Meter{})+1))
 	if s.slots[3].activeID() != b || mask() != 1<<1 {
 		t.Fatalf("b began on the bar line under mask %b", mask())
 	}
@@ -798,7 +798,7 @@ func TestTransitionKeepsIncomingWhole(t *testing.T) {
 		s.SetPattern(1, quiet, 0, false)
 		s.Start()
 		s.setPattern(1, full, fade, true, true) // lands on the next downbeat, as a tier does
-		s.Generate(make([]float64, SamplesPerBar(MaxBPM)))
+		s.Generate(make([]float64, SamplesPerBar(MaxBPM, Meter{})))
 		buf := make([]float64, SamplesPerStep(MaxBPM))
 		s.Generate(buf)
 		var p float64
@@ -920,7 +920,7 @@ func TestBassHoldsThroughTiers(t *testing.T) {
 	s.arr = buildArrangement()
 	s.SetIntensity(IntensityCalm, 0, false, false)
 	s.Start()
-	s.Generate(make([]float64, SamplesPerBar(MaxBPM)))
+	s.Generate(make([]float64, SamplesPerBar(MaxBPM, Meter{})))
 	s.SetIntensity(IntensityNormal, 0, false, false)
 	if got := s.slots[slotBass].activeID(); got != b1 {
 		t.Errorf("bass moved to %d, want %d held", got, b1)

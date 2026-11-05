@@ -52,8 +52,8 @@ func (rp Ripper) Sound(x []float64, rate int, beats []float64) (*RipSound, error
 		return nil, err
 	}
 	if beats == nil {
-		g := f.pinned(rp.Grid)
-		beats = make([]float64, BeatsPerBar*g.bars+1)
+		g := f.pinned(rp.Grid, rp.pinnedMeter())
+		beats = make([]float64, g.m.Beats()*g.bars+1)
 		for i := range beats {
 			beats[i] = float64(g.beats[g.first+i]) * f.Hop
 		}

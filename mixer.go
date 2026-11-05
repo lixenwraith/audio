@@ -212,6 +212,8 @@ func (m *Mixer) apply(c audioCmd) {
 		m.startSound(c.sound, c.f1)
 	case cmdBPM:
 		m.sequencer.SetBPM(c.i1, c.b)
+	case cmdMeter:
+		m.sequencer.SetMeter(Meter{c.i1, c.i2}, c.b)
 	case cmdSwing:
 		m.sequencer.SetSwing(c.f1)
 	case cmdTuning:

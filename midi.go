@@ -8,6 +8,7 @@ import (
 	"io"
 	"maps"
 	"math"
+	"math/bits"
 	"slices"
 	"sort"
 	"strconv"
@@ -21,7 +22,6 @@ const midiDivision = 480
 const (
 	midiDrums        = 9      // the channel General MIDI keeps for percussion, which has no pitch
 	midiDefaultTempo = 500000 // microseconds a quarter note before a file's first tempo, 120 bpm
-	midiThreeBeats   = 3 * StepsPerBeat
 )
 
 // midiInstruments is each shipped instrument as General MIDI writes and reads it:
@@ -157,7 +157,8 @@ type MIDIScore struct {
 	Hits    []RipHit
 	BPM     float64 // quarter notes a minute at the start, 120 when the file names none
 	Changes int     // tempo changes after the start
-	Meter   [2]int  // the time signature the music starts in, 4/4 when the file names none
+	Meter   Meter   // the time signature the music starts in, 4/4 when the file names none
+	Meters  int     // time signatures changed to after the first bar
 	Left    int     // parts past the three lines, left out
 	// Voices are the shipped voices the melody, under and bass parts' programs
 	// play on (midiVoice), General MIDI's piano where a file sets none
@@ -246,6 +247,11 @@ func ReadMIDI(r io.Reader) (*MIDIScore, error) {
 	start := m.clock[sort.Search(len(m.clock), func(i int) bool { return m.clock[i].tick > 0 })-1]
 	m.BPM = 60 / start.perTick / float64(division)
 	m.line, m.Meter = firstBar(m.meters, division)
+	for _, mt := range m.meters {
+		if mt.tick > m.line && meterOf(mt.num, mt.den) != m.Meter {
+			m.Meters++
+		}
+	}
 	if len(all.keys) > 0 {
 		k := slices.MinFunc(all.keys, func(a, b midiKey) int { return cmp.Compare(a.tick, b.tick) })
 		m.key = &k
@@ -307,7 +313,7 @@ func ReadMIDI(r io.Reader) (*MIDIScore, error) {
 // firstBar is where the first time signature that holds for more than a bar
 // starts, and that signature: a bar of its own before it, as a pickup is
 // written, is not the music's first. A file with none is in 4/4 from its start.
-func firstBar(meters []midiMeter, division int) (int64, [2]int) {
+func firstBar(meters []midiMeter, division int) (int64, Meter) {
 	slices.SortStableFunc(meters, func(a, b midiMeter) int { return cmp.Compare(a.tick, b.tick) })
 	if len(meters) == 0 || meters[0].tick > 0 {
 		meters = append([]midiMeter{{num: 4, den: 4}}, meters...)
@@ -315,28 +321,48 @@ func firstBar(meters []midiMeter, division int) (int64, [2]int) {
 	for i, mt := range meters {
 		bar := int64(4 * division * mt.num / mt.den)
 		if i+1 == len(meters) || mt.tick+bar < meters[i+1].tick {
-			return mt.tick, [2]int{mt.num, mt.den}
+			return mt.tick, meterOf(mt.num, mt.den)
 		}
 	}
 	panic("unreachable: the last signature holds to the end")
 }
 
-// Rip is the score as a rip of it: its notes quantized on its own ticks; its first
-// tempo, by octaves into the sequencer's range; its beats from where its time
-// signature starts, four a bar, a pickup bar for notes before it; and the key
-// keyOf its pitch classes by their lengths. A note outside the rip's range is
-// dropped, and counted.
+// foldMeter is the meter num/den reads in at fold times the file's tempo: a bar
+// as long, its note fold times as many steps, so 3/8 at twice its tempo is 3/4;
+// false when no meter the grid plays holds that bar
+func foldMeter(num, den int, fold float64) (Meter, bool) {
+	n, d := float64(num), float64(den)/fold
+	for d > StepsPerBar && math.Mod(n, 2) == 0 {
+		n, d = n/2, d/2
+	}
+	for d < 1 {
+		n, d = n*2, d*2
+	}
+	m := Meter{int(n), int(d)}
+	if float64(m.Num) != n || float64(m.Den) != d || m.Num < 1 || m.check() != nil {
+		return Meter{}, false
+	}
+	return meterOf(m.Num, m.Den), true
+}
+
+// Rip is the score as a rip of it: notes quantized on its own ticks, its first tempo
+// folded by octaves into the sequencer's range with its first meter read at that
+// tempo (foldMeter; 4/4 when the grid plays none), bars from where that signature
+// starts with a pickup bar for notes before it, and the key keyOf its pitch classes.
+// A note outside the rip's range is dropped, and counted.
 func (m *MIDIScore) Rip() (*Rip, int) {
 	const fine = 64 // the grid's units a tick, so a folded beat is whole
 	at := func(sec float64) int { return int(math.Round(m.ticks(sec) * fine)) }
-	beat, bpm := float64(m.division*fine), m.BPM
+	quarter, bpm := float64(m.division*fine), m.BPM
 	for bpm < MinBPM {
-		beat, bpm = beat/2, bpm*2
+		quarter, bpm = quarter/2, bpm*2
 	}
 	for bpm > MaxBPM {
-		beat, bpm = beat*2, bpm/2
+		quarter, bpm = quarter*2, bpm/2
 	}
-	r := &Rip{BPM: int(math.Round(bpm))}
+	meter, _ := foldMeter(m.Meter.Beats(), m.Meter.norm().Den, float64(m.division*fine)/quarter)
+	beat := quarter * float64(meter.Beat()) / StepsPerBeat
+	r := &Rip{BPM: int(math.Round(bpm)), Meter: meter}
 	var c, b [12]float64
 	var notes []ripNote
 	dropped := 0
@@ -357,14 +383,15 @@ func (m *MIDIScore) Rip() (*Rip, int) {
 	for _, h := range m.Hits {
 		hits[h.Drum] = append(hits[h.Drum], ripHit{frame: at(h.Start), strength: h.Vel})
 	}
-	bars := max(int(math.Ceil(float64(m.end-m.line)*fine/(BeatsPerBar*beat))), 1)
-	g := ripGrid{beats: make([]int, BeatsPerBar*bars+1), bars: bars}
+	per := meter.Beats()
+	bars := max(int(math.Ceil(float64(m.end-m.line)*fine/(float64(per)*beat))), 1)
+	g := ripGrid{beats: make([]int, per*bars+1), bars: bars, m: meter}
 	for i := range g.beats {
 		g.beats[i] = int(m.line)*fine + int(math.Round(float64(i)*beat))
 	}
-	g = g.pickup(beat, notes, hits)
+	g = g.pickup(notes, hits)
 	r.Bars = make([]RipBar, g.bars)
-	r.Beats = make([]float64, BeatsPerBar*g.bars+1)
+	r.Beats = make([]float64, per*g.bars+1)
 	for i := range r.Beats {
 		r.Beats[i] = m.seconds(float64(g.beats[g.first+i]) / fine)
 	}
@@ -386,7 +413,7 @@ func (m *MIDIScore) Rip() (*Rip, int) {
 	}
 	r.Progression = make([]int, g.bars)
 	for bar := range r.Progression {
-		lo, hi := r.Beats[BeatsPerBar*bar], r.Beats[BeatsPerBar*(bar+1)]
+		lo, hi := r.Beats[per*bar], r.Beats[per*(bar+1)]
 		var chroma [12]float64
 		for _, n := range r.Notes {
 			chroma[n.MIDI%12] += max(min(n.End, hi)-max(n.Start, lo), 0)
@@ -397,10 +424,10 @@ func (m *MIDIScore) Rip() (*Rip, int) {
 }
 
 // Song reads the score as patterns and a song under name: a pattern a part a
-// bar, in the bars its meter's steps are written in (barSteps: 3/4 twelve, 3/8
-// six), the drum channel the beat, the parts a bass program plays the bass and
-// the rest the melody, a track each, named as compress names them; the song plays
-// them in order, in the key signed or its notes'. It says what it could not keep.
+// bar of its time signature's steps at the folded tempo (foldMeter), the drum
+// channel the beat, the parts a bass program plays the bass and the rest the
+// melody, a track each, named as compress names them; the song plays them in
+// order, in the key signed or its notes'. It says what it could not keep.
 func (m *MIDIScore) Song(name string) ([]*PatternDef, *SongDef, []string) {
 	var said []string
 	// a step is the file's sixteenth, by the octaves that bring its first tempo
@@ -477,9 +504,13 @@ func (m *MIDIScore) Song(name string) ([]*PatternDef, *SongDef, []string) {
 		return tracks[l.part] > MaxPatternTracks
 	})
 
-	// the bars: each signature's from where it starts, cut where the next starts
-	// within one, every bar in the bars its steps are written in
-	type bar struct{ start, steps int }
+	// the bars: each signature's from where it starts, in the meter the folded
+	// tempo reads it in, cut where the next starts within one; a pickup shorter
+	// than the music's first bar is one of its bars, rests ahead of it
+	type bar struct {
+		start, steps int
+		meter        Meter
+	}
 	var bars []bar
 	end := 0
 	for _, l := range lines {
@@ -491,41 +522,45 @@ func (m *MIDIScore) Song(name string) ([]*PatternDef, *SongDef, []string) {
 	if len(meters) == 0 || meters[0].tick > 0 {
 		meters = append([]midiMeter{{num: 4, den: 4}}, meters...)
 	}
-	odd := false
+	fold := float64(m.division) / StepsPerBeat / perStep
+	main, ok := foldMeter(m.Meter.Beats(), m.Meter.norm().Den, fold)
 	for i, start, told := 0, 0, -1; start < end; {
 		for i+1 < len(meters) && at(meters[i+1].tick) <= start {
 			i++
 		}
 		mt := meters[i]
-		exact := float64(mt.num) * 4 * float64(m.division) / float64(mt.den) / perStep
-		steps := int(math.Round(exact))
-		kept := math.Abs(exact-float64(steps)) < 1e-6 && steps >= 1 && steps <= MaxPatternLen
-		if !kept {
-			steps = StepsPerBar
-		}
+		bm, kept := foldMeter(mt.num, mt.den, fold)
 		if told != i {
 			told = i
-			switch b := barSteps(steps); {
+			switch {
 			case !kept:
-				said = append(said, fmt.Sprintf("%d/%d from bar %d is no whole number of steps a pattern holds: read in bars of %d", mt.num, mt.den, len(bars), steps))
-			case b != steps:
-				said = append(said, fmt.Sprintf("%d/%d from bar %d in patterns of %d steps, %d a bar", mt.num, mt.den, len(bars), b, steps/b))
-			case steps != StepsPerBar:
-				said = append(said, fmt.Sprintf("%d/%d from bar %d in patterns of %d steps", mt.num, mt.den, len(bars), steps))
+				said = append(said, fmt.Sprintf("%d/%d from bar %d is no meter a pattern holds at %.0f bpm: read in bars of 4/4", mt.num, mt.den, len(bars), bpm))
+			case bm != meterOf(mt.num, mt.den):
+				said = append(said, fmt.Sprintf("%d/%d from bar %d is %s at %.0f bpm", mt.num, mt.den, len(bars), bm, bpm))
 			}
 		}
+		steps := bm.Steps()
 		if i+1 < len(meters) {
 			if next := at(meters[i+1].tick); next < start+steps {
 				said = append(said, fmt.Sprintf("bar %d cut to %d step(s), where %d/%d starts within it", len(bars), next-start, meters[i+1].num, meters[i+1].den))
 				steps = next - start
 			}
 		}
-		b := barSteps(steps)
-		for k := 0; k < steps; k += b {
-			bars = append(bars, bar{start + k, b})
-			odd = odd || b != StepsPerBar
-		}
+		bars = append(bars, bar{start, steps, bm})
 		start += steps
+	}
+	if !ok {
+		main = Meter{}
+	}
+	first := at(m.line)
+	if k := sort.Search(len(bars), func(k int) bool { return bars[k].start >= first }); k > 0 && first < main.Steps() && k < len(bars) {
+		bars = slices.Replace(bars, 0, k, bar{first - main.Steps(), main.Steps(), main})
+	}
+	var odd []string
+	for bi, br := range bars {
+		if br.steps != main.Steps() {
+			odd = append(odd, strconv.Itoa(bi))
+		}
 	}
 	barAt := func(step int) int {
 		return max(sort.Search(len(bars), func(i int) bool { return bars[i].start > step })-1, 0)
@@ -592,13 +627,13 @@ func (m *MIDIScore) Song(name string) ([]*PatternDef, *SongDef, []string) {
 		}
 	}
 
-	song := &SongDef{Name: name, BPM: int(math.Round(bpm)), Root: root, Scale: ScaleName(scale), Bars: make([][]string, len(bars))}
+	song := &SongDef{Name: name, BPM: int(math.Round(bpm)), Meter: main.Doc(), Root: root, Scale: ScaleName(scale), Bars: make([][]string, len(bars))}
 	var pats []*PatternDef
 	var named [RipParts]map[string]string // a pattern's name by what it holds
 	for bi, br := range bars {
 		song.Bars[bi] = make([]string, MusicSlots)
 		for part := range RipParts {
-			p := &PatternDef{Steps: br.steps, Role: Role(RipPartSlots[part] + 1).String(), Groups: []string{name}}
+			p := &PatternDef{Steps: br.steps, Meter: br.meter.Doc(), Role: Role(RipPartSlots[part] + 1).String(), Groups: []string{name}}
 			sounds := false
 			for li, l := range lines {
 				if l.part == part {
@@ -614,7 +649,7 @@ func (m *MIDIScore) Song(name string) ([]*PatternDef, *SongDef, []string) {
 			if named[part] == nil {
 				named[part] = map[string]string{}
 			}
-			key := fmt.Sprint(p.Steps, p.Track)
+			key := fmt.Sprint(p.Steps, p.Meter, p.Track)
 			if p.Name = named[part][key]; p.Name == "" {
 				p.Name = fmt.Sprintf("%s_%s_%s", name, RipPartNames[part], letters(len(named[part])))
 				named[part][key] = p.Name
@@ -631,8 +666,12 @@ func (m *MIDIScore) Song(name string) ([]*PatternDef, *SongDef, []string) {
 		}
 		said = append(said, fmt.Sprintf("%d tempo change(s) not kept, the song plays at %d bpm throughout: %s%s", m.Changes, song.BPM, strings.Join(changes, ", "), more))
 	}
-	if odd {
-		said = append(said, fmt.Sprintf("the sequencer counts a bar %d steps until songs carry a meter: a pattern of other steps plays a song bar out of time", StepsPerBar))
+	if len(odd) > 0 {
+		more := ""
+		if len(odd) > 3 {
+			odd, more = odd[:3], fmt.Sprintf(" and %d more", len(odd)-3)
+		}
+		said = append(said, fmt.Sprintf("bar(s) %s%s not a whole bar of the song's %s: a song holds one meter, so it plays them out of time", strings.Join(odd, ", "), more, main))
 	}
 	for v := InstrBass; v < InstrumentCount; v++ {
 		if len(nearest[v]) > 0 {
@@ -879,12 +918,12 @@ func writeSMF(w io.Writer, tracks [][]midiEvent) error {
 	return err
 }
 
-// WriteMIDI writes a transcript as a Standard MIDI File of type 1 at bpm: its
-// lines as tracks named melody, under and bass on channels 1 to 3 and the lead's,
-// lead's and bass's programs, the tempo on the first, its hits as a track named
-// drums on the drum channel, a sixteenth each. A note lasts a tick at least;
-// ReadMIDI reads it back within half a tick.
-func WriteMIDI(w io.Writer, notes []RipNote, hits []RipHit, bpm int) error {
+// WriteMIDI writes a transcript as a Standard MIDI File of type 1 at bpm in meter
+// m: its lines as tracks named melody, under and bass on channels 1 to 3 and the
+// lead's, lead's and bass's programs, the tempo and a meter other than 4/4 on
+// the first, its hits as a track named drums on the drum channel, a sixteenth
+// each. A note lasts a tick at least; ReadMIDI reads it back within half a tick.
+func WriteMIDI(w io.Writer, notes []RipNote, hits []RipHit, bpm int, m Meter) error {
 	if bpm <= 0 {
 		return fmt.Errorf("midi: tempo %d bpm", bpm)
 	}
@@ -893,6 +932,9 @@ func WriteMIDI(w io.Writer, notes []RipNote, hits []RipHit, bpm int) error {
 		tracks[l] = []midiEvent{midiMeta(0, 0x03, []byte(ripLineNames[l])...), midiProgramAt(byte(l), midiInstruments[voice].program)}
 	}
 	tracks[0] = append(tracks[0], midiTempoAt(float64(bpm)))
+	if m.Doc() != "" {
+		tracks[0] = append(tracks[0], midiMeta(0, 0x58, m.midi()...))
+	}
 	tracks[3] = []midiEvent{midiMeta(0, 0x03, []byte("drums")...)}
 	perSec := float64(bpm) / 60 * midiDivision
 	for _, n := range notes {
@@ -914,26 +956,11 @@ func WriteMIDI(w io.Writer, notes []RipNote, hits []RipHit, bpm int) error {
 	return writeSMF(w, tracks[:3+min(len(hits), 1)])
 }
 
-// barSteps is the bar a pattern of steps is written in: sixteen steps, else
-// three beats, else the pattern whole
-func barSteps(steps int) int {
-	switch {
-	case steps%StepsPerBar == 0:
-		return StepsPerBar
-	case steps%midiThreeBeats == 0:
-		return midiThreeBeats
-	}
-	return steps
-}
-
-// timeSignature is a bar of steps as a time signature's bytes: in quarters
-// where they divide it, else in eighths, else in sixteenths
-func timeSignature(steps int) []byte {
-	num, den, log := steps, 16, byte(4)
-	for num%2 == 0 && den > 4 {
-		num, den, log = num/2, den/2, log-1
-	}
-	return []byte{byte(num), log, byte(96 / den), 8}
+// midi is the meter as a time signature's bytes: its beats, its note's power of
+// two, the MIDI clocks a click of that note and the 32nds a quarter
+func (m Meter) midi() []byte {
+	m = m.norm()
+	return []byte{byte(m.Num), byte(bits.TrailingZeros(uint(m.Den))), byte(96 / m.Den), 8}
 }
 
 // keySignature is a key as a key signature's bytes: a major scale as its own,
@@ -979,15 +1006,16 @@ func (k midiKey) of(c [12]float64) (int, ScaleID) {
 	return tonic + 3*12, scale
 }
 
-// WritePatternMIDI writes a pattern as WriteSongMIDI writes a song that plays
-// it once through, at bpm in the key and chords given
+// WritePatternMIDI writes a pattern as WriteSongMIDI writes a song in its meter
+// that plays it once through, at bpm in the key and chords given
 func WritePatternMIDI(w io.Writer, p *PatternDef, bpm, root int, scale ScaleID, chords []int) error {
 	slot := 1
 	if r := slices.Index(roleNames[:], p.Role); r > int(RoleNone) {
 		slot = Role(r).slot()
 	}
-	d := &SongDef{Name: p.Name, BPM: bpm, Root: root, Scale: ScaleName(scale), Chords: chords}
-	for range max(p.Steps/barSteps(p.Steps), 1) {
+	d := &SongDef{Name: p.Name, BPM: bpm, Meter: p.Meter, Root: root, Scale: ScaleName(scale), Chords: chords}
+	bar := d.Signature().Steps()
+	for range max((p.Steps+bar-1)/bar, 1) {
 		bar := make([]string, MusicSlots)
 		bar[slot] = p.Name
 		d.Bars = append(d.Bars, bar)
@@ -996,8 +1024,7 @@ func WritePatternMIDI(w io.Writer, p *PatternDef, bpm, root int, scale ScaleID, 
 }
 
 // WriteSongMIDI writes a song as a Standard MIDI File of type 1: a track of its
-// tempo, key and meters, a bar as long as the longest bar its patterns are
-// written in (barSteps), then a track a pattern track by slot, instrument and
+// tempo, key and meter, then a track a pattern track by slot, instrument and
 // order, a slot's pattern playing at the song's step: a voice on its program
 // (midiProgram), a drum on the drum channel, each note as long as its step.
 func WriteSongMIDI(w io.Writer, d *SongDef, pattern func(string) *PatternDef) error {
@@ -1022,7 +1049,8 @@ func WriteSongMIDI(w io.Writer, d *SongDef, pattern func(string) *PatternDef) er
 		}
 	}
 	const perStep = midiDivision / StepsPerBeat
-	conductor := []midiEvent{midiMeta(0, 0x03, []byte(d.Name)...), midiTempoAt(float64(d.BPM)), midiMeta(0, 0x59, keySignature(d.Root, d.ScaleID())...)}
+	steps := d.Signature().Steps()
+	conductor := []midiEvent{midiMeta(0, 0x03, []byte(d.Name)...), midiTempoAt(float64(d.BPM)), midiMeta(0, 0x59, keySignature(d.Root, d.ScaleID())...), midiMeta(0, 0x58, d.Signature().midi()...)}
 	type lane struct {
 		slot  int
 		instr InstrumentType
@@ -1034,21 +1062,10 @@ func WriteSongMIDI(w io.Writer, d *SongDef, pattern func(string) *PatternDef) er
 	channels := map[byte]byte{}     // a program's channel, the drums' kept apart
 	h := newHarmony()
 	h.set(d.Root, d.ScaleID(), d.Chords)
-	at, meter := 0, 0
+	at := 0
 	for b, bar := range d.Bars {
 		if b > 0 {
 			h.advanceBar()
-		}
-		steps := 0
-		for _, n := range bar {
-			if p := pats[n]; p != nil {
-				steps = max(steps, barSteps(p.Steps))
-			}
-		}
-		steps = cmp.Or(steps, StepsPerBar)
-		if steps != meter {
-			conductor = append(conductor, midiMeta(int64(at*perStep), 0x58, timeSignature(steps)...))
-			meter = steps
 		}
 		for slot, n := range bar {
 			p := pats[n]

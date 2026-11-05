@@ -27,15 +27,15 @@ type Track struct {
 
 // Pattern is the unified rhythm/melody pattern. Role, Groups and Tiers place it in
 // the drawn arrangement: in its role's slot, in every group listed (all when none),
-// at every tier set. A pattern without a role or a tier plays only when placed. The
-// bass role is a group's anchor: it holds through every tier its pattern covers.
-// Patterns sharing a Motif are one idea at different weights: a tier change prefers
-// the motif already playing, a phrase variation another.
+// at every tier set; without a role or a tier it plays only when placed. The bass
+// role holds through every tier its pattern covers. Patterns sharing a Motif are
+// one idea at different weights: a tier change keeps the motif, a variation moves.
 type Pattern struct {
 	ID     PatternID
 	Name   string
 	Desc   string
 	Steps  int
+	Meter  Meter // its bars' time signature
 	Tracks []Track
 	Role   Role
 	Groups []string
@@ -146,12 +146,11 @@ func (a *arrangement) covers(group int, t Intensity) bool {
 	return len(a.pool(group, t, RoleRhythm)) > 0 && len(a.pool(group, t, RoleMelody)) > 0
 }
 
-// RegisterPattern validates and adds or overwrites a pattern; ID
-// PatternSilence allocates a dynamic ID. Returns the effective ID, or
-// PatternSilence when validation fails — an unregistered ID resolves to nil in
-// GetPattern and plays as silence, matching the rest of the degrade path.
-// Callers that need the reason call ValidatePattern first; the TOML path
-// already does, at load, with a specific error.
+// RegisterPattern validates and adds or overwrites a pattern; ID PatternSilence
+// allocates a dynamic ID. It returns the effective ID, or PatternSilence when
+// validation fails, which GetPattern resolves to nil and plays as silence, as
+// the rest of the degrade path does. A caller that needs the reason calls
+// ValidatePattern first, as the TOML path does at load.
 func RegisterPattern(p *Pattern) PatternID {
 	if ValidatePattern(p) != nil {
 		return PatternSilence

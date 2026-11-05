@@ -80,7 +80,9 @@ transport, tempo, patterns, harmony and hot reloads keep their order.
 
 The sound document is `[[sound]]` and `[[voice]]` tables, with `include` for
 files beside it; the music document is `[[pattern]]` tables whose `role`,
-`groups`, `tiers` and `motif` place a pattern in the drawn arrangement. Both may
+`groups`, `tiers` and `motif` place a pattern in the drawn arrangement, and
+`[[song]]` timelines of them; a pattern or a song may name its `meter` (`3/4`,
+`6/8`), 4/4 when it does not, a step a sixteenth in every one. Both may
 define `[macros]` and invoke them, so a drum lane or a note line is written
 once. A later definition of a name replaces the earlier in place, keeping its
 runtime ID; a new voice name adds an instrument patterns name as they name any.
@@ -96,14 +98,15 @@ mixer runs: a sounding note or hit finishes on what it began with, the next
 trigger takes the new definition. `RenderPreview` renders one take of a sound off
 the registry, `PlayBuffer` auditions it, `RenderVariants` renders the set,
 `WriteWAV` exports a buffer, `RecordMusic` taps the music bus to a file, and
-`Transport`, `SlotPattern`, `MusicGroup`, `Stats` and `Rejections` report what
-plays. `ResetRegistries` clears everything between a Stop and the next Start.
+`Transport`, `MusicMeter`, `SlotPattern`, `MusicGroup`, `Stats` and `Rejections`
+report what plays. `ResetRegistries` clears everything between a Stop and the
+next Start.
 
 ## Ripping a recording
 
-`RipWAV` and `RipSamples` listen to a recording and estimate its tempo, bars,
-key, each bar's chord root and, per bar, the kick, snare and hihat hits, the
-melody and the bass line as steps of the grid; `Rip.Patterns` writes them as
+`RipWAV` and `RipSamples` listen to a recording and estimate its tempo, meter,
+bars, key, each bar's chord root and, per bar, the kick, snare and hihat hits,
+the melody and the bass line as steps of the grid; `Rip.Patterns` writes them as
 patterns of up to four bars. `RipParams` holds every threshold and
 `DefaultRipParams` the hand-set start, which the engine's own rendered music
 checks (`RenderMusic`, `ExpectedRip`, `CompareRips`), and `Fidelity` grades a

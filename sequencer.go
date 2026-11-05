@@ -147,17 +147,21 @@ const slotBass = 3
 // Mixer-goroutine confined: no synchronization
 type Sequencer struct {
 	bpm            int
-	pendingBPM     int // applied at next beat boundary; 0 = none
+	pendingBPM     int   // applied at next beat boundary; 0 = none
+	meter          Meter // the bar the transport counts
+	pendingMeter   Meter // applied at the next bar line while meterPending
+	meterPending   bool
 	samplesPerStep int
 	swing          float64
 	volume         float64
 	startGain      float64
 	startInc       float64
 
-	currentStep int64
-	samplePos   int64
-	barCount    int64
-	swapBar     int64 // bar a drawn slot last changed on
+	barStep   int // the step within the bar, 0 on its line
+	samplePos int64
+	barCount  int64
+	meterBar  int64 // the bar the meter began on, which the patterns count their steps from
+	swapBar   int64 // bar a drawn slot last changed on
 
 	harmony *harmony
 	slots   [MusicSlots]slotState
@@ -166,11 +170,12 @@ type Sequencer struct {
 	stepRng *rand.Rand // steps: chance, humanization, the generated lead
 	plays   map[PatternID]uint32
 	gen     *melodyGen
-	// pos is the transport readout: bar<<8 | step. Written once per step by
-	// Generate on the mixer goroutine. Relaxed on purpose — a reader that
-	// catches it mid-store is one 16th note stale, below the refresh rate of
-	// anything that would ask.
+	// pos is the transport readout: bar<<32 | the patterns' step. Written once
+	// per step by Generate on the mixer goroutine. Relaxed on purpose — a reader
+	// that catches it mid-store is one 16th note stale, below the refresh rate
+	// of anything that would ask.
 	pos      atomic.Uint64
+	meterPub atomic.Uint32 // the meter the transport counts, Num<<8 | Den
 	slotPat  [MusicSlots]atomic.Int32
 	autoFill bool
 
@@ -201,6 +206,7 @@ func NewSequencer(bpm int, k *kit) *Sequencer {
 	}
 	s.setGroup(-1)
 	s.SetBPM(bpm, false)
+	s.SetMeter(Meter{}, false)
 	return s
 }
 
@@ -237,6 +243,30 @@ func (s *Sequencer) applyPendingBPM() {
 	}
 }
 
+// SetMeter sets the bar the transport counts, at the next bar line when
+// quantized: the patterns count their steps from there, so a pattern of whole
+// bars starts each on a line. m must pass its check.
+func (s *Sequencer) SetMeter(m Meter, quantize bool) {
+	if quantize && s.running {
+		s.pendingMeter, s.meterPending = m, true
+		return
+	}
+	s.meter, s.meterBar = m, s.barCount
+	s.meterPub.Store(uint32(m.norm().Num)<<8 | uint32(m.norm().Den))
+}
+
+func (s *Sequencer) applyPendingMeter() {
+	if s.meterPending {
+		s.meterPending = false
+		s.SetMeter(s.pendingMeter, false)
+	}
+}
+
+// step is the patterns' step: the steps since the meter began
+func (s *Sequencer) step() int {
+	return int(s.barCount-s.meterBar)*s.meter.Steps() + s.barStep
+}
+
 func (s *Sequencer) SetSwing(a float64) {
 	if a < 0 {
 		a = 0
@@ -266,7 +296,7 @@ func (s *Sequencer) Generate(buf []float64) {
 		effectiveStepLen := spS
 		if s.swing > 0 {
 			so := int64(float64(spS) * s.swing)
-			if s.currentStep%2 == 0 {
+			if s.barStep%2 == 0 {
 				effectiveStepLen += so
 			} else {
 				effectiveStepLen -= so
@@ -275,13 +305,15 @@ func (s *Sequencer) Generate(buf []float64) {
 
 		if s.samplePos >= effectiveStepLen {
 			s.samplePos = 0
-			s.currentStep = (s.currentStep + 1) % int64(MaxPatternLen)
-
-			if s.currentStep%int64(StepsPerBeat) == 0 {
+			if s.barStep++; s.barStep >= s.meter.Steps() {
+				s.barStep = 0
+				s.barCount++
+				s.applyPendingMeter()
+			}
+			if s.barStep%s.meter.Beat() == 0 {
 				s.applyPendingBPM()
 			}
-			if s.currentStep%int64(StepsPerBar) == 0 {
-				s.barCount++
+			if s.barStep == 0 {
 				s.harmony.advanceBar()
 				// Reveals advance before transitions arm new ones, which then hold
 				// their first bar as armed
@@ -292,7 +324,7 @@ func (s *Sequencer) Generate(buf []float64) {
 				s.updateFill()
 				s.updateMelodyGen()
 			}
-			s.triggerStep(int(s.currentStep))
+			s.triggerStep(s.step())
 			s.publish()
 		}
 
@@ -475,7 +507,7 @@ func (s *Sequencer) planPhrase() {
 	default:
 		return
 	}
-	ss.begin(PatternSilence, s.samplesPerStep*StepsPerBar)
+	ss.begin(PatternSilence, s.samplesPerStep*s.meter.Steps())
 }
 
 // coversOther reports whether another group covers the tier, which is what a group
@@ -561,10 +593,10 @@ func (s *Sequencer) nextBoundary(slot int) int64 {
 	cycle := int64(1)
 	if slot == 1 {
 		if pat := GetPattern(s.slots[slot].activeID()); pat != nil {
-			cycle = int64(max(pat.Steps/StepsPerBar, 1))
+			cycle = int64(max(pat.Steps/s.meter.Steps(), 1))
 		}
 	}
-	return (s.barCount/cycle + 1) * cycle
+	return s.meterBar + ((s.barCount-s.meterBar)/cycle+1)*cycle
 }
 
 // armReveal masks the incoming pattern to as many tracks as the outgoing one was
@@ -627,8 +659,8 @@ func (s *Sequencer) IsRunning() bool { return s.running }
 
 func (s *Sequencer) Reset() {
 	s.running = false
-	s.currentStep, s.samplePos, s.barCount, s.swapBar = 0, 0, 0, 0
-	s.pendingBPM = 0
+	s.barStep, s.samplePos, s.barCount, s.meterBar, s.swapBar = 0, 0, 0, 0, 0
+	s.pendingBPM, s.meterPending = 0, false
 	s.harmony.reset()
 	s.tier = IntensityCalm
 	for si := range s.slots {
@@ -744,7 +776,7 @@ func (s *Sequencer) ReloadPattern(id PatternID) {
 // atomics: a reader can pair a step from before a transition with a pattern from
 // after it. That is skew in a readout, not a property anything depends on.
 func (s *Sequencer) publish() {
-	s.pos.Store(uint64(s.barCount)<<8 | uint64(s.currentStep)&0xff)
+	s.pos.Store(uint64(s.barCount)<<32 | uint64(s.step())&0x7fffffff)
 	for si := range s.slots {
 		s.slotPat[si].Store(int32(s.slots[si].activeID()))
 	}
