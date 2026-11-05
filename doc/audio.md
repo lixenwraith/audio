@@ -414,16 +414,22 @@ bar line as above, the snare's backbeats on its felt beats (a compound bar's
 dotted quarters). The first reading holds unless another's cues, with how much
 more often a bass note starts on its bar lines than on its other pulses
 (`accent`), beat it by 0.35, or by twice that for a bar a whole number of the
-best's, so 12/8 needs its lines plainly over 6/8's. Beats read as quarters give
-4/4, then 3/4. Beats whose onsets fall on both their thirds, each half again as
-strong as on the beats' quarters and half their middles (`thirds`), are dotted
-quarters, since a swung sixteenth sounds near one third alone and a dotted
-quarter's sixteenths on its middle: they are split into eighths at three halves
-of the tempo (sixteenths at three quarters when that passes 200 bpm) and read as
-4/4 from the strongest quarter, then 6/8 and 12/8 from a tracked beat. Under
-eight bars of beats a clip reads 4/4 as tracked. A pinned meter is read alone, a
-compound one on dotted quarters and a simple one as quarters and, where the
-thirds sound, on eighths too.
+best's, so 12/8 needs its lines plainly over 6/8's. Within that margin, a
+reading at the best's tempo whose bar is no whole number of the best's takes it
+when the music repeats more at its own bars (`repeats`): one minus the cosine of
+each sixteenth's chroma and onset with the one a bar, two and four bars on,
+averaged, lower by 0.03. Music repeats at its bar and the bar's doubles, where
+another meter's bars fall out of step, so a waltz whose kick and bass strike
+every quarter, which leaves its lines no cue, still reads 3/4. Beats read as
+quarters give 4/4, then 3/4. Beats whose onsets fall on both their thirds, each
+half again as strong as on the beats' quarters and half their middles
+(`thirds`), are dotted quarters, since a swung sixteenth sounds near one third
+alone and a dotted quarter's sixteenths on its middle: they are split into
+eighths at three halves of the tempo (sixteenths at three quarters when that
+passes 200 bpm) and read as 4/4 from the strongest quarter, then 6/8 and 12/8
+from a tracked beat. Under eight bars of beats a clip reads 4/4 as tracked. A
+pinned meter is read alone, a compound one on dotted quarters and a simple one
+as quarters and, where the thirds sound, on eighths too.
 
 Pitch salience sums a candidate's partials, the bass register's from its first
 three, read from a window four times longer as well as the rip's own, the two

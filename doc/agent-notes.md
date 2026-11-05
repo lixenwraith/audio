@@ -190,6 +190,16 @@ that a document now states, and link the document instead.
 - A bass accent counted over two bars as well as one hears 3/4 in a half-note
   bass in 4/4: its notes fall on every line six beats apart as on every line
   eight apart, with fewer pulses between to dilute them. `accent` counts one bar.
+- The repetition cue (`repeats`) compares each sixteenth's chroma and onset at a
+  reading's lags, not the transcript's events: event matches favour the shorter
+  bar's nearer lags on music that never repeats (three through-composed 4/4
+  renders went 3/4 at a 0.02 margin), and a bar's distance to its nearest other
+  bar ties on a loop, whose bars in another meter repeat too, three bars on.
+- `CompareRips` grades notes within the bar, so a rip read in the right meter
+  but with its line a beat off loses its melody or bass, while a wrong meter
+  whose line falls on the first beat keeps them. stapes' generated 3/4 beats
+  (kick on one, snares on two and three) are heard as a kick on every beat and a
+  snare on one, so a gain in their bars can come with a loss in their notes.
 - A meter or grid change is held to 4/4 by hashing what it must not move, before
   and after: renders, the drawn music `Generate` plays with tiers and tempo
   moving, rips of the renders with their documents and MIDI bytes, and the
