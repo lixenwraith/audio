@@ -82,14 +82,15 @@ func (ss *slotState) level() float64 {
 	return 1 - ss.quiet
 }
 
-// begin makes id the live pattern, retiring the current one over fade samples, and
-// reports whether anything retired: a silent slot has no tail to declick, so id
-// starts in place at once. When every player is still ringing the quietest is
-// taken, the one cut this design accepts.
+// begin makes id the live pattern and reports whether it replaced one. A silent
+// slot, or a change with no fade (a song's bar line), starts id on the live
+// player under the notes it still rings; otherwise the live one retires over fade
+// samples. When every player is still ringing the quietest is taken, the one cut
+// this design accepts.
 func (ss *slotState) begin(id PatternID, fade int) bool {
-	if ss.players[ss.live].patternData == nil {
+	if sounding := ss.players[ss.live].patternData != nil; !sounding || fade <= 0 {
 		ss.load(ss.live, id)
-		return false
+		return sounding
 	}
 	nxt, low := -1, 2.0
 	for i := range ss.players {
@@ -349,9 +350,8 @@ func (s *Sequencer) triggerStep(step int) {
 	}
 }
 
-// startTransition retires the slot's pattern under id; returns false when the slot
-// was silent and id started in place. A drawn slot's change dates the rest a
-// variation keeps.
+// startTransition puts id in the slot; returns false when the slot was silent. A
+// drawn slot's change dates the rest a variation keeps.
 func (s *Sequencer) startTransition(slot int, id PatternID, fade int) bool {
 	if slot != 2 {
 		s.swapBar = s.barCount

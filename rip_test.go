@@ -991,6 +991,28 @@ func TestRenderLinesPlaysOnlyTheInstrumentsNamed(t *testing.T) {
 	}
 }
 
+// TestNotesRingOnAcrossAChangedBarLine: a note held over a song's bar line into
+// another pattern sounds as it does into its own pattern's next bar, sample for
+// sample, until the new pattern's first note.
+func TestNotesRingOnAcrossAChangedBarLine(t *testing.T) {
+	ae, _ := startLoopEngine(t)
+	held := RegisterPattern(&Pattern{Name: "held", Steps: 16, Tracks: []Track{{Instr: InstrBass, Events: []Step{{Pos: 8, Vel: 0.9, Dur: 16}}}}})
+	late := RegisterPattern(&Pattern{Name: "late", Steps: 16, Tracks: []Track{{Instr: InstrBass, Events: []Step{{Pos: 8, Vel: 0.9, Deg: 4, Dur: 4}}}}})
+	render := func(second PatternID) []float64 {
+		buf, err := ae.RenderTimeline([][MusicSlots]PatternID{{slotBass: held}, {slotBass: second}}, 120, Meter{}, DefaultRootNote, ScalePhrygian, nil, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return buf
+	}
+	bar := SamplesPerBar(120, Meter{})
+	ring := bar + 8*SamplesPerStep(120)
+	same, other := render(held)[bar:ring], render(late)[bar:ring]
+	if !slices.Equal(same, other) || slices.Max(same) <= 0 {
+		t.Errorf("the held note under the next pattern differs from it under its own, peak %.3f", slices.Max(same))
+	}
+}
+
 // TestRipParamsAreData is the rule the parameters live by: a [rip] document
 // round-trips, a key outside its range or unknown is refused, and the gene vector
 // is the parameters again.

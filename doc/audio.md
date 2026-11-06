@@ -298,9 +298,11 @@ patterns can transition immediately or quantized to the bar. The incoming
 pattern plays at full level from its first trigger while the outgoing one's
 ringing tails fade out, over at least 256 samples so none is hard-cut; a slot
 holds three players, so a transition arriving while the last one still fades
-retires a second tail rather than cutting the first. A reveal builds a rising
-tier up from as many tracks as the outgoing pattern sounded, adding one a bar,
-so a build-up never starts thinner than what it replaces. Slot 2 substitutes a
+retires a second tail rather than cutting the first. A change with no fade,
+as a song makes at its bar lines, fades nothing: the incoming pattern plays on
+the outgoing one's player, under the notes it still rings. A reveal builds a
+rising tier up from as many tracks as the outgoing pattern sounded, adding one a
+bar, so a build-up never starts thinner than what it replaces. Slot 2 substitutes a
 seeded fill on the last bar of each eight-bar phrase and restores the previous
 pattern on the downbeat. The fill is on by default; `SetAutoFill(false)` turns
 it off.
@@ -576,7 +578,7 @@ and a `SongDef`: the patterns each slot plays bar by bar at a tempo and in a
 key, a `[[song]]` in the pattern document (`LoadPatternFile`,
 `MarshalPatternFile`, `ValidateSong`), resolved to a timeline of pattern IDs
 (`Timeline`) that `RenderTimeline` plays offline, the patterns changed at the
-bar lines, or one line of it alone (`RenderLines`).
+bar lines under the notes still ringing, or one line of it alone (`RenderLines`).
 
 The song plays the drums matched to the recording's. The rip reads each drum's
 tone (`Rip.Tone`) over the quarter of its hits with the least sounding before

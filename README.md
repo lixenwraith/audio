@@ -122,7 +122,8 @@ frames, `Rip.Notes` is the transcript they fit to, which `WriteMIDI` and
 `ReadMIDI` carry to and from a Standard MIDI File; `BarDistance`, `Cluster` and
 `Rip.Cluster` group a rip's bars within a threshold and `Rip.Song` writes the
 groups as one-bar patterns and a `SongDef`, the `[[song]]` of a pattern document
-that `RenderTimeline` plays offline, the patterns changed at the bar lines, on
+that `RenderTimeline` plays offline, the patterns changed at the bar lines under
+the notes still ringing, on
 the drums `Rip.Kit` matches to the recording's (an `eq` and a level each) and
 `SetKit` binds.
 
