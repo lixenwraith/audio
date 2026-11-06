@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/lixenwraith/toml"
 )
@@ -34,11 +37,11 @@ func ScaleName(s ScaleID) string {
 	return "unknown"
 }
 
-// SongDef is a timeline: the patterns each slot plays bar by bar at a tempo and
-// in a key, the form a ripped recording takes once its bars are matched to a
-// dictionary of patterns. A bar names a pattern per slot, "" for a silent one;
-// a pattern longer than a bar plays on from where it was until named again or
-// cleared. Songs travel in the pattern document ([[song]]).
+// SongDef is a timeline: the patterns each slot plays bar by bar at a tempo
+// and in a key, a ripped recording's form once its bars match a dictionary.
+// A bar names a pattern per slot, "" for silence, a longer pattern playing on
+// until named again or cleared; its list may begin with a meter word ("2/8")
+// and a tempo word ("72bpm"), each holding until a later bar names another.
 type SongDef struct {
 	Name   string  `toml:"name"`
 	Desc   string  `toml:"desc,omitempty"`
@@ -80,6 +83,89 @@ func (d *SongDef) Signature() Meter {
 	return m
 }
 
+// BarHead is what a bar plays in: its meter and tempo, the song's unless the
+// bar or one before it named others
+type BarHead struct {
+	Meter Meter
+	BPM   int
+}
+
+// barWords parts a bar's leading meter and tempo words from its pattern names:
+// a word with a slash is a meter, digits ending in bpm a tempo; nil and 0 for
+// none named
+func barWords(bar []string) (m *Meter, bpm int, patterns []string, err error) {
+	patterns = bar
+	for len(patterns) > 0 {
+		w := patterns[0]
+		switch {
+		case strings.Contains(w, "/"):
+			mm, perr := ParseMeter(w)
+			if perr != nil {
+				return nil, 0, nil, perr
+			}
+			m = &mm
+		case strings.HasSuffix(w, "bpm"):
+			n, aerr := strconv.Atoi(strings.TrimSuffix(w, "bpm"))
+			if aerr != nil || n < MinBPM || n > MaxBPM {
+				return nil, 0, nil, fmt.Errorf("tempo %q: want %d to %d bpm", w, MinBPM, MaxBPM)
+			}
+			bpm = n
+		default:
+			return m, bpm, patterns, nil
+		}
+		patterns = patterns[1:]
+	}
+	return m, bpm, patterns, nil
+}
+
+// Patterns is a bar's pattern names, its meter and tempo words left out
+func (d *SongDef) Patterns(bar int) []string {
+	_, _, p, _ := barWords(d.Bars[bar])
+	return p
+}
+
+// Heads is each bar's meter and tempo, the song's where none is named
+func (d *SongDef) Heads() []BarHead {
+	heads := make([]BarHead, len(d.Bars))
+	head := BarHead{d.Signature(), d.BPM}
+	for i, b := range d.Bars {
+		m, bpm, _, _ := barWords(b)
+		if m != nil {
+			head.Meter = *m
+		}
+		if bpm > 0 {
+			head.BPM = bpm
+		}
+		heads[i] = head
+	}
+	return heads
+}
+
+// BeatSeconds is the seconds each beat of the song's bars starts at, the
+// first bar's downbeat through the last bar's end, in the song's meter at each
+// bar's tempo: the grid a render of the song is read on (RipGrid.Beats)
+func (d *SongDef) BeatSeconds() []float64 {
+	m := d.Signature()
+	out := []float64{0}
+	for _, h := range d.Heads() {
+		bar := float64(SamplesPerBar(h.BPM, m)) / AudioSampleRate
+		for j := 1; j <= m.Beats(); j++ {
+			out = append(out, out[len(out)-1-(j-1)]+bar*float64(j)/float64(m.Beats()))
+		}
+	}
+	return out
+}
+
+// Uniform reports whether every bar plays in the song's meter and tempo
+func (d *SongDef) Uniform() bool {
+	for _, b := range d.Bars {
+		if m, bpm, _, _ := barWords(b); m != nil || bpm > 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // ValidateSong is what a song must hold to play: a name, a tempo in range, a meter
 // the grid plays, a root on the keyboard, a known scale and at least one bar of at
 // most MusicSlots names
@@ -112,8 +198,11 @@ func ValidateSong(d *SongDef) error {
 		}
 	}
 	for i, b := range d.Bars {
-		if len(b) > MusicSlots {
-			errs = append(errs, fmt.Errorf("song %q: bar %d names %d patterns, %d slots", d.Name, i, len(b), MusicSlots))
+		_, _, patterns, err := barWords(b)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("song %q: bar %d: %w", d.Name, i, err))
+		} else if len(patterns) > MusicSlots {
+			errs = append(errs, fmt.Errorf("song %q: bar %d names %d patterns, %d slots", d.Name, i, len(patterns), MusicSlots))
 		}
 	}
 	return errors.Join(errs...)
@@ -124,8 +213,8 @@ func ValidateSong(d *SongDef) error {
 // it does not know is an error, "" is silence.
 func (d *SongDef) Timeline(lookup func(string) PatternID) ([][MusicSlots]PatternID, error) {
 	out := make([][MusicSlots]PatternID, len(d.Bars))
-	for i, b := range d.Bars {
-		for slot, name := range b {
+	for i := range d.Bars {
+		for slot, name := range d.Patterns(i) {
 			if slot >= MusicSlots || name == "" {
 				continue
 			}
@@ -384,16 +473,27 @@ func (r *Rip) Cluster(part RipPart, threshold float64) []int {
 	return out
 }
 
-// Song writes the rip as a dictionary and a timeline: for each part, a pattern of
+// ripSongTempo is how far a rip's bar must move in tempo, as a share, from the
+// tempo its song last named before the bar names its own
+const ripSongTempo = 0.03
+
+// Song writes the rip as a dictionary and a timeline: per part, a pattern of
 // one bar for every bar that stands for others in assign, named
-// <name>_<part>_<letter> in order of first use, and a song named name playing them
-// in the rip's order, tempo, meter and key, on the kit Kit matches. A bar assigned
-// -1 leaves its slot silent; one assigned a bar standing for no group still plays
-// that bar's pattern.
+// <name>_<part>_<letter> in order of first use, and a song named name playing
+// them in the rip's order, tempo, meter and key on the kit Kit matches; a bar
+// assigned -1 leaves its slot silent, one standing for no group still plays.
 func (r *Rip) Song(name string, assign [RipParts][]int) ([]*PatternDef, *SongDef) {
 	song := &SongDef{Name: name, BPM: r.BPM, Meter: r.Meter.Doc(), Root: r.Root, Scale: ScaleName(r.Scale), Chords: slices.Clone(r.Progression), Tuning: r.Tuning, Bars: make([][]string, len(r.Bars))}
+	// a bar names its tempo where the recording's bars moved by ripSongTempo from the last named
+	per, named := r.Meter.Beats(), r.BPM
 	for i := range song.Bars {
 		song.Bars[i] = make([]string, MusicSlots)
+		if (i+1)*per < len(r.Beats) {
+			if bpm := int(math.Round(15 * float64(r.Meter.Steps()) / (r.Beats[(i+1)*per] - r.Beats[i*per]))); math.Abs(float64(bpm-named)) >= ripSongTempo*float64(named) && bpm >= MinBPM && bpm <= MaxBPM {
+				song.Bars[i] = append([]string{strconv.Itoa(bpm) + "bpm"}, song.Bars[i]...)
+				named = bpm
+			}
+		}
 	}
 	for d := range InstrClap {
 		if r.matched(d) {
@@ -420,7 +520,7 @@ func (r *Rip) Song(name string, assign [RipParts][]int) ([]*PatternDef, *SongDef
 				}
 				named[rep] = pn
 			}
-			song.Bars[b][RipPartSlots[part]] = pn
+			song.Bars[b][len(song.Bars[b])-MusicSlots+RipPartSlots[part]] = pn
 		}
 	}
 	return pats, song

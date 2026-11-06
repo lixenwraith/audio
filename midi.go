@@ -385,15 +385,15 @@ func (m *MIDIScore) Rip() (*Rip, int) {
 	}
 	per := meter.Beats()
 	bars := max(int(math.Ceil(float64(m.end-m.line)*fine/(float64(per)*beat))), 1)
-	g := ripGrid{beats: make([]int, per*bars+1), bars: bars, m: meter}
-	for i := range g.beats {
-		g.beats[i] = int(m.line)*fine + int(math.Round(float64(i)*beat))
+	g := ripGrid{m: meter}
+	for i := 0; i <= per*bars; i += per {
+		g.lines = append(g.lines, int(m.line)*fine+int(math.Round(float64(i)*beat)))
 	}
 	g = g.pickup(notes, hits)
-	r.Bars = make([]RipBar, g.bars)
-	r.Beats = make([]float64, per*g.bars+1)
+	r.Bars = make([]RipBar, g.bars())
+	r.Beats = make([]float64, per*g.bars()+1)
 	for i := range r.Beats {
-		r.Beats[i] = m.seconds(float64(g.beats[g.first+i]) / fine)
+		r.Beats[i] = m.seconds(float64(g.beat(i)) / fine)
 	}
 	r.Downbeat = r.Beats[0]
 	for d, hs := range hits {
@@ -411,7 +411,7 @@ func (m *MIDIScore) Rip() (*Rip, int) {
 		}
 		g.place(r, n, part)
 	}
-	r.Progression = make([]int, g.bars)
+	r.Progression = make([]int, g.bars())
 	for bar := range r.Progression {
 		lo, hi := r.Beats[per*bar], r.Beats[per*(bar+1)]
 		var chroma [12]float64
@@ -542,8 +542,7 @@ func (m *MIDIScore) Song(name string) ([]*PatternDef, *SongDef, []string) {
 		steps := bm.Steps()
 		if i+1 < len(meters) {
 			if next := at(meters[i+1].tick); next < start+steps {
-				said = append(said, fmt.Sprintf("bar %d cut to %d step(s), where %d/%d starts within it", len(bars), next-start, meters[i+1].num, meters[i+1].den))
-				steps = next - start
+				steps = next - start // cut where the next signature starts: a bar of its own meter
 			}
 		}
 		bars = append(bars, bar{start, steps, bm})
@@ -556,20 +555,19 @@ func (m *MIDIScore) Song(name string) ([]*PatternDef, *SongDef, []string) {
 	if k := sort.Search(len(bars), func(k int) bool { return bars[k].start >= first }); k > 0 && first < main.Steps() && k < len(bars) {
 		bars = slices.Replace(bars, 0, k, bar{first - main.Steps(), main.Steps(), main})
 	}
-	var odd []string
-	for bi, br := range bars {
-		if br.steps != main.Steps() {
-			odd = append(odd, strconv.Itoa(bi))
-		}
-	}
 	barAt := func(step int) int {
 		return max(sort.Search(len(bars), func(i int) bool { return bars[i].start > step })-1, 0)
 	}
-	var changes []string
-	for i := 1; i < len(m.clock); i++ {
-		if c := m.clock[i]; c.tick > 0 && c.perTick != m.clock[i-1].perTick {
-			changes = append(changes, fmt.Sprintf("to %.0f at bar %d", 60/c.perTick/float64(m.division), barAt(at(c.tick))))
+	// each bar's tempo: the clock's at its line, folded as the first tempo was
+	tempos := make([]int, len(bars))
+	for bi, br := range bars {
+		t := m.clock[0].perTick
+		for _, c := range m.clock {
+			if at(c.tick) <= br.start {
+				t = c.perTick
+			}
 		}
+		tempos[bi] = min(max(int(math.Round(60/t/float64(m.division)*bpm/m.BPM)), MinBPM), MaxBPM)
 	}
 
 	var c, b [12]float64
@@ -630,8 +628,21 @@ func (m *MIDIScore) Song(name string) ([]*PatternDef, *SongDef, []string) {
 	song := &SongDef{Name: name, BPM: int(math.Round(bpm)), Meter: main.Doc(), Root: root, Scale: ScaleName(scale), Bars: make([][]string, len(bars))}
 	var pats []*PatternDef
 	var named [RipParts]map[string]string // a pattern's name by what it holds
+	head := BarHead{main, song.BPM}
 	for bi, br := range bars {
-		song.Bars[bi] = make([]string, MusicSlots)
+		// a bar of another meter or tempo names it, and holds it for the bars after
+		var words []string
+		bm := br.meter
+		if br.steps != bm.Steps() {
+			bm = meterOf(br.steps, StepsPerBar)
+		}
+		if bm != head.Meter {
+			words, head.Meter = append(words, bm.String()), bm
+		}
+		if tempos[bi] != head.BPM {
+			words, head.BPM = append(words, strconv.Itoa(tempos[bi])+"bpm"), tempos[bi]
+		}
+		song.Bars[bi] = append(words, make([]string, MusicSlots)...)
 		for part := range RipParts {
 			p := &PatternDef{Steps: br.steps, Meter: br.meter.Doc(), Role: Role(RipPartSlots[part] + 1).String(), Groups: []string{name}}
 			sounds := false
@@ -655,24 +666,10 @@ func (m *MIDIScore) Song(name string) ([]*PatternDef, *SongDef, []string) {
 				named[part][key] = p.Name
 				pats = append(pats, p)
 			}
-			song.Bars[bi][RipPartSlots[part]] = p.Name
+			song.Bars[bi][len(song.Bars[bi])-MusicSlots+RipPartSlots[part]] = p.Name
 		}
 	}
 
-	if len(changes) > 0 {
-		more := ""
-		if len(changes) > 3 {
-			changes, more = changes[:3], fmt.Sprintf(" and %d more", len(changes)-3)
-		}
-		said = append(said, fmt.Sprintf("%d tempo change(s) not kept, the song plays at %d bpm throughout: %s%s", m.Changes, song.BPM, strings.Join(changes, ", "), more))
-	}
-	if len(odd) > 0 {
-		more := ""
-		if len(odd) > 3 {
-			odd, more = odd[:3], fmt.Sprintf(" and %d more", len(odd)-3)
-		}
-		said = append(said, fmt.Sprintf("bar(s) %s%s not a whole bar of the song's %s: a song holds one meter, so it plays them out of time", strings.Join(odd, ", "), more, main))
-	}
 	for v := InstrBass; v < InstrumentCount; v++ {
 		if len(nearest[v]) > 0 {
 			said = append(said, fmt.Sprintf("program(s) %s on the %s, the shipped voice of their family", strings.Join(nearest[v], ", "), v))
@@ -1032,8 +1029,8 @@ func WriteSongMIDI(w io.Writer, d *SongDef, pattern func(string) *PatternDef) er
 		return err
 	}
 	pats := map[string]*Pattern{}
-	for _, bar := range d.Bars {
-		for _, n := range bar {
+	for b := range d.Bars {
+		for _, n := range d.Patterns(b) {
 			if n == "" || pats[n] != nil {
 				continue
 			}
@@ -1049,8 +1046,8 @@ func WriteSongMIDI(w io.Writer, d *SongDef, pattern func(string) *PatternDef) er
 		}
 	}
 	const perStep = midiDivision / StepsPerBeat
-	steps := d.Signature().Steps()
-	conductor := []midiEvent{midiMeta(0, 0x03, []byte(d.Name)...), midiTempoAt(float64(d.BPM)), midiMeta(0, 0x59, keySignature(d.Root, d.ScaleID())...), midiMeta(0, 0x58, d.Signature().midi()...)}
+	heads := d.Heads()
+	conductor := []midiEvent{midiMeta(0, 0x03, []byte(d.Name)...), midiTempoAt(float64(heads[0].BPM)), midiMeta(0, 0x59, keySignature(d.Root, d.ScaleID())...), midiMeta(0, 0x58, heads[0].Meter.midi()...)}
 	type lane struct {
 		slot  int
 		instr InstrumentType
@@ -1063,11 +1060,20 @@ func WriteSongMIDI(w io.Writer, d *SongDef, pattern func(string) *PatternDef) er
 	h := newHarmony()
 	h.set(d.Root, d.ScaleID(), d.Chords)
 	at := 0
-	for b, bar := range d.Bars {
+	for b := range d.Bars {
+		steps := heads[b].Meter.Steps()
 		if b > 0 {
 			h.advanceBar()
+			if heads[b].Meter != heads[b-1].Meter {
+				conductor = append(conductor, midiMeta(int64(at*perStep), 0x58, heads[b].Meter.midi()...))
+			}
+			if heads[b].BPM != heads[b-1].BPM {
+				e := midiTempoAt(float64(heads[b].BPM))
+				e.tick = int64(at * perStep)
+				conductor = append(conductor, e)
+			}
 		}
-		for slot, n := range bar {
+		for slot, n := range d.Patterns(b) {
 			p := pats[n]
 			if p == nil {
 				continue

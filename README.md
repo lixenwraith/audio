@@ -83,7 +83,9 @@ The sound document is `[[sound]]` and `[[voice]]` tables, with `include` for
 files beside it; the music document is `[[pattern]]` tables whose `role`,
 `groups`, `tiers` and `motif` place a pattern in the drawn arrangement, and
 `[[song]]` timelines of them; a pattern or a song may name its `meter` (`3/4`,
-`6/8`), 4/4 when it does not, a step a sixteenth in every one. Both may
+`6/8`), 4/4 when it does not, a step a sixteenth in every one, and a song's
+bar may name a meter or a tempo of its own at its head (`"2/8"`, `"72bpm"`),
+held until another bar names one. Both may
 define `[macros]` and invoke them, so a drum lane or a note line is written
 once. A later definition of a name replaces the earlier in place, keeping its
 runtime ID; a new voice name adds an instrument patterns name as they name any.

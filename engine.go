@@ -744,17 +744,34 @@ func (ae *AudioEngine) RenderTimeline(timeline [][MusicSlots]PatternID, bpm int,
 	return ae.RenderLines(timeline, bpm, m, root, scale, prog, seed, nil)
 }
 
-// RenderLines is RenderTimeline with only the instruments named sounding, one
-// line of a song heard on its own; nil is every instrument, an empty list none.
+// RenderLines plays a timeline offline at one tempo in one meter, as
+// RenderBars does with every bar's head the same.
 func (ae *AudioEngine) RenderLines(timeline [][MusicSlots]PatternID, bpm int, m Meter, root int, scale ScaleID, prog []int, seed int64, only []InstrumentType) ([]float64, error) {
+	heads := make([]BarHead, len(timeline))
+	for i := range heads {
+		heads[i] = BarHead{m, bpm}
+	}
+	return ae.RenderBars(timeline, heads, root, scale, prog, seed, only)
+}
+
+// RenderBars plays a timeline offline, bar by bar, each in its head's meter and
+// at its tempo, and returns the mix as mono float samples; only, when not nil,
+// leaves every other instrument silent. The patterns change at the bar lines
+// under the notes still ringing, as a song's do.
+func (ae *AudioEngine) RenderBars(timeline [][MusicSlots]PatternID, heads []BarHead, root int, scale ScaleID, prog []int, seed int64, only []InstrumentType) ([]float64, error) {
 	if !ae.running.Load() {
 		return nil, errors.New("render needs a started engine")
 	}
-	if bpm < MinBPM || bpm > MaxBPM || len(timeline) < 1 {
-		return nil, fmt.Errorf("render: %d bpm or %d bars out of range", bpm, len(timeline))
+	if len(timeline) < 1 || len(heads) != len(timeline) {
+		return nil, fmt.Errorf("render: %d bars, %d heads", len(timeline), len(heads))
 	}
-	if err := m.check(); err != nil {
-		return nil, fmt.Errorf("render: %w", err)
+	for _, h := range heads {
+		if h.BPM < MinBPM || h.BPM > MaxBPM {
+			return nil, fmt.Errorf("render: %d bpm out of range", h.BPM)
+		}
+		if err := h.Meter.check(); err != nil {
+			return nil, fmt.Errorf("render: %w", err)
+		}
 	}
 	ae.mu.RLock()
 	shapes := ae.config.SoundShapes
@@ -769,8 +786,8 @@ func (ae *AudioEngine) RenderLines(timeline [][MusicSlots]PatternID, bpm int, m 
 		}
 	}
 	k.bind(ae.drumSet(shapes))
-	s := NewSequencer(bpm, k)
-	s.SetMeter(m, false)
+	s := NewSequencer(heads[0].BPM, k)
+	s.SetMeter(heads[0].Meter, false)
 	s.autoFill = false
 	s.Reseed(seed)
 	s.SetHarmonyCfg(root, scale, prog)
@@ -786,13 +803,20 @@ func (ae *AudioEngine) RenderLines(timeline [][MusicSlots]PatternID, bpm int, m 
 	place(0)
 	s.Start()
 	s.startGain, s.startInc = 1, 0
-	n := SamplesPerBar(bpm, m)
-	buf := make([]float64, n*len(timeline))
-	for bar := range timeline {
+	var buf []float64
+	for bar, h := range heads {
 		if bar > 0 {
+			if h.Meter != heads[bar-1].Meter {
+				s.SetMeter(h.Meter, false)
+			}
+			if h.BPM != heads[bar-1].BPM {
+				s.SetBPM(h.BPM, false)
+			}
 			place(bar)
 		}
-		s.Generate(buf[bar*n : (bar+1)*n])
+		n := SamplesPerBar(h.BPM, h.Meter)
+		buf = append(buf, make([]float64, n)...)
+		s.Generate(buf[len(buf)-n:])
 	}
 	return buf, nil
 }

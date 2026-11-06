@@ -2,6 +2,7 @@ package audio
 
 import (
 	"fmt"
+	"math"
 	"time"
 )
 
@@ -65,7 +66,7 @@ const (
 // --- Sequencer grid ---
 const (
 	DefaultBPM   = 140 // psytrance range 135-150
-	MinBPM       = 80
+	MinBPM       = 40  // a 3/8 or a slow 4/4 at its own tempo; the rip tracks beats in ripTempoMin..ripTempoMax
 	MaxBPM       = 200
 	StepsPerBeat = 4 // 16th notes
 	BeatsPerBar  = 4 // 4/4
@@ -173,6 +174,15 @@ func (m Meter) Felt() (beats, steps int) {
 		return m.Beats() / 3, 3 * m.Beat()
 	}
 	return m.Beats(), m.Beat()
+}
+
+// FeltTempo is the beats a bar is felt in a minute at bpm quarters, with the
+// note's name: what a player reads for a 3/8 at 73 is eighth 147, for a 6/8 at
+// 140 dotted quarter 93; "" for a quarter, the tempo itself.
+func (m Meter) FeltTempo(bpm int) (int, string) {
+	_, steps := m.Felt()
+	names := map[int]string{1: "sixteenth", 2: "eighth", 3: "dotted eighth", 4: "", 6: "dotted quarter", 8: "half", 12: "dotted half", 16: "whole"}
+	return int(math.Round(float64(bpm) * StepsPerBeat / float64(steps))), names[steps]
 }
 
 func (m Meter) String() string { m = m.norm(); return fmt.Sprintf("%d/%d", m.Num, m.Den) }

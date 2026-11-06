@@ -7,6 +7,7 @@ import (
 	"math"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -975,9 +976,9 @@ func TestMIDIScoreRipsAsTheLoop(t *testing.T) {
 }
 
 // TestMIDIScoreKeepsItsFirstTempo: a score in 4/4 that starts at 60 bpm and
-// speeds to 120 two quarters in rips at its first tempo, an octave up into the
-// sequencer's range, its bar its own, so in 4/2 there; its beats and its notes
-// follow its ticks under the tempo map, the change counted.
+// speeds to 120 two quarters in rips at its first tempo, 60 being in the
+// sequencer's range, its bar its own; its beats and its notes follow its ticks
+// under the tempo map, the change counted.
 func TestMIDIScoreKeepsItsFirstTempo(t *testing.T) {
 	file := append(smf(2), track(
 		0x00, 0xFF, 0x51, 3, 0x0F, 0x42, 0x40, // 60 bpm
@@ -994,7 +995,7 @@ func TestMIDIScoreKeepsItsFirstTempo(t *testing.T) {
 		t.Fatal(err)
 	}
 	r, _ := m.Rip()
-	if m.BPM != 60 || m.Changes != 1 || r.BPM != 120 || r.Meter != (Meter{4, 2}) || len(r.Bars) != 1 {
+	if m.BPM != 60 || m.Changes != 1 || r.BPM != 60 || r.Meter != (Meter{}) || len(r.Bars) != 1 {
 		t.Fatalf("file at %.1f bpm with %d change(s); rip at %d bpm in %s, %d bar(s)", m.BPM, m.Changes, r.BPM, r.Meter, len(r.Bars))
 	}
 	for i, want := range []float64{0, 1, 2, 2.5, 3} {
@@ -1002,8 +1003,8 @@ func TestMIDIScoreKeepsItsFirstTempo(t *testing.T) {
 			t.Errorf("beat %d at %.3fs, want %.3fs", i, r.Beats[i], want)
 		}
 	}
-	// a crotchet is a beat, eight steps, before the change and after it
-	if mel := r.Bars[0].Melody; len(mel) != 2 || mel[0].Dur != 8 || mel[1].Pos != 24 || mel[1].Dur != 8 {
+	// a crotchet is a beat, four steps, before the change and after it
+	if mel := r.Bars[0].Melody; len(mel) != 2 || mel[0].Dur != 4 || mel[1].Pos != 12 || mel[1].Dur != 4 {
 		t.Errorf("melody %+v", mel)
 	}
 }
@@ -1380,7 +1381,7 @@ func TestRipOpensAPickupBar(t *testing.T) {
 	if s := CompareRips(with, want); s.Total != 1 {
 		t.Errorf("a pickup bar against none grades %+v", s)
 	}
-	g := ripGrid{beats: []int{0, 16, 32, 48, 64}, bars: 1}
+	g := ripGrid{lines: []int{0, 64}}
 	if lag := g.lag([]ripNote{{start: 1}, {start: 17}, {start: 33}, {start: 49}}); lag != 0.25 {
 		t.Errorf("lag %.2f steps, want 0.25", lag)
 	}
@@ -1634,5 +1635,231 @@ func TestFidelityHearsTheDifference(t *testing.T) {
 	}
 	if z, err := (Ripper{Grid: &RipGrid{BPM: bpm}}).Samples(same, AudioSampleRate); err != nil || len(z.Bars) != bars || len(z.Notes) == 0 {
 		t.Errorf("zero parameters: %v, %d bars", err, len(z.Bars))
+	}
+}
+
+// TestABarPlaysInTheMeterAndTempoItNames: a song's bar that names 2/8 renders
+// a quarter of a 4/4 bar and one naming 60bpm half as long again as at 120,
+// the words holding until another bar names, and they survive its MIDI file
+func TestABarPlaysInTheMeterAndTempoItNames(t *testing.T) {
+	ae, _ := startLoopEngine(t)
+	bass := &PatternDef{Name: "wbass", Steps: 16, Role: "bass", Track: []TrackDef{{Instr: "bass", Event: []StepDef{{Pos: 0, Vel: 1, Dur: 4}, {Pos: 8, Vel: 0.8, Deg: 4, Dur: 4}}}}}
+	if p, err := bass.Pattern(); err != nil {
+		t.Fatal(err)
+	} else if _, err := ae.DefinePattern(p); err != nil {
+		t.Fatal(err)
+	}
+	d := &SongDef{Name: "words", BPM: 120, Root: DefaultRootNote, Scale: "phrygian", Bars: [][]string{
+		{"", "", "", bass.Name}, {"2/8", "", "", "", bass.Name}, {"4/4", "60bpm", "", "", "", bass.Name}, {"", "", "", bass.Name}}}
+	if err := ValidateSong(d); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateSong(&SongDef{Name: "x", BPM: 120, Scale: "major", Bars: [][]string{{"999bpm", bass.Name}}}); err == nil {
+		t.Error("a tempo out of range validates")
+	}
+	tl, err := d.Timeline(PatternIDByName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf, err := ae.RenderBars(tl, d.Heads(), d.Root, d.ScaleID(), nil, 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := SamplesPerBar(120, Meter{}) + SamplesPerBar(120, Meter{2, 8}) + 2*SamplesPerBar(60, Meter{})
+	if len(buf) != want {
+		t.Errorf("rendered %d samples, want %d", len(buf), want)
+	}
+	var file bytes.Buffer
+	if err := WriteSongMIDI(&file, d, lookup(bass)); err != nil {
+		t.Fatal(err)
+	}
+	m, err := ReadMIDI(bytes.NewReader(file.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, back, _ := m.Song("back")
+	var words []string
+	for _, bar := range back.Bars {
+		words = append(words, strings.Join(bar[:len(bar)-MusicSlots], " "))
+	}
+	if back.BPM != 120 || !slices.Equal(words, []string{"", "2/8", "4/4 60bpm", ""}) {
+		t.Errorf("read back at %d bpm with bar words %q", back.BPM, words)
+	}
+}
+
+// TestARipsSongNamesTheTempoWhereItsBarsMove: a rip whose bars slow by a
+// tenth names the slowed bar's tempo and the recovered one's, and none for a
+// bar within three per cent
+func TestARipsSongNamesTheTempoWhereItsBarsMove(t *testing.T) {
+	r := &Rip{BPM: 120, Root: DefaultRootNote, Scale: ScaleMajor, Bars: make([]RipBar, 4), Beats: make([]float64, 17)}
+	secs := []float64{2, 2.02, 2.2, 2}
+	for b, s := range secs {
+		for j := range 4 {
+			r.Beats[4*b+j+1] = r.Beats[4*b+j] + s/4
+		}
+		r.Bars[b].Bass = []Step{{Pos: 0, Vel: 1}}
+	}
+	_, song := r.Song("rub", [RipParts][]int{nil, nil, {0, 0, 0, 0}})
+	var words []string
+	for _, bar := range song.Bars {
+		words = append(words, strings.Join(bar[:len(bar)-MusicSlots], " "))
+	}
+	if !slices.Equal(words, []string{"", "", "109bpm", "120bpm"}) {
+		t.Errorf("bar words %q", words)
+	}
+}
+
+// TestABarIsNamedByItsBeats: a bar of eight tracked beats is 4/4 at half the
+// tempo and of six 3/4, of two beats 4/4 at double where that fits, of nine
+// tracked triplets at a fast tempo 3/4 at two thirds; a bar of three beats with
+// no drum part and no note on a sixteenth is 3/8 at half the tempo, a 6/8 so
+// too, with a drum part or a sixteenth as read; four beats
+// keep their quarter
+func TestABarIsNamedByItsBeats(t *testing.T) {
+	for _, c := range []struct {
+		m                 Meter
+		tempo             float64
+		k                 int
+		drums, sixteenths bool
+		want              Meter
+		wantTempo         float64
+	}{
+		{Meter{4, 2}, 140, 2, true, true, Meter{}, 70},
+		{Meter{3, 2}, 130, 2, false, false, Meter{3, 4}, 65},
+		{Meter{2, 4}, 90, 1, true, false, Meter{}, 180},
+		{Meter{2, 4}, 120, 1, true, false, Meter{2, 4}, 120},
+		{Meter{9, 8}, 180, 1, true, false, Meter{3, 4}, 120},
+		{Meter{3, 4}, 147, 2, false, false, Meter{3, 8}, 73.5},
+		{Meter{3, 4}, 147, 2, true, false, Meter{3, 4}, 147},
+		{Meter{3, 4}, 147, 2, false, true, Meter{3, 4}, 147},
+		{Meter{}, 147, 2, false, false, Meter{}, 147},
+		{Meter{6, 8}, 150, 3, false, false, Meter{3, 8}, 75},
+		{Meter{6, 8}, 150, 3, true, false, Meter{6, 8}, 150},
+	} {
+		if m, tempo := name(c.m, c.tempo, c.k, c.drums, c.sixteenths); m != c.want || tempo != c.wantTempo {
+			t.Errorf("%s at %.0f, %d a beat, drums %v sixteenths %v: named %s at %.1f, want %s at %.1f", c.m, c.tempo, c.k, c.drums, c.sixteenths, m, tempo, c.want, c.wantTempo)
+		}
+	}
+}
+
+// TestRipHearsThreeEight: a piece in 3/8 whose melody runs in sixteenths over
+// a bass note on each bar, no drums, rips in 3/8 at its own tempo, the bar
+// lines on the render's
+func TestRipHearsThreeEight(t *testing.T) {
+	ae, _ := startLoopEngine(t)
+	define := func(p *Pattern) PatternID {
+		id, err := ae.DefinePattern(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	three := Meter{3, 8}
+	tune := []Step{{Pos: 0, Vel: 0.9, Oct: 2, Dur: 1}, {Pos: 1, Vel: 0.7, Deg: 1, Oct: 2, Dur: 1}, {Pos: 2, Vel: 0.8, Deg: 2, Oct: 2, Dur: 1}, {Pos: 3, Vel: 0.7, Deg: 4, Oct: 2, Dur: 1}, {Pos: 4, Vel: 0.8, Deg: 3, Oct: 2, Dur: 1}, {Pos: 5, Vel: 0.7, Deg: 1, Oct: 2, Dur: 1}}
+	slots := [MusicSlots]PatternID{PatternSilence,
+		define(&Pattern{Name: "run", Steps: 6, Meter: three, Tracks: []Track{{Instr: InstrLead, Events: tune}}}),
+		PatternSilence,
+		define(&Pattern{Name: "run_low", Steps: 12, Meter: three, Tracks: []Track{{Instr: InstrBass, Events: []Step{{Pos: 0, Vel: 0.9, Dur: 3}, {Pos: 6, Vel: 0.9, Deg: 4, Dur: 3}}}}}),
+	}
+	const bpm, bars = 75, 24
+	buf, err := ae.RenderMusic(slots, bpm, three, bars, DefaultRootNote, ScalePhrygian, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := RipSamples(buf, AudioSampleRate, DefaultRipParams())
+	if err != nil {
+		t.Fatal(err)
+	}
+	score := CompareRips(r, ExpectedRip(slots, bpm, three, bars, DefaultRootNote, ScalePhrygian, nil))
+	if r.Meter != three || r.BPM < bpm-2 || r.BPM > bpm+2 || score.Bars < 0.85 {
+		t.Errorf("ripped %s at %d bpm, %d bar(s), score %+v", r.Meter, r.BPM, len(r.Bars), score)
+	}
+}
+
+// TestRipFollowsABarThatSlows: a waltz rendered with two bars a fifth slower
+// in its middle keeps its bar lines on the render's through them, within a
+// step, and its song names the slowed bars' tempo
+func TestRipFollowsABarThatSlows(t *testing.T) {
+	ae, _ := startLoopEngine(t)
+	define := func(p *Pattern) PatternID {
+		id, err := ae.DefinePattern(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	three := Meter{3, 4}
+	slots := [MusicSlots]PatternID{
+		define(&Pattern{Name: "slow", Steps: 12, Meter: three, Tracks: []Track{
+			{Instr: InstrKick, Events: []Step{{Pos: 0, Vel: 1}}}, {Instr: InstrSnare, Events: []Step{{Pos: 4, Vel: 0.8}, {Pos: 8, Vel: 0.8}}}, {Instr: InstrHihat, Events: []Step{{Pos: 2, Vel: 0.5}, {Pos: 6, Vel: 0.5}, {Pos: 10, Vel: 0.5}}}}}),
+		define(&Pattern{Name: "slow_tune", Steps: 12, Meter: three, Tracks: []Track{{Instr: InstrLead, Events: []Step{
+			{Pos: 0, Vel: 0.9, Oct: 2, Dur: 4}, {Pos: 4, Vel: 0.8, Deg: 2, Oct: 2, Dur: 2}, {Pos: 6, Vel: 0.8, Deg: 4, Oct: 2, Dur: 2}, {Pos: 8, Vel: 0.8, Deg: 3, Oct: 2, Dur: 4}}}}}),
+		PatternSilence,
+		define(&Pattern{Name: "slow_low", Steps: 12, Meter: three, Tracks: []Track{{Instr: InstrBass, Events: []Step{{Pos: 0, Vel: 0.9, Dur: 8}}}}}),
+	}
+	const bars = 20
+	timeline := make([][MusicSlots]PatternID, bars)
+	heads := make([]BarHead, bars)
+	for b := range timeline {
+		timeline[b], heads[b] = slots, BarHead{three, 130}
+		if b == 9 || b == 10 {
+			heads[b].BPM = 104
+		}
+	}
+	buf, err := ae.RenderBars(timeline, heads, DefaultRootNote, ScalePhrygian, nil, 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := RipSamples(buf, AudioSampleRate, DefaultRipParams())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := []float64{0}
+	for _, h := range heads {
+		lines = append(lines, lines[len(lines)-1]+float64(SamplesPerBar(h.BPM, h.Meter))/AudioSampleRate)
+	}
+	off := 0
+	for b := range r.Bars {
+		at := r.Beats[b*r.Meter.Beats()]
+		i, _ := slices.BinarySearch(lines, at)
+		near := math.Inf(1)
+		for _, k := range []int{i - 1, i} {
+			if k >= 0 && k < len(lines) {
+				near = math.Min(near, math.Abs(at-lines[k]))
+			}
+		}
+		if near > 60.0/130/StepsPerBeat {
+			off++
+		}
+	}
+	if r.Meter != three || off > 1 {
+		t.Errorf("ripped %s, %d of %d bar lines more than a step off the render's", r.Meter, off, len(r.Bars))
+	}
+	_, song := r.Song("slow", [RipParts][]int{nil, nil, slices.Repeat([]int{0}, len(r.Bars))})
+	named := 0
+	for _, bar := range song.Bars {
+		if strings.HasSuffix(bar[0], "bpm") {
+			named++
+		}
+	}
+	if named < 2 {
+		t.Errorf("the song names a tempo on %d bar(s), want the slowed bars' and the recovered one's", named)
+	}
+	// the song's render, read on the grid its bars' tempos lay (RipGrid.Beats),
+	// shares the rip's bar lines
+	tl2, err := song.Timeline(PatternIDByName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := ae.RenderBars(tl2, song.Heads(), song.Root, song.ScaleID(), nil, 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, err := Ripper{Params: DefaultRipParams(), Grid: &RipGrid{BPM: song.BPM, Beats: song.BeatSeconds()}, Meter: &three}.Samples(again, AudioSampleRate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sc := CompareRips(back, r); back.Meter != three || sc.Bars < 0.9 {
+		t.Errorf("the song read on its own beats: %s, score %+v", back.Meter, sc)
 	}
 }

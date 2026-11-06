@@ -187,6 +187,28 @@ that a document now states, and link the document instead.
   meter's `thirds` check reads those beats as dotted quarters and the 4/4
   reading at three halves restores the tempo; rerun those renders after any
   change to how the thirds are weighed.
+- A truth mapped into a recording through matched notes (`Agreement.At`) is
+  off by 50-500 ms in a ritardando where matches are sparse: the bar lines of
+  the clean Für Elise take graded 0.4 within a sixteenth where the rip's were
+  right. Grade a bar decoder on the exact-clock renders (round19/timbre) or on
+  a render whose bars it knows (`RenderBars` with a tempo per bar); the takes
+  grade the meter and the label, not the lines.
+- A tracker whose tempo is a state (an interval scored against the one before)
+  does not follow a ritardando in sixteenth runs: every sixteenth is as good a
+  beat as every other, so bridging costs no onset, and on dense guitar it
+  wanders toward the note rate. The fixed-period tracker stays; a bar of one
+  or two pulses more or fewer in the bar path absorbs what it inserts.
+- A chroma-change cue read over a candidate's own bar favours shorter bars,
+  since adjacent short spans always differ more: 3/4 scored over 4/4 on every
+  strummed 4/4 comp until the span was four tracked beats for every reading.
+  A bass-accent cue (a bass note on the line against the bar's other
+  sixteenths) peaks at wrong phases on guitar solos and comps by 0.3-0.5, yet
+  without it Für Elise's lines go (0.51 to 0.11 within half a sixteenth); it
+  rides at half weight.
+- The bar line on a pulse grid finer than the beat may sit on an off-beat
+  pulse; the beat-class cue (how much a pulse's class, a tracked beat apart,
+  stands out in onset over the pulses around it) keeps it on the beat without
+  forbidding a slip.
 - A bass accent counted over two bars as well as one hears 3/4 in a half-note
   bass in 4/4: its notes fall on every line six beats apart as on every line
   eight apart, with fewer pulses between to dilute them. `accent` counts one bar.
@@ -307,3 +329,8 @@ that a document now states, and link the document instead.
   user tapped out showed it in one run; the bench and the suite had not.
   Measure a decoder change against the recording's own truth before it
   ships, and keep the test only when the rule stays.
+- **Replay a fitted rule on its dump once implemented.** A decision fitted
+  on a candidate dump (`tmp/meter/fit.py`) is replayed on that dump before
+  any set is regraded: the first
+  implementation let 6/8 challenge 4/4 where the fit had only consulted it as
+  a name, and lost 22 of 40 GuitarSet labels the fit had kept.
