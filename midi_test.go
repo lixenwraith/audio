@@ -197,9 +197,9 @@ func TestSongRoundTripsThroughMIDI(t *testing.T) {
 }
 
 // TestMIDIReadsMetersInTheirSteps: 3/4 and 6/8 bars load as patterns of 12 steps
-// and 3/8 of 6, each in its meter, the song in its first; a meter no pattern
-// holds loads in 4/4 and is said, as are the bars the song's meter plays out of
-// time and a tempo change, with the bar it falls in
+// and 3/8 of 6, each in its meter, the song in its first and each bar of
+// another naming it, a tempo change naming the bar's tempo; a meter no pattern
+// holds loads in 4/4 and is said
 func TestMIDIReadsMetersInTheirSteps(t *testing.T) {
 	file := smf(2)
 	file = append(file, track(
@@ -223,8 +223,15 @@ func TestMIDIReadsMetersInTheirSteps(t *testing.T) {
 	}
 	pats, song, said := m.Song("odd")
 	var steps []int
+	for b := range song.Bars {
+		steps = append(steps, lookup(pats...)(song.Patterns(b)[RipPartSlots[RipMelody]]).Steps)
+	}
+	var words []string
 	for _, bar := range song.Bars {
-		steps = append(steps, lookup(pats...)(bar[RipPartSlots[RipMelody]]).Steps)
+		words = append(words, strings.Join(bar[:len(bar)-MusicSlots], " "))
+	}
+	if !slices.Equal(words, []string{"", "", "6/8", "3/8 60bpm", "4/4"}) {
+		t.Errorf("bar words %q, want the meter and tempo each bar changes to", words)
 	}
 	if !slices.Equal(steps, []int{12, 12, 12, 6, 16}) || len(pats) != 4 {
 		t.Errorf("bars of %v steps in %d pattern(s), want 12 12 12 6 16 in 4", steps, len(pats))
@@ -236,14 +243,8 @@ func TestMIDIReadsMetersInTheirSteps(t *testing.T) {
 	if song.Meter != "3/4" || !slices.Equal(meters, []string{"3/4", "6/8", "3/8", ""}) {
 		t.Errorf("song in %q, patterns in %q", song.Meter, meters)
 	}
-	for _, w := range []string{
-		"5/32 from bar 4 is no meter a pattern holds at 120 bpm: read in bars of 4/4",
-		"bar(s) 3, 4 not a whole bar of the song's 3/4: a song holds one meter, so it plays them out of time",
-		"1 tempo change(s) not kept, the song plays at 120 bpm throughout: to 60 at bar 3",
-	} {
-		if !slices.Contains(said, w) {
-			t.Errorf("not said: %q, in %q", w, said)
-		}
+	if w := "5/32 from bar 4 is no meter a pattern holds at 120 bpm: read in bars of 4/4"; !slices.Contains(said, w) || len(said) != 1 {
+		t.Errorf("said %q, want %q alone", said, w)
 	}
 }
 

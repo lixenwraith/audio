@@ -213,7 +213,16 @@ runs, and each plays that count modulo its length, so a pattern of whole bars
 starts each on a line; `Transport` reports the bar and the count, `MusicMeter`
 the meter. A pattern or a song names its meter in its document (`meter =
 "6/8"`, left out for 4/4): a song's is the bar its timeline plays in, a
-pattern's the bar its editor and its MIDI file show. The bank's music is 4/4.
+pattern's the bar its editor and its MIDI file show. A song's bar may name a
+meter or a tempo of its own at the head of its list (`["2/8", "72bpm",
+"fe_melody_c", ...]`), each holding until a later bar names another
+(`SongDef.Heads`, `BarHead`): a bar a score cuts short, or a played take's
+rubato, which a rip's song writes where a bar's tempo moves three per cent
+from the last named; the sequencer takes them at the bar line as it takes the
+slots (`RenderBars`, and stapes' `song play`), and the MIDI file carries them
+as events there. The tempo a player reads is the beat the meter is felt in
+(`Meter.FeltTempo`): a 3/8 at 73 is eighth 147, a 6/8 at 140 dotted quarter
+93. The bank's music is 4/4.
 
 A pattern has up to 64 steps, 32 tracks, and 512 events per track. A track sets
 its instrument, chord-following, and humanization; its events set step position,
@@ -293,7 +302,9 @@ hihat   -12/-22/-41 .. -10/-20/-40 6250..7540 Iowa mf, ff -10/-26/-38, -9/-24/-2
 clap     -6/-16/-46               2280..2530  four players' claps -1..-14/-14..-31     1480..2650
 ```
 
-Tempo is clamped to 80–200 BPM. Tempo changes can wait for the next beat;
+Tempo is clamped to 40–200 BPM, the floor low enough for a 3/8 or a slow 4/4
+at its own tempo (the rip tracks beats in 80–200 and names a bar's tempo
+within the wider range). Tempo changes can wait for the next beat;
 patterns can transition immediately or quantized to the bar. The incoming
 pattern plays at full level from its first trigger while the outgoing one's
 ringing tails fade out, over at least 256 samples so none is hard-cut; a slot
@@ -370,11 +381,13 @@ the program of the shipped voice nearest it, its wave first, then its genes
   program the bass and the rest the melody, a track a line, each note at its
   velocity and length; and the song that plays them, in the meter its music
   starts in and the key signed or the key the notes hold. A signature is read at
-  the folded tempo (`foldMeter`): 3/8 at 70 is 3/4 at 140, and 4/4 at 60 is 4/2
-  at 120, as a bar is the same time and a step a sixteenth at the tempo played;
-  one no bar of the grid holds is read in 4/4. It returns what it could not keep,
-  a line each: a tempo change and its bar, a bar of another meter than the
-  song's, a program played on its family's voice, a key the kit lacks, notes
+  the folded tempo (`foldMeter`) when the file's falls outside 40–200: 3/8 at
+  30 is 3/4 at 60, as a bar is the same time and a step a sixteenth at the
+  tempo played; one no bar of the grid holds is read in 4/4. A bar of another
+  meter, or cut short by the next signature, names its meter at its head, and
+  a bar the tempo map changes names its tempo, so the song plays the file's
+  changes (§7). It returns what it could not keep, a line each: a meter no bar
+  holds, a program played on its family's voice, a key the kit lacks, notes
   merged, cut or left out.
 - `ReadMIDI`'s transcript (§9) is the same with or without the programs, keys
   and signatures the reader takes for a song
@@ -403,41 +416,72 @@ semitone, and the pitch table is read on the mean offset, so a clip tuned forty
 cents flat, where every note sits between two semitone rows and wobbles between
 them, reads as one in tune. The percussive onsets, each drum's band against its
 own peak with the kick's counting double, give the tempo (autocorrelation under a
-log-Gaussian prior centred on 120 BPM, folded into the sequencer's range) and the
-beats (a dynamic programme that holds to the period). A hit is a kick by its rise
-under 100 Hz, a hihat by its rise above 5 kHz, a snare by the middle with some
-noise above 5 kHz, and may be two drums at once; the bar line is the phase whose
-downbeats carry a kick, no snare and the key's root in the bass, the snare on two
-and four, and the most change of chroma; a note or a hit more than half a step
-before the first bar line opens a pickup bar before it, its beats extrapolated
-into the time before the recording when it begins inside that bar
-(`Rip.Downbeat` is negative then), so a phrase that leads into the first bar is
-kept. What the front end hears before the recording first comes within 80 dB of
+log-Gaussian prior centred on 120 BPM, folded into 80–200) and the pulses the
+bars are read over (a dynamic programme that holds to the period): the tatum,
+three pulses a beat when the beats hold onsets on both their thirds (a swung
+beat sounds near its second third alone), else the finer of two or four whose
+lag is a peak of the onset autocorrelation at least half the beat's, each
+spanning 140 ms at least, else the beat itself (`tatum`). A hit is a kick by
+its rise under 100 Hz, a hihat by its rise above 5 kHz, a snare by the middle
+with some noise above 5 kHz, and may be two drums at once. The bars are a path
+over the pulses (`barPath`): each a whole bar's pulses, or within two of them
+at a cost per pulse where the tracker added or lost one, scored for the time
+it covers by its comb, the mean onset on its sixteenths read as fractions of
+its span, and its line's cues, a kick and no snare on it, the snare on the
+felt backbeats, the key's root in the bass over the first beat, the change of
+chroma over four beats from the line against the four before, how much its
+pulse stands out as a beat against the pulses around it, and how much more
+often a bass note starts on it than on the bar's other sixteenths. So a
+played take's ritardando is a longer bar, not a lost beat, and the line keeps
+its place through it; a note or a hit more than half a step before the first
+bar line opens a pickup bar before it, as long as the first, into the time
+before the recording when it begins inside that bar (`Rip.Downbeat` is
+negative then), so a phrase that leads into the first bar is kept. What the front end hears before the recording first comes within 80 dB of
 its loudest block, a model's hits in the silence, is dropped first. The key is the root and scale whose tones hold the most chroma and whose
 others the least, the bass register voting for the tonic.
 
-The meter is a choice among readings of the tracked beats (`readings`): each
-lays one meter's bars on the beats, or on pulses split from them, and decodes its
-bar line as above, the snare's backbeats on its felt beats (a compound bar's
-dotted quarters). The first reading holds unless another's cues, with how much
-more often a bass note starts on its bar lines than on its other pulses
-(`accent`), beat it by 0.35, or by twice that for a bar a whole number of the
-best's, so 12/8 needs its lines plainly over 6/8's. Within that margin, a
-reading at the best's tempo whose bar is no whole number of the best's takes it
-when the music repeats more at its own bars (`repeats`): one minus the cosine of
-each sixteenth's chroma and onset with the one a bar, two and four bars on,
-averaged, lower by 0.03. Music repeats at its bar and the bar's doubles, where
-another meter's bars fall out of step, so a waltz whose kick and bass strike
-every quarter, which leaves its lines no cue, still reads 3/4. Beats read as
-quarters give 4/4, then 3/4. Beats whose onsets fall on both their thirds, each
-half again as strong as on the beats' quarters and half their middles
-(`thirds`), are dotted quarters, since a swung sixteenth sounds near one third
-alone and a dotted quarter's sixteenths on its middle: they are split into
-eighths at three halves of the tempo (sixteenths at three quarters when that
-passes 200 bpm) and read as 4/4 from the strongest quarter, then 6/8 and 12/8
-from a tracked beat. Under eight bars of beats a clip reads 4/4 as tracked. A
-pinned meter is read alone, a compound one on dotted quarters and a simple one
-as quarters and, where the thirds sound, on eighths too.
+The meter is a choice among readings of the pulses (`readings`), each a bar
+of so many pulses decoded as above, the snare's backbeats on its felt beats (a
+compound bar's dotted quarters). Pulses two or four a beat read 4/4 then
+3/4; three a beat, the beat a dotted quarter, read them at three halves of
+the tempo (the pulses sixteenths at three quarters when that passes 200);
+6/8 is read beside 3/4 as a name for its bar, never as a bar of its own. The
+first reading holds unless another's path scores over it by 0.35, or by
+twice that for a bar a whole number of the best's. Within that margin, a reading at the best's tempo
+whose bar is no whole number of the best's takes it when the music repeats
+more at its own bars (`repeats`): one minus the cosine of each sixteenth's
+chroma and onset with the one a bar, two and four bars on, averaged, lower by
+0.03; or when its bars lie nearer their nearest other bar by 7% (`nearest`:
+each bar's `BarDistance` to its nearest, over the notes and hits quantized
+on the reading's bars, averaged) and it repeats more by 0.015. Music repeats
+at its bar and the bar's doubles, where another meter's bars fall out of
+step, so a waltz whose kick and bass strike every quarter, which leaves its
+lines no cue, still reads 3/4, and a played Für Elise, whose bars cut right
+find near twins and cut across the bars do not, reads in three on every take.
+The margins are set over labeled sets (the engine's corpus of loops, drum
+performances in 3/4 and 6/8, recorded guitar in 4/4, Für Elise through two
+models): at these, 160 of 170 recordings in 4/4 read 4/4, as before, four
+corpus loops and a guitar solo gained and four guitar takes lost, and 62 of
+123 in the other meters against 34.
+A bar read as 3/4 is named 6/8 when the 6/8 reading of the same bar scores
+higher once the onsets on its other felt beats are added, its second dotted
+quarter against the waltz's second and third beat (a cue kept out of the
+path's score, where it read strummed 4/4 as 6/8). Under six bars of 4/4 a clip reads 4/4 as tracked. A pinned meter is read
+alone.
+
+The bars are then named (`name`), the bar the audio's and the name a
+convention, since a 6-pulse bar at 1.2 s is one sound as 3/4 at 147, 3/8 at
+73 and 6/8 at 147: a bar of 6 or 8 tracked beats halves the tempo (3/4, 4/4),
+of 2 beats or 3 eighths doubles it where that fits (4/4, 3/4), a compound bar
+of tracked triplets at a fast tempo is the simple meter at two thirds (a jazz
+waltz tracked on its swing), and a bar with no drum part (a snare every other
+bar or a hat every bar at least; kicks alone may be a bass's attacks) whose notes start on no sixteenth of the beat, once
+their median lag is out, is named in eighths at half the tempo, 3/4, 5/4 and
+7/4 as 3/8, 5/8 and 7/8 and 6/8 as 3/8, so the name is the same
+whichever pulse the tracker locked on; a bar of 2 or 4 beats keeps its
+quarter. Für Elise reads 3/8 at 73, the tempo a player reads being eighth 147
+(`FeltTempo`, §7); a waltz whose notes are eighths and quarters reads 3/8 at
+half tempo too, one with sixteenth runs 3/4, and the pin overrides either.
 
 Pitch salience sums a candidate's partials, the bass register's from its first
 three, read from a window four times longer as well as the rip's own, the two

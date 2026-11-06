@@ -57,79 +57,33 @@ fill at the eq's neighbouring value, once a recording shows it audible.
 
 ## Meters
 
-### Change the meter or the tempo inside a song
-
-- Priority: P2
-- Affected files: `song.go`, `sequencer.go`, `engine.go`, `midi.go`
-
-A song holds one meter and one tempo ([Audio §7](audio.md#7-music-sequencer)),
-so `MIDIScore.Song` plays a file at its first tempo and its bars of another
-meter out of time, and says so. The smallest close: a song bar that names a
-meter or a tempo, the sequencer taking it at that bar line as `SetMeter` already
-waits for one, `RenderLines` likewise, and the MIDI writers an event there.
-
-### Hear a played take's bar by its repetition
-
-- Priority: P2
-- Affected files: `rip.go`
-
-`repeats` ([Audio §9](audio.md#9-ripping-a-recording)) picks 3/4 over 4/4 for
-renders and loops whose bar lines' cues tie, but not for a played take: four
-takes of Für Elise, at 147 to 150 bpm over a hundred bars, still read 4/4 and
-need `Ripper.Meter` set to 3/4, which reads them right. Rubato may smear the
-frames' chroma that `repeats` compares at fixed lags; that is not confirmed. A
-bar's distance to its nearest other bar, over the rip's quantized notes and
-hits, does separate the readings: 3/4's against 4/4's is 0.527 against 0.570 on
-a clean take, and 0.671 against 0.706 and 0.611 against 0.667 on two phone
-recordings, while 4/4 recordings go the other way, by 0.006 to 0.09. The
-distance ties on a loop, whose bars in another meter repeat too, three bars on,
-where `repeats` decides. The smallest close: that distance as a cue beside
-`repeats`, graded on the played takes and on renders and loops of each meter.
-
-### Follow the bar line through a recording
-
-- Priority: P3
-- Affected files: `rip.go`
-
-The rip decodes one bar line for the whole recording ([Audio
-§9](audio.md#9-ripping-a-recording)), the phase whose lines carry the most cues,
-so a performance that drifts against its bars keeps a phase that fits only part
-of it: a played take of Für Elise spreads its bass notes evenly over the three
-beats of a bar, as rubato drifting from one phase would. The smallest close: the
-phase decoded over windows of a few bars, a change taken only where the next
-windows hold it.
-
 ### Read more meters
 
 - Priority: P3
 - Affected files: `rip.go`
 
-The rip ([Audio §9](audio.md#9-ripping-a-recording)) reads one meter for the
-whole recording, 4/4, 3/4, 6/8 or 12/8: 2/4 reads as 4/4, and 5/4, 7/8 or 9/8 as
-whichever of those fits. A 12/8 reads as 6/8 unless its four-beat lines carry
-twice the margin; a waltz the beat tracker takes at half its tempo has no whole
-bar in its beats and reads 4/4; and a tracker that slips by a sixteenth hides the
-thirds a dotted beat holds. A fast 4/4 opens the dotted readings where the
-tracker locks at 4/5 or 2/3 of its tempo or noise smears its sixteenths onto the
-beat's thirds: 4 of 56 4/4 loops of `corpus <dir> 48 16 gen meters`, clean and
-augmented, at 140 to 176 bpm read 6/8 or 12/8. The smallest close: a reading per
-further meter in `readings`, each graded on renders as `TestRipHearsTheMeter`
-grades 3/4 and 6/8.
+The rip reads 4/4, 3/4 and 6/8, and names them ([Audio
+§9](audio.md#9-ripping-a-recording)): a 2-beat bar is 4/4 at double tempo, a
+6- or 8-beat bar 3/4 or 4/4 at half, a triple bar of tracked triplets 3/4, so
+a slow waltz, a slow 4/4 and a jazz waltz tracked on its swing read right. 5/4,
+7/8, 9/8 and 12/8 still read as whichever of those fits. Offered as readings
+beside the three, over the labeled sets (the corpus, e-gmd, GuitarSet, Für Elise), the
+margin chain held its 4/4 labels only without them, and a linear score over
+path score, repetition and a prior per meter could not hold them within 2% of
+the chain on any prior set tried. The smallest close: 5/4 and 7/4 as readings
+taken only by the full margin, graded on e-gmd's 5/4 and 5/8 performances (7
+of each on disk, one performance under seven kits) before the 4/4 sets.
 
-### Tell 3/4 from 6/8
+### Hear the phone takes' bars
 
-- Priority: P3
-- Affected files: `rip.go`
+- Priority: P2
+- Affected files: `rip.go`, `ripmodel/`
 
-3/4 and 6/8 share a bar of 12 steps ([Audio
-§9](audio.md#9-ripping-a-recording)), and the rip offers 6/8 only when it hears
-the tracked beats as dotted quarters (`thirds`), so a 6/8 whose beats are
-tracked as quarters can read 3/4, its bar right and its label wrong. `repeats`
-cannot split them, since their lags are the same. On stapes'
-`bench 96 16 meters`, 36 of the 48 rips in 3/4 or 6/8, clean and augmented, read
-the right bar and 25 the right label: 10 of the 11 with the bar right and the
-label wrong are 6/8 read as 3/4. A wrong label keeps the bar and its notes, and
-changes only the meter the song and its MIDI file name. The smallest close: a
-6/8 reading beside 3/4 where the beats read as quarters, at their tempo, its
-lines' cues weighing a snare and bass on the bar's step 6 against its steps 4
-and 8.
+On the exact-clock renders of Für Elise the bar path puts three quarters of
+the lines within a sixteenth of the render's and on the clean take half; on
+the three phone takes a fifth, as on main. Their onset head (the model's, 12a)
+smears a note over 50-80 ms and fires between notes at a third of a strike's
+strength, so the comb cannot tell a sixteenth from the gap beside it and the
+tracker lays a pulse or two too many through a ritardando. A sharper onset
+head, trained on the phone channel (`rip-train --channel`), is the lever; the
+decoders need no change to use it.
