@@ -580,7 +580,8 @@ bar lines, or one line of it alone (`RenderLines`).
 
 The song plays the drums matched to the recording's. The rip reads each drum's
 tone (`Rip.Tone`) over the quarter of its hits with the least sounding before
-them, four at the fewest: the median power a hit adds in twelve bands from 30
+them, four at the fewest, each hit moved to the frame within four where the
+sound rises most, as a front end places hits a frame or two early: the median power a hit adds in twelve bands from 30
 Hz to 11 kHz (1024-point frames at 22.05 kHz, its first eight frames less the
 five ending four before it), and the median A-weighted level over 60 ms from a
 hit, a hihat's only where no other drum lands within 60 ms. `Rip.Kit` reads the

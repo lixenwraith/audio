@@ -1368,19 +1368,21 @@ func kitRip(t *testing.T) *Rip {
 	return r
 }
 
-// toneOfHits reads the tone of y, a render of the rip's hits at AudioSampleRate
-func toneOfHits(r *Rip, y []float64) [InstrClap]RipTone {
+// toneOfHits reads the tone of y, a render of the rip's hits at AudioSampleRate,
+// at the hits placed early seconds before they sound
+func toneOfHits(r *Rip, y []float64, early float64) [InstrClap]RipTone {
 	var at [InstrClap][]float64
 	for _, h := range r.Hits() {
-		at[h.Drum] = append(at[h.Drum], h.Start)
+		at[h.Drum] = append(at[h.Drum], h.Start-early)
 	}
-	return drumTones(resample(y, AudioSampleRate, RipRate), y, AudioSampleRate, at)
+	x := resample(y, AudioSampleRate, RipRate)
+	return drumTones(x, y, AudioSampleRate, hitStarts(x, at))
 }
 
 // TestToneReadsBackAnEQ: a kit's hits rendered through a known curve, the eq a
-// matched drum plays through, read back as that curve by the tone a rip reads,
-// within 2 dB in each band a drum fills, within 15 dB of its strongest; a weaker
-// band reads the window's leakage from the strong ones.
+// matched drum plays through, read back as that curve by the tone a rip reads at
+// hits a front end placed three frames early, within 2 dB in each band a drum
+// fills, within 15 dB of its strongest; a weaker band reads the window's leakage.
 func TestToneReadsBackAnEQ(t *testing.T) {
 	r := kitRip(t)
 	var drums [InstrClap]*SoundDef
@@ -1401,7 +1403,7 @@ func TestToneReadsBackAnEQ(t *testing.T) {
 	}
 	eqd := slices.Clone(plain)
 	equalize(eqd, curve)
-	own, got := toneOfHits(r, plain), toneOfHits(r, eqd)
+	own, got := toneOfHits(r, plain, 0), toneOfHits(r, eqd, 3*RipFrameSec)
 	for d := range own {
 		if own[d].Hits == 0 || got[d].Hits != own[d].Hits {
 			t.Fatalf("%s read over %d and %d hits", drumSoundNames[d], own[d].Hits, got[d].Hits)
@@ -1435,7 +1437,7 @@ func TestKitStandsAsTheRecordingsDrums(t *testing.T) {
 			rec[i] += gain[d] * v
 		}
 	}
-	r.Tone = toneOfHits(r, rec)
+	r.Tone = toneOfHits(r, rec, 0)
 	kit := r.Kit("x")
 	if len(kit) != 3 || kit[0].Name != "x_kick" || kit[1].Name != "x_snare" || kit[2].Name != "x_hihat" {
 		t.Fatalf("kit %v", kit)
@@ -1447,7 +1449,7 @@ func TestKitStandsAsTheRecordingsDrums(t *testing.T) {
 		}
 		matched[d] = s
 	}
-	lv := toneOfHits(r, beat(r.Hits(), matched))
+	lv := toneOfHits(r, beat(r.Hits(), matched), 0)
 	for d := InstrSnare; d < InstrClap; d++ {
 		want := min(max(r.Tone[d].Level-r.Tone[InstrKick].Level, kitMatch[d].lo), kitMatch[d].hi)
 		if got := lv[d].Level - lv[InstrKick].Level; math.Abs(got-want) > 0.5 {

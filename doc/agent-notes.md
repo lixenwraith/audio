@@ -214,6 +214,11 @@ that a document now states, and link the document instead.
   same hits rendered plain and through an eq can pick different hits, whose
   variants differ by 10 dB in the bands the drum barely fills: compare the
   bands within 15 dB of the drum's strongest, as `TestToneReadsBackAnEQ` does.
+- The analysis front end places a drum hit about three frames early, and a tone
+  read there takes the hit's attack as the sound before it (a bank beat ripped
+  back read +8..+13 dB curves); `hitStarts` moves each hit to where the sound
+  rises, on the recording and on the kit's render alike, the balance's renders
+  too, since a zero-phase eq moves the rise.
 - `aWeight` is the analog curve through the bilinear transform: at 44.1 kHz it
   reads 10 kHz at -4.0 dB where the standard has -2.5 (-22 at 22.05 kHz), and
   prewarping its poles is unstable under a 24.4 kHz rate. A matched kit's

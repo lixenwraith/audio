@@ -187,17 +187,42 @@ const kitFloor, kitCeiling = -24, 30
 func toneCentre(b int) float64 { return math.Sqrt(toneEdges[b] * toneEdges[b+1]) }
 
 // drumTones reads each drum's tone in x at RipRate and its level in y at rate,
-// the same sound, its hits at their seconds
+// the same sound, its hits starting at their seconds
 func drumTones(x, y []float64, rate int, at [InstrClap][]float64) [InstrClap]RipTone {
 	var out [InstrClap]RipTone
 	for d, times := range at {
 		frames := make([]int, len(times))
 		for i, t := range times {
-			frames[i] = int(t/RipFrameSec + 1e-9)
+			frames[i] = int(math.Round(t / RipFrameSec))
 		}
 		out[d].Bands, out[d].Hits = tone(x, frames)
 	}
 	drumLevels(aWeight(y, rate), rate, at, &out)
+	return out
+}
+
+// hitStarts moves each hit, in seconds, to the start of the frame within four of it
+// whose RipHop samples of x at RipRate hold the most more energy than the frame's
+// before: where the hit starts, which a front end places a frame or two early
+func hitStarts(x []float64, at [InstrClap][]float64) (out [InstrClap][]float64) {
+	energy := func(u int) (e float64) {
+		for _, v := range x[min(u*RipHop, len(x)):min((u+1)*RipHop, len(x))] {
+			e += v * v
+		}
+		return e
+	}
+	for d, times := range at {
+		for _, t := range times {
+			f := int(math.Round(t / RipFrameSec))
+			best, rise := f, math.Inf(-1)
+			for u := max(f-4, 1); u <= f+4; u++ {
+				if r := energy(u) - energy(u-1); r > rise {
+					best, rise = u, r
+				}
+			}
+			out[d] = append(out[d], float64(best)*RipFrameSec)
+		}
+	}
 	return out
 }
 
@@ -332,7 +357,8 @@ func (r *Rip) Kit(name string) []*SoundDef {
 		at[h.Drum] = append(at[h.Drum], h.Start)
 	}
 	y := beat(hits, plain)
-	own := drumTones(resample(y, AudioSampleRate, RipRate), y, AudioSampleRate, at)
+	x := resample(y, AudioSampleRate, RipRate)
+	own := drumTones(x, y, AudioSampleRate, hitStarts(x, at))
 	var out []*SoundDef
 	for d, p := range plain {
 		kit[d] = p
@@ -370,10 +396,12 @@ func (r *Rip) Kit(name string) []*SoundDef {
 	if len(out) == 0 || r.Tone[InstrKick].Levels == 0 {
 		return out
 	}
-	// read twice: a drum's level holds the tails of the others under it
+	// read twice: a drum's level holds the tails of the others under it; each read
+	// finds the hits' starts again, as an eq moves where a hit's energy rises
 	for range 2 {
 		var lv [InstrClap]RipTone
-		drumLevels(aWeight(beat(hits, kit), AudioSampleRate), AudioSampleRate, at, &lv)
+		y := beat(hits, kit)
+		drumLevels(aWeight(y, AudioSampleRate), AudioSampleRate, hitStarts(resample(y, AudioSampleRate, RipRate), at), &lv)
 		for d, m := range kit {
 			rule := kitMatch[d]
 			if d == int(InstrKick) || m == plain[d] || r.Tone[d].Levels == 0 || lv[d].Levels == 0 || lv[InstrKick].Levels == 0 {

@@ -457,7 +457,7 @@ func (rp Ripper) Samples(x []float64, rate int) (*Rip, error) {
 			at[d] = append(at[d], float64(h.frame)*f.Hop)
 		}
 	}
-	r.Tone = drumTones(x, raw, rate, at)
+	r.Tone = drumTones(x, raw, rate, hitStarts(x, at))
 	// the pitch paths start late against the onsets the beats were set by: the
 	// notes' median lag comes out before they are quantized
 	shift := int(math.Round(g.lag(slices.Concat(melody, bass)) * g.stepFrames()))
