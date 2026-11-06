@@ -405,7 +405,8 @@ and four, and the most change of chroma; a note or a hit more than half a step
 before the first bar line opens a pickup bar before it, its beats extrapolated
 into the time before the recording when it begins inside that bar
 (`Rip.Downbeat` is negative then), so a phrase that leads into the first bar is
-kept. The key is the root and scale whose tones hold the most chroma and whose
+kept. What the front end hears before the recording first comes within 30 dB of
+its loudest block, a model's hits in the room's noise, is dropped first. The key is the root and scale whose tones hold the most chroma and whose
 others the least, the bass register voting for the tonic.
 
 The meter is a choice among readings of the tracked beats (`readings`): each
@@ -563,7 +564,9 @@ voice's genes and wave is the caller's. The bars of a rip compress into a
 dictionary: `BarDistance` is the steps two bars do not share over the steps
 either has, `Cluster` groups items within a threshold by their mean distance,
 each group's medoid standing for it, `Rip.Cluster` does that for one part, and
-`Rip.Song` writes the result as one-bar patterns, `<name>_<part>_a`, `_b`, ...,
+`Rip.Song` writes the result as one-bar patterns, `<name>_<part>_a`, `_b`, ...
+(a first bar that starts partway first takes the beat of the bar most like it
+over the steps it holds, `Rip.MendPickup`, so its false hits leave the song),
 and a `SongDef`: the patterns each slot plays bar by bar at a tempo and in a
 key, a `[[song]]` in the pattern document (`LoadPatternFile`,
 `MarshalPatternFile`, `ValidateSong`), resolved to a timeline of pattern IDs

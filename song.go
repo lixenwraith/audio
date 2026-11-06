@@ -303,6 +303,54 @@ func (r *Rip) Pattern(name, group string, part RipPart, lo, hi int) *PatternDef 
 	return p
 }
 
+// MendPickup returns the rip with a first bar that starts partway given the
+// beat of the bar most like it over the steps it has, when one lies within
+// threshold: with half a bar to compare, its false hits would stay in the song.
+func (r *Rip) MendPickup(threshold float64) *Rip {
+	if len(r.Bars) < 2 {
+		return r
+	}
+	from := r.Meter.Steps()
+	first := r.Bars[0]
+	for d := range first.Drums {
+		for _, s := range first.Drums[d] {
+			from = min(from, s.Pos)
+		}
+	}
+	for _, line := range [][]Step{first.Melody, first.Under, first.Bass} {
+		for _, s := range line {
+			from = min(from, s.Pos)
+		}
+	}
+	if from == 0 || from >= r.Meter.Steps() {
+		return r
+	}
+	tail := func(b *RipBar) *RipBar {
+		var out RipBar
+		for d := range b.Drums {
+			for _, s := range b.Drums[d] {
+				if s.Pos >= from {
+					out.Drums[d] = append(out.Drums[d], s)
+				}
+			}
+		}
+		return &out
+	}
+	mine, best, near := tail(&r.Bars[0]), -1, threshold
+	for j := 1; j < len(r.Bars); j++ {
+		if d := BarDistance(mine, tail(&r.Bars[j])); d <= near && !r.empty(RipBeat, j) {
+			best, near = j, d
+		}
+	}
+	if best < 0 {
+		return r
+	}
+	mended := *r
+	mended.Bars = slices.Clone(r.Bars)
+	mended.Bars[0].Drums = tail(&r.Bars[best]).Drums
+	return &mended
+}
+
 // Cluster groups a part's bars within threshold of one another by BarDistance,
 // each bar's entry the bar that stands for its group; -1 where the part is
 // silent, which no group takes.

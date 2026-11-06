@@ -1280,6 +1280,57 @@ func TestRipOpensAPickupBar(t *testing.T) {
 	}
 }
 
+// TestRipHearsNothingBeforeTheMusic: what a front end hears in the room noise
+// before the music, 30 dB under the recording's loudest block, is dropped; two
+// frames before the music stay, for a head that fires as an attack begins.
+func TestRipHearsNothingBeforeTheMusic(t *testing.T) {
+	x := make([]float64, 100*RipHop)
+	for i := range x {
+		x[i] = 0.01 * math.Sin(float64(i)) // the room, 40 dB down
+		if i >= 40*RipHop {
+			x[i] = math.Sin(0.1 * float64(i))
+		}
+	}
+	start := musicStart(x)
+	if start != 40 {
+		t.Fatalf("the music starts at frame %d, want 40", start)
+	}
+	hits, bass, melody := heardFrom(start, [InstrClap][]ripHit{InstrKick: {{frame: 12}, {frame: 38}, {frame: 50}}},
+		[]ripNote{{start: 20}, {start: 41}}, []ripNote{{start: 39}})
+	if len(hits[InstrKick]) != 2 || hits[InstrKick][0].frame != 38 || len(bass) != 1 || bass[0].start != 41 || len(melody) != 1 {
+		t.Errorf("kept hits %v, bass %v, melody %v", hits[InstrKick], bass, melody)
+	}
+}
+
+// TestMendPickupGivesAPartialFirstBarItsBeat: a first bar that starts partway
+// takes the beat of the bar most like it over the steps it holds, its false hits
+// gone, when one lies within the threshold; a first bar from its downbeat keeps
+// its own.
+func TestMendPickupGivesAPartialFirstBarItsBeat(t *testing.T) {
+	at := func(pos ...int) []Step {
+		out := make([]Step, len(pos))
+		for i, p := range pos {
+			out[i] = Step{Pos: p, Vel: 1}
+		}
+		return out
+	}
+	var first, full RipBar
+	first.Drums = [InstrClap][]Step{at(8), at(8, 12), at(6, 8, 10, 12, 14)}
+	full.Drums = [InstrClap][]Step{at(0, 8), at(4, 12), at(0, 2, 4, 8, 10, 12, 14)}
+	r := &Rip{Bars: []RipBar{first, full, full}}
+	got := r.MendPickup(0.4).Bars[0].Drums
+	if want := [InstrClap][]Step{at(8), at(12), at(8, 10, 12, 14)}; !reflect.DeepEqual(got, want) {
+		t.Errorf("mended to %v, want %v", got, want)
+	}
+	if !reflect.DeepEqual(r.Bars[0], first) || r.MendPickup(0.2) != r {
+		t.Error("the rip changed, or mended past the threshold")
+	}
+	r.Bars[0].Drums[InstrKick] = at(0, 8)
+	if r.MendPickup(0.4) != r {
+		t.Error("a first bar from its downbeat was mended")
+	}
+}
+
 // TestFidelityHearsTheDifference: a render heard beside itself is wholly alike;
 // the same bars with every melody note a semitone sharp are less alike in pitch
 // while their onsets still are; a sound on a rip's beats reads as one on a grid;

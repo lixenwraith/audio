@@ -411,6 +411,9 @@ func (rp Ripper) Samples(x []float64, rate int) (*Rip, error) {
 	melody := f.notes(RipMelodyLow, RipMaxMIDI, p)
 	bass, melody = settle(bass, melody)
 	melody = streams(melody, f.Hop, rp.Lead)
+	if t := musicStart(x); t > 0 {
+		hits, bass, melody = heardFrom(t, hits, bass, melody)
+	}
 	var bpm float64
 	var g ripGrid
 	if rp.Grid != nil && rp.Grid.Downbeat >= 0 {
@@ -1570,6 +1573,40 @@ func (g *ripGrid) at(frame int) (bar, step int, ok bool) {
 func (g *ripGrid) stepFrames() float64 {
 	span := g.beats[g.first+g.m.Beats()*g.bars] - g.beats[g.first]
 	return float64(span) / float64(g.m.Steps()*g.bars)
+}
+
+// musicStart is the frame the recording's sound first comes within 30 dB of its
+// loudest: a model hears hits in the silence or room noise before that.
+func musicStart(x []float64) int {
+	var loudest float64
+	block := func(t int) float64 {
+		var e float64
+		for _, v := range x[t*RipHop : (t+1)*RipHop] {
+			e += v * v
+		}
+		return e
+	}
+	n := len(x) / RipHop
+	for t := range n {
+		loudest = max(loudest, block(t))
+	}
+	for t := range n {
+		if block(t) >= loudest*1e-3 {
+			return t
+		}
+	}
+	return 0
+}
+
+// heardFrom drops the hits and notes before the frame the music starts, less two
+// frames' slack for a head that fires as the attack begins.
+func heardFrom(t int, hits [InstrClap][]ripHit, bass, melody []ripNote) ([InstrClap][]ripHit, []ripNote, []ripNote) {
+	t -= 2
+	for d := range hits {
+		hits[d] = slices.DeleteFunc(hits[d], func(h ripHit) bool { return h.frame < t })
+	}
+	early := func(n ripNote) bool { return n.start < t }
+	return hits, slices.DeleteFunc(bass, early), slices.DeleteFunc(melody, early)
 }
 
 // pickup opens a bar before the first full one when a note or a hit sounds more
