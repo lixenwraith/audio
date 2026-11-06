@@ -545,6 +545,55 @@ func TestDefineSoundRebindsDrumKit(t *testing.T) {
 	}
 }
 
+// TestSetKitBindsADrumToASound: a drum plays the sound a kit names, offline and
+// in the mixer, until a nil kit gives it its own back, the kit bound before
+// rendered no more; a kit naming no drum or no sound is refused.
+func TestSetKitBindsADrumToASound(t *testing.T) {
+	ae := startNullEngine(t)
+	thud := &SoundDef{Name: "thud", Duration: 0.3, Layer: []Layer{{Source: Source{Kind: "noise"},
+		Chain: []Proc{{Kind: "lp", Freq: 400}, {Kind: "eq", Bands: []Band{{100, 6}, {1000, -12}}}}}}}
+	if _, err := ae.DefineSound(thud); err != nil {
+		t.Fatal(err)
+	}
+	render := func() []float64 {
+		buf, err := ae.RenderLines([][MusicSlots]PatternID{{PatternIDByName("beat")}}, 120, Meter{}, DefaultRootNote, ScalePhrygian, nil, 1, []InstrumentType{InstrKick})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return buf
+	}
+	own := render()
+	bind := func(kit map[string]string) {
+		if err := ae.SetKit(kit); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bind(map[string]string{"kick": "thud"})
+	if slices.Equal(render(), own) {
+		t.Error("the render kept the kick's own sound")
+	}
+	thudTake := &ae.drumSet(ae.config.SoundShapes).takes[InstrKick].layers[0][0][0]
+	if ae.SetKit(map[string]string{"bass": "thud"}) == nil || ae.SetKit(map[string]string{"kick": "none"}) == nil {
+		t.Error("a kit naming no drum or no sound was taken")
+	}
+	bind(nil)
+	if !slices.Equal(render(), own) {
+		t.Error("a nil kit did not give the kick its own sound back")
+	}
+	bind(map[string]string{"kick": "thud"})
+	if &ae.drumSet(ae.config.SoundShapes).takes[InstrKick].layers[0][0][0] != thudTake {
+		t.Error("the kit bound again rendered its takes again")
+	}
+	time.Sleep(3 * AudioBufferDuration)
+	ae.Stop()
+	if !ae.mixer.Wait(testStopWait) {
+		t.Fatal("mix goroutine still running; kit inspection would race")
+	}
+	if ae.mixer.kit.ids[InstrKick] != ae.SoundID("thud") || len(ae.mixer.kit.takes[InstrKick].layers[0][0]) <= samplesOf(0.15) {
+		t.Error("the mixer's kick is not the thud")
+	}
+}
+
 // A harder hit plays a brighter take: the kit picks the velocity layer nearest
 // the hit, whose low-pass opens with the velocity.
 func TestDrumHitPlaysTheLayerNearestItsVelocity(t *testing.T) {
@@ -613,10 +662,12 @@ func TestPatternCloneIsDeep(t *testing.T) {
 
 func TestSoundDefCloneIsDeep(t *testing.T) {
 	ring := testBank()[3]
+	ring.Chain = append(ring.Chain, Proc{Kind: "eq", Bands: []Band{{Freq: 100, DB: 3}}})
 	c := ring.Clone()
 	c.Layer[0].Chain[0].Depth = 0.01
 	c.Layer[0].Source.Vibrato.Rate = 99
-	if ring.Layer[0].Chain[0].Depth == 0.01 || ring.Layer[0].Source.Vibrato.Rate == 99 {
+	c.Chain[1].Bands[0].DB = -3
+	if ring.Layer[0].Chain[0].Depth == 0.01 || ring.Layer[0].Source.Vibrato.Rate == 99 || ring.Chain[1].Bands[0].DB != 3 {
 		t.Error("Clone aliases the original")
 	}
 }

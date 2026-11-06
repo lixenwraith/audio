@@ -416,6 +416,8 @@ func applyChain(buf floatBuffer, chain []Proc, v variance, ts float64) {
 			for j := range buf {
 				buf[j] *= g
 			}
+		case "eq":
+			equalize(buf, p.Bands)
 		}
 	}
 }

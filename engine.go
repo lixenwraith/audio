@@ -6,6 +6,7 @@
 package audio
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -85,7 +86,8 @@ type AudioEngine struct {
 	musicWAV   *wavSink // RecordMusic's file, closed by Stop
 
 	kitMu   sync.Mutex
-	offline [InstrumentCount]offlineDrum // the drums RenderLines last played, by kitMu
+	offline [InstrumentCount][2]offlineDrum // the drums RenderLines last played, the latest first, by kitMu
+	drums   [InstrClap + 1]string           // the sound each drum plays, SetKit's; "" its own, by kitMu
 
 	running    atomic.Bool
 	paused     atomic.Bool
@@ -173,7 +175,7 @@ func (ae *AudioEngine) Start() error {
 	freezeSounds()
 
 	ae.cache.preloadAll(ae.config.SoundShapes)
-	kit := buildKit(ae.cache, ae.config.SoundShapes)
+	kit := buildKit(ae.cache, ae.config.SoundShapes, ae.drumNames())
 	ae.resolveLevels()
 	registerMelodyGen()
 	for _, p := range ae.config.BasePatterns {
@@ -764,12 +766,7 @@ func (ae *AudioEngine) RenderLines(timeline [][MusicSlots]PatternID, bpm int, m 
 			}
 		}
 	}
-	for i := InstrumentType(0); i <= InstrClap; i++ {
-		if d := SoundDefByName(drumSoundNames[i]); d != nil {
-			k.ids[i] = SoundIDByName(d.Name)
-			k.takes[i] = ae.offlineTakes(i, d, shapes[d.Name])
-		}
-	}
+	k.bind(ae.drumSet(shapes))
 	s := NewSequencer(bpm, k)
 	s.SetMeter(m, false)
 	s.autoFill = false
@@ -796,6 +793,60 @@ func (ae *AudioEngine) RenderLines(timeline [][MusicSlots]PatternID, bpm int, m 
 		s.Generate(buf[bar*n : (bar+1)*n])
 	}
 	return buf, nil
+}
+
+// SetKit binds each drum kit names to the registered sound it names, live and in
+// RenderLines alike, as a song plays its matched kit; a drum it leaves out, or a
+// nil kit, plays its own sound
+func (ae *AudioEngine) SetKit(kit map[string]string) error {
+	var names [InstrClap + 1]string
+	for drum, sound := range kit {
+		i, ok := InstrumentByName(drum)
+		if !ok || !i.IsDrum() {
+			return fmt.Errorf("kit: %q is not a drum", drum)
+		}
+		if SoundDefByName(sound) == nil {
+			return fmt.Errorf("kit: %s: no sound %q", drum, sound)
+		}
+		names[i] = sound
+	}
+	ae.kitMu.Lock()
+	ae.drums = names
+	ae.kitMu.Unlock()
+	if ae.mixer == nil {
+		return nil // Start's kit reads the names
+	}
+	ae.mu.RLock()
+	shapes := ae.config.SoundShapes
+	ae.mu.RUnlock()
+	if !ae.mixer.Send(audioCmd{op: cmdKit, drums: ae.drumSet(shapes)}) {
+		return errors.New("kit: mixer queue full, binding dropped")
+	}
+	return nil
+}
+
+// drumNames is the sound each drum plays, as SetKit bound it
+func (ae *AudioEngine) drumNames() [InstrClap + 1]string {
+	ae.kitMu.Lock()
+	defer ae.kitMu.Unlock()
+	var out [InstrClap + 1]string
+	for i, n := range ae.drums {
+		out[i] = cmp.Or(n, drumSoundNames[i])
+	}
+	return out
+}
+
+// drumSet is each drum's sound as bound and its takes, rendered again only
+// where a definition or a shape changed
+func (ae *AudioEngine) drumSet(shapes map[string]SoundShape) *kitDrums {
+	var k kitDrums
+	for i, name := range ae.drumNames() {
+		if d := SoundDefByName(name); d != nil {
+			k.ids[i] = SoundIDByName(name)
+			k.takes[i] = ae.offlineTakes(InstrumentType(i), d, shapes[name])
+		}
+	}
+	return &k
 }
 
 // DefineVoice registers a voice, a tonal instrument's in place or a new

@@ -140,7 +140,10 @@ flowchart LR
 
 Sources include oscillators, sweeps, FM, noise, impulses, burst trains,
 references to earlier layers, and silence. Processors include filters,
-envelopes/decay, modulation, shaping, clipping, and gain. Validation bounds
+envelopes/decay, modulation, shaping, clipping, gain, and an equalizer (`eq`):
+a gain in dB at each of its bands' centres, smooth between them on a log axis
+and flat past the outer ones, applied with no phase in one transform of the
+whole buffer, the curve exact at every bin. Validation bounds
 duration, frequencies/Nyquist behavior, topology, operation count, and authored
 structure before rendering.
 
@@ -275,7 +278,9 @@ felt. The snare is its (0,1) mode split in two by the coupled heads and three
 upper modes under the stick's crack and the wires, a soft stroke ringing
 shorter. The hihat is the TR-808's six square partials and noise through the
 plates' band, choked as they close, the clap four noise bursts a few
-milliseconds apart and then the room. Strokes differ where they land (centre or
+milliseconds apart and then the room. A drum plays the sound of its own name
+unless `SetKit` binds it to another, live and in `RenderLines` alike, as a song
+plays the kit its rip matched (`SongDef.Kit`, §9). Strokes differ where they land (centre or
 edge, a hat's tip or shoulder), not in pitch. Against recordings free for any
 use (Freesound CC0 kits, Iowa's hihat), levels re peak at 50/100/250 ms and the
 centroid of the first 100 ms, soft to hard:
@@ -405,7 +410,8 @@ and four, and the most change of chroma; a note or a hit more than half a step
 before the first bar line opens a pickup bar before it, its beats extrapolated
 into the time before the recording when it begins inside that bar
 (`Rip.Downbeat` is negative then), so a phrase that leads into the first bar is
-kept. The key is the root and scale whose tones hold the most chroma and whose
+kept. What the front end hears before the recording first comes within 30 dB of
+its loudest block, a model's hits in the room's noise, is dropped first. The key is the root and scale whose tones hold the most chroma and whose
 others the least, the bass register voting for the tonic.
 
 The meter is a choice among readings of the tracked beats (`readings`): each
@@ -563,12 +569,32 @@ voice's genes and wave is the caller's. The bars of a rip compress into a
 dictionary: `BarDistance` is the steps two bars do not share over the steps
 either has, `Cluster` groups items within a threshold by their mean distance,
 each group's medoid standing for it, `Rip.Cluster` does that for one part, and
-`Rip.Song` writes the result as one-bar patterns, `<name>_<part>_a`, `_b`, ...,
+`Rip.Song` writes the result as one-bar patterns, `<name>_<part>_a`, `_b`, ...
+(a first bar that starts partway first takes the beat of the bar most like it
+over the steps it holds, `Rip.MendPickup`, so its false hits leave the song),
 and a `SongDef`: the patterns each slot plays bar by bar at a tempo and in a
 key, a `[[song]]` in the pattern document (`LoadPatternFile`,
 `MarshalPatternFile`, `ValidateSong`), resolved to a timeline of pattern IDs
 (`Timeline`) that `RenderTimeline` plays offline, the patterns changed at the
 bar lines, or one line of it alone (`RenderLines`).
+
+The song plays the drums matched to the recording's. The rip reads each drum's
+tone (`Rip.Tone`) over the quarter of its hits with the least sounding before
+them, four at the fewest, each hit moved to the frame within four where the
+sound rises most, as a front end places hits a frame or two early: the median power a hit adds in twelve bands from 30
+Hz to 11 kHz (1024-point frames at 22.05 kHz, its first eight frames less the
+five ending four before it), and the median A-weighted level over 60 ms from a
+hit, a hihat's only where no other drum lands within 60 ms. `Rip.Kit` reads the
+same of the registered drums played on the rip's hits; a drum's difference,
+under its rules (a kick's top over 630 Hz held to +8 dB, a snare's bands under
+100 Hz at its 100 Hz band's value and the whole at seven eighths, a hihat moved
+from 1 kHz up only, every band within -24 and +30 dB), is the `eq` its matched
+sound `<name>_<drum>` adds to the drum's master chain. The matched sounds' norms
+then put the snare and the hihat against the kick as the recording does, held
+to -2..+5 dB and -20..-8 dB, read twice since a drum's level holds the others'
+tails, the loudest at a norm of one at most. `Rip.Song` names them in the song's
+`kit`, so the song document and the sound document holding them play it again;
+a rip of a score reads no tone and its song plays the kit as it is.
 
 What it does not yet tell apart: a bass note's attack from a kick, a plucked
 chord's attack from a snare, two voices in one register, a note off the key

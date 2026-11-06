@@ -1280,6 +1280,196 @@ func TestRipOpensAPickupBar(t *testing.T) {
 	}
 }
 
+// TestRipHearsNothingBeforeTheMusic: what a front end hears in the room noise
+// before the music, 30 dB under the recording's loudest block, is dropped; two
+// frames before the music stay, for a head that fires as an attack begins.
+func TestRipHearsNothingBeforeTheMusic(t *testing.T) {
+	x := make([]float64, 100*RipHop)
+	for i := range x {
+		x[i] = 0.01 * math.Sin(float64(i)) // the room, 40 dB down
+		if i >= 40*RipHop {
+			x[i] = math.Sin(0.1 * float64(i))
+		}
+	}
+	start := musicStart(x)
+	if start != 40 {
+		t.Fatalf("the music starts at frame %d, want 40", start)
+	}
+	hits, bass, melody := heardFrom(start, [InstrClap][]ripHit{InstrKick: {{frame: 12}, {frame: 38}, {frame: 50}}},
+		[]ripNote{{start: 20}, {start: 41}}, []ripNote{{start: 39}})
+	if len(hits[InstrKick]) != 2 || hits[InstrKick][0].frame != 38 || len(bass) != 1 || bass[0].start != 41 || len(melody) != 1 {
+		t.Errorf("kept hits %v, bass %v, melody %v", hits[InstrKick], bass, melody)
+	}
+}
+
+// TestMendPickupGivesAPartialFirstBarItsBeat: a first bar that starts partway
+// takes the beat of the bar most like it over the steps it holds, its false hits
+// gone, when one lies within the threshold; a first bar from its downbeat keeps
+// its own.
+func TestMendPickupGivesAPartialFirstBarItsBeat(t *testing.T) {
+	at := func(pos ...int) []Step {
+		out := make([]Step, len(pos))
+		for i, p := range pos {
+			out[i] = Step{Pos: p, Vel: 1}
+		}
+		return out
+	}
+	var first, full RipBar
+	first.Drums = [InstrClap][]Step{at(8), at(8, 12), at(6, 8, 10, 12, 14)}
+	full.Drums = [InstrClap][]Step{at(0, 8), at(4, 12), at(0, 2, 4, 8, 10, 12, 14)}
+	r := &Rip{Bars: []RipBar{first, full, full}}
+	got := r.MendPickup(0.4).Bars[0].Drums
+	if want := [InstrClap][]Step{at(8), at(12), at(8, 10, 12, 14)}; !reflect.DeepEqual(got, want) {
+		t.Errorf("mended to %v, want %v", got, want)
+	}
+	if !reflect.DeepEqual(r.Bars[0], first) || r.MendPickup(0.2) != r {
+		t.Error("the rip changed, or mended past the threshold")
+	}
+	r.Bars[0].Drums[InstrKick] = at(0, 8)
+	if r.MendPickup(0.4) != r {
+		t.Error("a first bar from its downbeat was mended")
+	}
+}
+
+// kitRip registers stand-in drums and returns a rip of eight bars of a beat on
+// them at 120 bpm, a kick on one and three, a snare on two and four, and eighth
+// hats, half of them where no other drum lands
+func kitRip(t *testing.T) *Rip {
+	t.Cleanup(ResetRegistries)
+	ResetRegistries()
+	for _, d := range []*SoundDef{
+		{Name: "kick", Duration: 0.4, Norm: 0.95, Layer: []Layer{
+			{Source: Source{Kind: "sweep", Wave: "sine", Freq: 160, FreqEnd: 50, Curve: "exp"}, Chain: []Proc{{Kind: "decay", Tau: 0.12}}},
+			{Gain: 0.3, Length: 0.02, Source: Source{Kind: "noise"}, Chain: []Proc{{Kind: "decay", Tau: 0.004}}}}},
+		{Name: "snare", Duration: 0.3, Norm: 0.75, Layer: []Layer{
+			{Gain: 0.6, Source: Source{Kind: "osc", Wave: "sine", Freq: 190}, Chain: []Proc{{Kind: "decay", Tau: 0.05}}},
+			{Source: Source{Kind: "noise"}, Chain: []Proc{{Kind: "bp", Freq: 2500, Q: 0.4}, {Kind: "decay", Tau: 0.07}}}}},
+		{Name: "hihat", Duration: 0.15, Norm: 0.55, Layer: []Layer{
+			{Source: Source{Kind: "noise"}, Chain: []Proc{{Kind: "hp", Freq: 5000}, {Kind: "decay", Tau: 0.02}}}}},
+	} {
+		if _, err := RegisterSound(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	at := func(vel float64, pos ...int) []Step {
+		out := make([]Step, len(pos))
+		for i, p := range pos {
+			out[i] = Step{Pos: p, Vel: vel}
+		}
+		return out
+	}
+	r := &Rip{BPM: 120, Bars: make([]RipBar, 8), Beats: make([]float64, 33)}
+	for i := range r.Beats {
+		r.Beats[i] = 0.5 + 0.5*float64(i)
+	}
+	for b := range r.Bars {
+		r.Bars[b].Drums = [InstrClap][]Step{at(1, 0, 8), at(0.9, 4, 12), at(0.7, 0, 2, 4, 6, 8, 10, 12, 14)}
+	}
+	return r
+}
+
+// toneOfHits reads the tone of y, a render of the rip's hits at AudioSampleRate,
+// at the hits placed early seconds before they sound
+func toneOfHits(r *Rip, y []float64, early float64) [InstrClap]RipTone {
+	var at [InstrClap][]float64
+	for _, h := range r.Hits() {
+		at[h.Drum] = append(at[h.Drum], h.Start-early)
+	}
+	x := resample(y, AudioSampleRate, RipRate)
+	return drumTones(x, y, AudioSampleRate, hitStarts(x, at))
+}
+
+// TestToneReadsBackAnEQ: a kit's hits rendered through a known curve, the eq a
+// matched drum plays through, read back as that curve by the tone a rip reads at
+// hits a front end placed three frames early, within 2 dB in each band a drum
+// fills, within 15 dB of its strongest; a weaker band reads the window's leakage.
+func TestToneReadsBackAnEQ(t *testing.T) {
+	r := kitRip(t)
+	var drums [InstrClap]*SoundDef
+	for d := range drums {
+		drums[d] = SoundDefByName(drumSoundNames[d])
+	}
+	for b := range r.Bars { // a drum a beat, each alone
+		r.Bars[b].Drums = [InstrClap][]Step{}
+		for beat := range 4 {
+			d := (4*b + beat) % 3
+			r.Bars[b].Drums[d] = append(r.Bars[b].Drums[d], Step{Pos: 4 * beat, Vel: 1})
+		}
+	}
+	plain := beat(r.Hits(), drums)
+	curve := make([]Band, ToneBands)
+	for b := range curve {
+		curve[b] = Band{Freq: toneCentre(b), DB: 6 * math.Sin(float64(b)/2)}
+	}
+	eqd := slices.Clone(plain)
+	equalize(eqd, curve)
+	own, got := toneOfHits(r, plain, 0), toneOfHits(r, eqd, 3*RipFrameSec)
+	for d := range own {
+		if own[d].Hits == 0 || got[d].Hits != own[d].Hits {
+			t.Fatalf("%s read over %d and %d hits", drumSoundNames[d], own[d].Hits, got[d].Hits)
+		}
+		loudest := slices.Max(own[d].Bands[:])
+		for b, c := range curve {
+			if read := got[d].Bands[b] - own[d].Bands[b]; own[d].Bands[b] >= loudest-15 && math.Abs(read-c.DB) > 2 {
+				t.Errorf("%s at %.0f Hz reads %+.1f dB through %+.1f", drumSoundNames[d], c.Freq, read, c.DB)
+			}
+		}
+	}
+}
+
+// TestKitStandsAsTheRecordingsDrums: a rip's kit is the registered drums each with
+// an eq, under the names its song plays them by and through a sound document, at
+// the recording's balance against the kick within the bounds.
+func TestKitStandsAsTheRecordingsDrums(t *testing.T) {
+	r := kitRip(t)
+	var drums [InstrClap]*SoundDef
+	for d := range drums {
+		drums[d] = SoundDefByName(drumSoundNames[d])
+	}
+	gain := [InstrClap]float64{1, 2, 0.25} // the recording's snare 6 dB up and hats 12 dB down
+	var rec []float64
+	for d := range drums {
+		var one [InstrClap]*SoundDef
+		one[d] = drums[d]
+		y := beat(r.Hits(), one)
+		rec = append(rec, make([]float64, max(len(y)-len(rec), 0))...)
+		for i, v := range y {
+			rec[i] += gain[d] * v
+		}
+	}
+	r.Tone = toneOfHits(r, rec, 0)
+	kit := r.Kit("x")
+	if len(kit) != 3 || kit[0].Name != "x_kick" || kit[1].Name != "x_snare" || kit[2].Name != "x_hihat" {
+		t.Fatalf("kit %v", kit)
+	}
+	var matched [InstrClap]*SoundDef
+	for d, s := range kit {
+		if last := s.Chain[len(s.Chain)-1]; last.Kind != "eq" || len(last.Bands) != ToneBands {
+			t.Errorf("%s ends its chain with %+v", s.Name, last)
+		}
+		matched[d] = s
+	}
+	lv := toneOfHits(r, beat(r.Hits(), matched), 0)
+	for d := InstrSnare; d < InstrClap; d++ {
+		want := min(max(r.Tone[d].Level-r.Tone[InstrKick].Level, kitMatch[d].lo), kitMatch[d].hi)
+		if got := lv[d].Level - lv[InstrKick].Level; math.Abs(got-want) > 0.5 {
+			t.Errorf("%s stands %+.1f dB against the kick, the recording %+.1f", drumSoundNames[d], got, want)
+		}
+	}
+	data, err := MarshalSounds(kit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, err := LoadSoundsTOML(data)
+	if err != nil || !reflect.DeepEqual(back.Sound, kit) {
+		t.Errorf("the kit's document came back as %v", err)
+	}
+	_, song := r.Song("x", [RipParts][]int{r.Cluster(RipBeat, 0.4)})
+	if want := map[string]string{"kick": "x_kick", "snare": "x_snare", "hihat": "x_hihat"}; !reflect.DeepEqual(song.Kit, want) || ValidateSong(song) != nil {
+		t.Errorf("the song plays the kit %v", song.Kit)
+	}
+}
+
 // TestFidelityHearsTheDifference: a render heard beside itself is wholly alike;
 // the same bars with every melody note a semitone sharp are less alike in pitch
 // while their onsets still are; a sound on a rip's beats reads as one on a grid;

@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/lixenwraith/toml"
@@ -39,21 +40,25 @@ func ScaleName(s ScaleID) string {
 // a pattern longer than a bar plays on from where it was until named again or
 // cleared. Songs travel in the pattern document ([[song]]).
 type SongDef struct {
-	Name   string     `toml:"name"`
-	Desc   string     `toml:"desc,omitempty"`
-	BPM    int        `toml:"bpm"`
-	Meter  string     `toml:"meter,omitempty"` // its bars' time signature, 4/4 when absent
-	Root   int        `toml:"root"`
-	Scale  string     `toml:"scale"`
-	Chords []int      `toml:"chords,omitempty"` // the chord degrees the key cycles, as key takes them
-	Tuning float64    `toml:"tuning,omitempty"` // cents off A440 it plays at, a recording's
-	Bars   [][]string `toml:"bars"`
+	Name   string  `toml:"name"`
+	Desc   string  `toml:"desc,omitempty"`
+	BPM    int     `toml:"bpm"`
+	Meter  string  `toml:"meter,omitempty"` // its bars' time signature, 4/4 when absent
+	Root   int     `toml:"root"`
+	Scale  string  `toml:"scale"`
+	Chords []int   `toml:"chords,omitempty"` // the chord degrees the key cycles, as key takes them
+	Tuning float64 `toml:"tuning,omitempty"` // cents off A440 it plays at, a recording's
+	// Kit names the sound a drum plays in the song by the drum's name, a rip's
+	// matched kit; a drum it leaves out plays its own
+	Kit  map[string]string `toml:"kit,omitempty"`
+	Bars [][]string        `toml:"bars"`
 }
 
 // Clone is a deep copy
 func (d *SongDef) Clone() *SongDef {
 	c := *d
 	c.Chords = slices.Clone(d.Chords)
+	c.Kit = maps.Clone(d.Kit)
 	c.Bars = make([][]string, len(d.Bars))
 	for i, b := range d.Bars {
 		c.Bars[i] = slices.Clone(b)
@@ -100,6 +105,11 @@ func ValidateSong(d *SongDef) error {
 	}
 	if d.Tuning < -MaxTuningCents || d.Tuning > MaxTuningCents || d.Tuning != d.Tuning {
 		errs = append(errs, fmt.Errorf("song %q: tuning %v cents outside a semitone of A440", d.Name, d.Tuning))
+	}
+	for _, drum := range slices.Sorted(maps.Keys(d.Kit)) {
+		if i, ok := InstrumentByName(drum); !ok || !i.IsDrum() || d.Kit[drum] == "" {
+			errs = append(errs, fmt.Errorf("song %q: kit: %q is no drum, or names no sound", d.Name, drum))
+		}
 	}
 	for i, b := range d.Bars {
 		if len(b) > MusicSlots {
@@ -303,6 +313,54 @@ func (r *Rip) Pattern(name, group string, part RipPart, lo, hi int) *PatternDef 
 	return p
 }
 
+// MendPickup returns the rip with a first bar that starts partway given the
+// beat of the bar most like it over the steps it has, when one lies within
+// threshold: with half a bar to compare, its false hits would stay in the song.
+func (r *Rip) MendPickup(threshold float64) *Rip {
+	if len(r.Bars) < 2 {
+		return r
+	}
+	from := r.Meter.Steps()
+	first := r.Bars[0]
+	for d := range first.Drums {
+		for _, s := range first.Drums[d] {
+			from = min(from, s.Pos)
+		}
+	}
+	for _, line := range [][]Step{first.Melody, first.Under, first.Bass} {
+		for _, s := range line {
+			from = min(from, s.Pos)
+		}
+	}
+	if from == 0 || from >= r.Meter.Steps() {
+		return r
+	}
+	tail := func(b *RipBar) *RipBar {
+		var out RipBar
+		for d := range b.Drums {
+			for _, s := range b.Drums[d] {
+				if s.Pos >= from {
+					out.Drums[d] = append(out.Drums[d], s)
+				}
+			}
+		}
+		return &out
+	}
+	mine, best, near := tail(&r.Bars[0]), -1, threshold
+	for j := 1; j < len(r.Bars); j++ {
+		if d := BarDistance(mine, tail(&r.Bars[j])); d <= near && !r.empty(RipBeat, j) {
+			best, near = j, d
+		}
+	}
+	if best < 0 {
+		return r
+	}
+	mended := *r
+	mended.Bars = slices.Clone(r.Bars)
+	mended.Bars[0].Drums = tail(&r.Bars[best]).Drums
+	return &mended
+}
+
 // Cluster groups a part's bars within threshold of one another by BarDistance,
 // each bar's entry the bar that stands for its group; -1 where the part is
 // silent, which no group takes.
@@ -329,12 +387,21 @@ func (r *Rip) Cluster(part RipPart, threshold float64) []int {
 // Song writes the rip as a dictionary and a timeline: for each part, a pattern of
 // one bar for every bar that stands for others in assign, named
 // <name>_<part>_<letter> in order of first use, and a song named name playing them
-// in the rip's order, tempo, meter and key. A bar assigned -1 leaves its slot
-// silent; one assigned a bar standing for no group still plays that bar's pattern.
+// in the rip's order, tempo, meter and key, on the kit Kit matches. A bar assigned
+// -1 leaves its slot silent; one assigned a bar standing for no group still plays
+// that bar's pattern.
 func (r *Rip) Song(name string, assign [RipParts][]int) ([]*PatternDef, *SongDef) {
 	song := &SongDef{Name: name, BPM: r.BPM, Meter: r.Meter.Doc(), Root: r.Root, Scale: ScaleName(r.Scale), Chords: slices.Clone(r.Progression), Tuning: r.Tuning, Bars: make([][]string, len(r.Bars))}
 	for i := range song.Bars {
 		song.Bars[i] = make([]string, MusicSlots)
+	}
+	for d := range InstrClap {
+		if r.matched(d) {
+			if song.Kit == nil {
+				song.Kit = map[string]string{}
+			}
+			song.Kit[drumSoundNames[d]] = name + "_" + drumSoundNames[d]
+		}
 	}
 	var pats []*PatternDef
 	for part := range RipParts {

@@ -43,6 +43,18 @@ pressure); and the analysis's bass and melody under the natural kit (stapes'
 0.13 to 0.13), a kick ringing at 52 Hz read as bass, which a model trained on
 the new corpus is to be benched against.
 
+### Read a matched kit's weak bands
+
+- Priority: P3
+- Affected files: `kit.go`
+
+A drum's tone reads a band 15 dB or more under its strongest through the frame
+window's leakage from the strong ones and where its hits fall in the frames, so
+a matched drum's eq moves such a band by chance (the stand-ins of
+`TestToneReadsBackAnEQ` read 4 to 9 dB off there), and the clap is never
+matched, as a rip hears none. The smallest close: leave a band the drum does not
+fill at the eq's neighbouring value, once a recording shows it audible.
+
 ## Meters
 
 ### Change the meter or the tempo inside a song
