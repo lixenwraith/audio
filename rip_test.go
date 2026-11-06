@@ -691,18 +691,19 @@ func TestALowNoteNeedsItsOwnPitch(t *testing.T) {
 	}
 }
 
-// TestARipsVoiceLastsItsLongNotes: heads' genes make one oscillator, whose mean of
-// two would beat, and a fade that keeps a line's long notes within 12 dB to their end.
+// TestARipsVoiceLastsItsLongNotes: heads' genes play on a modal bank, with one
+// oscillator, whose mean of two would beat, and a fade that keeps a line's long notes
+// within 12 dB to their end.
 func TestARipsVoiceLastsItsLongNotes(t *testing.T) {
 	notes := make([]ripNote, 10)
 	for i := range notes {
-		notes[i] = ripNote{start: 200 * i, end: 200*i + 100, midi: 60, wave: slices.Index(VoiceWaves[:], "modal"), voice: make([]float64, VoiceGeneCount)}
+		notes[i] = ripNote{start: 200 * i, end: 200*i + 100, midi: 60, voice: make([]float64, VoiceGeneCount)}
 	}
 	v := voiceOf(notes)
 	long := 100 * float64(RipHop) / float64(RipRate)
 	tau := v.DecayTime * math.Pow(keyRefHz/(440*math.Pow(2, -9.0/12)), v.DecayTrack)
-	if v.Unison != 1 || tau < long/1.45 {
-		t.Errorf("unison %d, the fade's time %.3f s for notes of %.3f s", v.Unison, tau, long)
+	if v.Wave != "modal" || v.Unison != 1 || tau < long/1.45 {
+		t.Errorf("wave %s, unison %d, the fade's time %.3f s for notes of %.3f s", v.Wave, v.Unison, tau, long)
 	}
 }
 

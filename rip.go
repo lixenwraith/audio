@@ -645,11 +645,11 @@ func BarDistance(a, b *RipBar) float64 {
 	return float64(differ) / float64(union)
 }
 
-// voiceOf is the voice a register's notes were heard played with, each note's
-// genes and wave weighed by its length; nil when the front end named none.
+// voiceOf is the voice a register's notes were heard played with, each note's genes
+// weighed by its length; nil when the front end named none. It plays on a modal bank
+// whatever wave the head names, as the head names saw through a phone's narrow band.
 func voiceOf(notes []ripNote) *VoiceDef {
 	var genes []float64
-	var waves [len(VoiceWaves)]float64
 	var total float64
 	for _, n := range notes {
 		if n.voice == nil {
@@ -662,7 +662,6 @@ func voiceOf(notes []ripNote) *VoiceDef {
 		for i, g := range n.voice {
 			genes[i] += g * w
 		}
-		waves[n.wave] += w
 		total += w
 	}
 	if genes == nil || total == 0 {
@@ -671,13 +670,7 @@ func voiceOf(notes []ripNote) *VoiceDef {
 	for i := range genes {
 		genes[i] /= total
 	}
-	wave := 0
-	for i, w := range waves {
-		if w > waves[wave] {
-			wave = i
-		}
-	}
-	v := VoiceFromGenes(VoiceWaves[wave], genes)
+	v := VoiceFromGenes("modal", genes)
 	v.Unison = 1 // the genes' mean lands on two, and two detuned oscillators beat as a slow swell
 	lasting(v, notes)
 	return v
@@ -1889,14 +1882,13 @@ func (g *ripGrid) hit(r *Rip, d InstrumentType, frame int, vel float64) {
 }
 
 // ripNote is a stretch of frames the pitch track held one pitch over, with the
-// wave and voice genes the front end heard it played with when it hears those
+// voice genes the front end heard it played with when it hears those
 type ripNote struct {
 	start, end, midi int
 	vel              float64
 	strength         float64 // mean salience over the note, against the register's reference loudness
 	second           bool    // heard under another note of the register
 	bright           float64 // RipNote.Bright
-	wave             int
 	voice            []float64
 }
 
@@ -2412,36 +2404,26 @@ func (r register) note(start, end, s int) ripNote {
 			n.vel = min(max(float64(v[i]), 0.1), 1)
 		}
 	}
-	n.wave, n.voice = r.f.voiceOver(start, end)
+	n.voice = r.f.voiceOver(start, end)
 	return n
 }
 
-// voiceOver is the wave and voice genes a front end heard over frames a to b,
-// the wave by its summed scores, the genes by their mean; nil without a voice head.
-func (f *RipFrames) voiceOver(a, b int) (int, []float64) {
-	if f.Voice == nil || f.Wave == nil {
-		return 0, nil
+// voiceOver is the mean of the voice genes a front end heard over frames a to b;
+// nil without a voice head.
+func (f *RipFrames) voiceOver(a, b int) []float64 {
+	if f.Voice == nil {
+		return nil
 	}
 	genes := make([]float64, VoiceGeneCount)
-	var waves [len(VoiceWaves)]float64
 	for t := a; t < b; t++ {
 		for i := range genes {
 			genes[i] += float64(f.Voice[t*VoiceGeneCount+i])
-		}
-		for i := range waves {
-			waves[i] += float64(f.Wave[t*len(VoiceWaves)+i])
 		}
 	}
 	for i := range genes {
 		genes[i] /= float64(max(b-a, 1))
 	}
-	wave := 0
-	for i := range waves {
-		if waves[i] > waves[wave] {
-			wave = i
-		}
-	}
-	return wave, genes
+	return genes
 }
 
 // place quantizes a note onto the grid as a step of the key's nearest degree

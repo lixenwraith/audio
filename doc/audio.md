@@ -541,8 +541,10 @@ partials and not its fundamental. A front end's drum strength is how sure it is,
 drum it never grows sure of stays silent, where a bar set against its own loudest
 would raise its doubts to hits, and one striking under four times a minute is no
 part (`drumHits`). A register's voice is the mean of its notes' genes, one voice
-over the melody's two lines, with one oscillator, as that mean of two would beat,
-and a fade that keeps the line's long notes within 12 dB to their end (`lasting`).
+over the melody's two lines, on a modal bank whatever wave the head names, as it
+names saw through a phone's narrow band, with one oscillator, as that mean of two
+would beat, and a fade that keeps the line's long notes within 12 dB to their end
+(`lasting`).
 `ripmodel.Load` reads
 a weight file into a front end; rip-train, stapes' trainer, writes one from loops
 the engine renders.
