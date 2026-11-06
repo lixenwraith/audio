@@ -47,6 +47,13 @@ type RipParams struct {
 	Release       float64 `toml:"release"`        // how sure a front end that hears each pitch let go must be before the release ends its note
 }
 
+// ripDrumsPerMinute is the least a drum strikes to be a part of the music, and
+// ripLineNote the seconds a bass line's note lasts to stand without a strike
+const (
+	ripDrumsPerMinute = 4
+	ripLineNote       = 0.15
+)
+
 func DefaultRipParams() RipParams {
 	return RipParams{
 		TempoPrior: 120, TempoWidth: 1, Tightness: 100,
@@ -411,8 +418,7 @@ func (rp Ripper) Samples(x []float64, rate int) (*Rip, error) {
 	}
 	hits := f.drumHits(p)
 	root, scale := f.key()
-	bass := f.notes(RipMinMIDI, RipBassReach, p)
-	melody := f.notes(RipMelodyLow, RipMaxMIDI, p)
+	bass, melody := f.lines(p)
 	bass, melody = settle(bass, melody)
 	melody = streams(melody, f.Hop, rp.Lead)
 	if t := musicStart(x); t > 0 {
@@ -478,7 +484,7 @@ func (rp Ripper) Samples(x []float64, rate int) (*Rip, error) {
 	for _, n := range bass {
 		g.place(r, early(n), func(b *RipBar) *[]Step { return &b.Bass })
 	}
-	r.MelodyVoice, r.UnderVoice, r.BassVoice = voiceOf(firsts), voiceOf(seconds), voiceOf(bass)
+	r.MelodyVoice, r.UnderVoice, r.BassVoice = voiceOf(melody), voiceOf(melody), voiceOf(bass)
 	f.bright(x, melody, bass)
 	for i, ns := range [2][]ripNote{melody, bass} {
 		for _, n := range ns {
@@ -667,7 +673,25 @@ func voiceOf(notes []ripNote) *VoiceDef {
 			wave = i
 		}
 	}
-	return VoiceFromGenes(VoiceWaves[wave], genes)
+	v := VoiceFromGenes(VoiceWaves[wave], genes)
+	v.Unison = 1 // the genes' mean lands on two, and two detuned oscillators beat as a slow swell
+	lasting(v, notes)
+	return v
+}
+
+// lasting raises a voice's natural fade to its line's long notes, still within 12 dB
+// of their start at their end: the heads' mean genes would fade them before their release.
+func lasting(v *VoiceDef, notes []ripNote) {
+	lens, keys := make([]int, 0, len(notes)), make([]int, 0, len(notes))
+	for _, n := range notes {
+		lens, keys = append(lens, n.end-n.start), append(keys, n.midi)
+	}
+	slices.Sort(lens)
+	slices.Sort(keys)
+	tau := float64(lens[len(lens)*9/10]) * float64(RipHop) / float64(RipRate) / 1.4
+	at := math.Pow(keyRefHz/(440*math.Pow(2, float64(keys[len(keys)/2]-69)/12)), v.DecayTrack)
+	v.DecayTime = min(max(v.DecayTime, tau/at), 4)
+	v.Ring = min(max(v.Ring, 6.9*tau/at), 8)
 }
 
 // Voices is the voices the rip heard the registers played with, named after
@@ -1772,12 +1796,11 @@ type ripHit struct {
 // pickHits takes the local peaks of v that rise OnsetFloor over its median of the
 // surrounding second and OnsetMin of its loudest, the stronger of two within gap
 // frames.
-func pickHits(v []float64, gap int, p RipParams, hop float64) []ripHit {
+func pickHits(v []float64, gap int, p RipParams, hop, peak float64) []ripHit {
 	n := len(v)
 	half := int(0.5 / hop)
 	m := newSlidingMedian(2*half + 1)
 	med := make([]float64, n)
-	var peak float64
 	for t := 0; t < n+half; t++ {
 		x := 0.0
 		if t < n {
@@ -1813,12 +1836,21 @@ func pickHits(v []float64, gap int, p RipParams, hop float64) []ripHit {
 	return hits
 }
 
-// drumHits picks each drum's onsets off its strength.
+// drumHits picks each drum's onsets off its strength. A front end's strength is how
+// sure it is, so a drum it never grows sure of stays silent where the drum's loudest
+// would raise its doubts to hits, and one striking under ripDrumsPerMinute is no part.
 func (f *RipFrames) drumHits(p RipParams) [InstrClap][]ripHit {
 	gap := max(int(p.OnsetGap/f.Hop), 1)
 	var out [InstrClap][]ripHit
 	for d := range f.Onset {
-		out[d] = pickHits(f.Onset[d], gap, p, f.Hop)
+		if f.Strike == nil {
+			out[d] = pickHits(f.Onset[d], gap, p, f.Hop, 0)
+			continue
+		}
+		hits := pickHits(f.Onset[d], gap, p, f.Hop, 1)
+		if float64(len(hits)) >= ripDrumsPerMinute*float64(len(f.Onset[d]))*f.Hop/60 {
+			out[d] = hits
+		}
 	}
 	return out
 }
@@ -1972,6 +2004,32 @@ func (f *RipFrames) strikes(lo, hi int, p RipParams) []ripNote {
 	}
 	slices.SortFunc(notes, func(a, b ripNote) int { return cmp.Or(a.start-b.start, a.midi-b.midi) })
 	return notes
+}
+
+// lines reads the registers. A front end that hears each pitch struck reads both by
+// strikes, any number at once, the bass line's own notes kept only where no strike
+// sounds and for as long as ripLineNote, as a plain bass's are struck softly.
+func (f *RipFrames) lines(p RipParams) (bass, melody []ripNote) {
+	line := f.notes(RipMinMIDI, RipBassReach, p)
+	if f.Strike == nil {
+		return line, f.notes(RipMelodyLow, RipMaxMIDI, p)
+	}
+	melody, bass = f.strikes(RipBassTop, RipMaxMIDI, p), f.strikes(RipMinMIDI, RipBassTop, p)
+	struck := slices.Clone(bass)
+	for _, n := range line {
+		if n.midi >= RipBassTop || float64(n.end-n.start)*f.Hop < ripLineNote {
+			continue
+		}
+		over := 0
+		for _, o := range struck {
+			over += max(min(o.end, n.end)-max(o.start, n.start), 0)
+		}
+		if 4*over < n.end-n.start {
+			bass = append(bass, n)
+		}
+	}
+	slices.SortFunc(bass, func(a, b ripNote) int { return cmp.Or(a.start-b.start, a.midi-b.midi) })
+	return bass, melody
 }
 
 // settle gives a note both registers heard, where the bass's reach and the
@@ -2320,6 +2378,11 @@ func (r register) note(start, end, s int) ripNote {
 	}
 	n := ripNote{start: start, end: end, midi: r.lo + s, strength: sum / float64(end-start) / r.ref}
 	n.vel = min(max(0.3, n.strength), 1)
+	if v := r.f.Velocity; v != nil {
+		if i := start*RipPitches + r.lo + s - RipMinMIDI; i >= 0 && i < len(v) {
+			n.vel = min(max(float64(v[i]), 0.1), 1)
+		}
+	}
 	n.wave, n.voice = r.f.voiceOver(start, end)
 	return n
 }

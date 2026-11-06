@@ -620,6 +620,74 @@ func TestStrikesStartNotesWhileOthersRing(t *testing.T) {
 	}
 }
 
+// TestAFrontEndsDoubtsAreNoDrums: a drum a front end is never sure of plays nothing,
+// though its loudest doubt would clear a bar set against itself, and one it is sure
+// of too rarely for the recording's length is no part; the analysis's strengths have
+// no such scale, and keep their bar against their own loudest.
+func TestAFrontEndsDoubtsAreNoDrums(t *testing.T) {
+	const frames = 10000
+	f := &RipFrames{Hop: RipFrameSec, Strike: make([]float32, frames*RipPitches)}
+	for d := range f.Onset {
+		f.Onset[d] = make([]float64, frames)
+	}
+	for i := 100; i < frames; i += 100 {
+		f.Onset[0][i], f.Onset[1][i] = 0.05, 0.9
+	}
+	f.Onset[2][500] = 0.97
+	if h := f.drumHits(DefaultRipParams()); len(h[0]) != 0 || len(h[1]) != 99 || len(h[2]) != 0 {
+		t.Errorf("hits %d %d %d, want 0, 99 and 0", len(h[0]), len(h[1]), len(h[2]))
+	}
+	f.Strike = nil
+	if h := f.drumHits(DefaultRipParams()); len(h[0]) != 99 || len(h[2]) != 1 {
+		t.Errorf("the analysis's hits %d and %d, want 99 and 1", len(h[0]), len(h[2]))
+	}
+}
+
+// TestLowNotesAreReadByStrikes: two low notes struck together both sound, as hard as
+// the front end heard them, and the bass line's own note stands where no strike sounds.
+func TestLowNotesAreReadByStrikes(t *testing.T) {
+	const frames = 300
+	f := &RipFrames{Hop: RipFrameSec, Flux: make([]float64, frames), Salience: make([]float32, frames*RipPitches),
+		Strike: make([]float32, frames*RipPitches), Velocity: make([]float32, frames*RipPitches)}
+	at := func(t, midi int) int { return t*RipPitches + midi - RipMinMIDI }
+	for _, n := range []struct {
+		midi, from, to int
+		strike         float32
+	}{{40, 10, 100, 0.99}, {47, 10, 100, 0.99}, {36, 150, 200, 0}} {
+		f.Strike[at(n.from, n.midi)] = n.strike
+		for t := n.from; t < n.to; t++ {
+			f.Salience[at(t, n.midi)] = 0.9
+			f.Velocity[at(t, n.midi)] = 0.4
+		}
+	}
+	bass, melody := f.lines(DefaultRipParams())
+	var got []int
+	for _, n := range bass {
+		got = append(got, n.midi)
+		if n.vel != float64(float32(0.4)) {
+			t.Errorf("note %d at velocity %v, want the 0.4 heard", n.midi, n.vel)
+		}
+	}
+	if want := []int{40, 47, 36}; !slices.Equal(got, want) || len(melody) != 0 {
+		t.Errorf("bass %v and %d melody notes, want %v and none", got, len(melody), want)
+	}
+}
+
+// TestARipsVoiceLastsItsLongNotes: heads' genes make one oscillator, whose mean of
+// two would beat, and a fade that keeps a line's long notes within 12 dB to their end.
+func TestARipsVoiceLastsItsLongNotes(t *testing.T) {
+	notes := make([]ripNote, 10)
+	for i := range notes {
+		notes[i] = ripNote{start: 200 * i, end: 200*i + 100, midi: 60, wave: slices.Index(VoiceWaves[:], "modal"), voice: make([]float64, VoiceGeneCount)}
+	}
+	v := voiceOf(notes)
+	long := 100 * float64(RipHop) / float64(RipRate)
+	tau := v.DecayTime * math.Pow(keyRefHz/(440*math.Pow(2, -9.0/12)), v.DecayTrack)
+	if v.Unison != 1 || tau < long/1.45 {
+		t.Errorf("unison %d, the fade's time %.3f s for notes of %.3f s", v.Unison, tau, long)
+	}
+}
+
 // TestMatchNotesAlignsTwoTranscripts: a transcript against itself transposed,
 // stretched, one note dropped and one added matches every note but those,
 // finds the transposition and the time map, and parses back from the text
