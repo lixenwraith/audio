@@ -7,7 +7,7 @@ in a definition are entries of their own. Links point to the section of the
 [design](audio.md) that explains the term; code locations name the package
 (`audio`, `ripmodel`, `bank`) and the main identifier.
 
-[A](#a) · [B](#b) · [C](#c) · [D](#d) · [E](#e) · [F](#f) · [G](#g) · [H](#h) · [L](#l) · [M](#m) · [O](#o) · [P](#p) · [R](#r) · [S](#s) · [T](#t) · [V](#v)
+[A](#a) · [B](#b) · [C](#c) · [D](#d) · [E](#e) · [F](#f) · [G](#g) · [H](#h) · [L](#l) · [M](#m) · [N](#n) · [O](#o) · [P](#p) · [R](#r) · [S](#s) · [T](#t) · [V](#v)
 
 ## A
 
@@ -63,6 +63,8 @@ in a definition are entries of their own. Links point to the section of the
 
 ## H
 
+**harmonic stack** (also: `stacked`, `stackShifts`) — A frame's two input planes interpolated from the mel bands onto a log-frequency axis of three bins a semitone from MIDI 27, a channel for each harmonic of a half and one to seven shifted so a pitch's harmonics lie at its own bin: 16 channels of 213 bins, each ending in its plane's scalar, what a **notes model** reads. [Audio §9](audio.md#9-ripping-a-recording) · `ripmodel` `stacked`
+
 **harmony** — In the music sequencer, the current root note, scale and chord progression through which pattern scale degrees resolve at trigger time. [Audio §7](audio.md#7-music-sequencer) · `audio` `harmony.go`
 
 ## L
@@ -91,6 +93,10 @@ in a definition are entries of their own. Links point to the section of the
 
 **mute** (also: `SetSfxMuted`, `SetMusicMuted`, `SetSlotMuted`) — Independent sfx and music mute bits; a sequencer slot also mutes alone, its pattern playing on in time so it comes back on the step it has reached, and so do tracks of the pattern it plays, through the slot's **track mask**. [Audio §6](audio.md#6-mixer-buses-mute-and-pause) · `audio` `SetSlotMuted`, `SetTrackMask`
 
+## N
+
+**notes model** (also: `NotesSpec`, `FrontEnd.Notes`, PitchNet, `ripnotes.bin`) — A second front-end model beside **ripmodel**'s, a transformer module cell net of convolutions alone with the same weights at every pitch, that gives the pitch, voicing, strike, release and velocity heads while the model keeps the onsets, drums, wave and voice; it reads the **harmonic stack**. Without one the model gives every head. See also **ripmodel**. [Audio §9](audio.md#9-ripping-a-recording) · `ripmodel` `NotesSpec`, `notesHeads`
+
 ## O
 
 **output limiter** (also: LimiterCeiling, LimiterLookahead) — The mixer's last stage: it follows the peak of the summed buses 64 samples ahead of what it writes and ramps its gain down over that time, holding the output under 0.9 so stacked kicks duck without the step a gain change inside one sample would put on them. [Audio §2](audio.md#2-stream-contract) · `audio` `Mixer.renderTick`
@@ -117,7 +123,7 @@ in a definition are entries of their own. Links point to the section of the
 
 **rip** (also: `Rip`, `RipWAV`, `RipSamples`, `RipParams`) — The engine's estimate of a recording, or a **MIDI file**'s score read the same way (`MIDIScore.Rip`), as what the sequencer would play it with: its tempo, **meter** and bars, its key and each bar's chord root, and per bar the kick, snare and hihat hits, the melody and the bass line as steps of the sixteenth grid, written by `Patterns` as patterns of up to four bars. `RipParams` holds its thresholds, each in a range and a gene vector, `DefaultRipParams` the hand-set start and a `[rip]` table a tuned set (`LoadRipParams`); the engine grades one by ripping music it renders of known patterns (`RenderMusic`, `ExpectedRip`, `CompareRips`). Its front end is a seam (`RipFrontEnd`, `RipFrames`): the built-in analysis or **ripmodel**. It keeps its transcript (`Rip.Notes`, which `WriteMIDI` writes as a **MIDI file**, each melody-register note with its brightness, **bright**), which a voice is fitted to by the engine's own renders (`RenderNote`, `MelDistance`), and its bars compress into a dictionary of one-bar patterns and a **song** (`BarDistance`, `Cluster`, `Rip.Song`); **fidelity** grades a render beside the recording through one front end. The melody register is decoded as two lines at once, each its own continuity and the first the louder by the `cross` cost, the second a line of its own (`RipBar.Under`). The front end reads the recording's **tuning** first (`Rip.Tuning`), a **pickup bar** opens before the first full bar when sound leads into it, and a note off the key keeps its pitch as an **accidental** (`Step.Acc`). See also **pattern**, **ripmodel**, **song**. [Audio §9](audio.md#9-ripping-a-recording) · `audio` rip.go, song.go, dsp.go
 
-**ripmodel** (also: RipModel, `ripmodel`, rip model, front-end model) — The rip's learned front end: a transformer over the log-mel frames `MelFrames` makes, each band read in dB less the frame's mean and the mean as one more input (`features`, the trainer's `ripmodel.features`), and in a model of two channels each band's **PCEN** and their mean as the second, with heads for the onset, the three drums, the sixty-nine pitches, voicing, the wave and the voice genes of the note under each frame, each pitch let go and how hard each was struck (`HeadRelease`, `HeadVelocity`, `RipFrames.Release`, `Velocity`, a note ending at its release), and each pitch struck (`HeadStrike`, `RipFrames.Strike`, from which the melody register's notes are read, any number at once, a strike that never sounds, a stronger one's partial in the register or one within `StrikeGap` of the pitch's last starting none, and one under `StrikeAgain` or under a neighbour's leaving a sounding note ringing), read into the frames the rip's decoders take; `Spec` its default shape, which a weight file may change but for the inputs and heads, and `Load` reads a weight file into a `FrontEnd`. See also **rip**, **transformer**, **voice**. [Audio §9](audio.md#9-ripping-a-recording) · `ripmodel`
+**ripmodel** (also: RipModel, `ripmodel`, rip model, front-end model) — The rip's learned front end: a transformer over the log-mel frames `MelFrames` makes, each band read in dB less the frame's mean and the mean as one more input (`features`, the trainer's `ripmodel.features`), and in a model of two channels each band's **PCEN** and their mean as the second, with heads for the onset, the three drums, the sixty-nine pitches, voicing, the wave and the voice genes of the note under each frame, each pitch let go and how hard each was struck (`HeadRelease`, `HeadVelocity`, `RipFrames.Release`, `Velocity`, a note ending at its release), and each pitch struck (`HeadStrike`, `RipFrames.Strike`, from which the melody register's notes are read, any number at once, a strike that never sounds, a stronger one's partial in the register or one within `StrikeGap` of the pitch's last starting none, and one under `StrikeAgain` or under a neighbour's leaving a sounding note ringing), read into the frames the rip's decoders take; `Spec` its default shape, which a weight file may change but for the inputs and heads, and `Load` reads a weight file, and a **notes model**'s beside it, into a `FrontEnd`. See also **rip**, **transformer**, **voice**. [Audio §9](audio.md#9-ripping-a-recording) · `ripmodel`
 
 **role** — A pattern's role, rhythm, melody, fill or bass, names the sequencer slot it plays in and, with groups and tiers, where it can be drawn. [Audio §7](audio.md#7-music-sequencer) · `audio` `Role`
 
@@ -143,7 +149,7 @@ in a definition are entries of their own. Links point to the section of the
 
 **track mask** (also: `SetTrackMask`) — A slot's mask of the tracks it sounds of the pattern it names, whenever that pattern begins in the slot, which the **reveal** also drives. See also **mute**. [Audio §6](audio.md#6-mixer-buses-mute-and-pause) · `audio` `SetTrackMask`
 
-**transformer** (also: `lixenwraith/transformer`, weight file) — Inference over sequences of frames in pure Go, float32, the module's one dependency beside `lixenwraith/toml`: **ripmodel** runs on it, and `Load` reads the weight file a trainer writes. [Weight file](https://github.com/lixenwraith/transformer/blob/main/doc/format.md) · `lixenwraith/transformer`
+**transformer** (also: `lixenwraith/transformer`, weight file) — Inference over sequences of frames in pure Go, float32, the module's one dependency beside `lixenwraith/toml`: **ripmodel** and its **notes model**, a cell net, run on it, and `Load` reads the weight file a trainer writes. [Weight file](https://github.com/lixenwraith/transformer/blob/main/doc/format.md) · `lixenwraith/transformer`
 
 **tuning** (also: `Rip.Tuning`, `RipFrames.Tuning`, `SongDef.Tuning`, `SetTuning`, cents) — The cents a recording's pitches sit off equal temperament at A440, read by the **rip**'s front end before anything else: over windows four times the frame, every spectral peak votes its offset from the nearest semitone with its height, and the pitch table is read on the mean offset, so a clip forty cents flat reads as one in tune instead of wobbling between two rows. The engine plays and renders at a tuning too (`AudioEngine.SetTuning`, within a semitone of A440): a **song** made of a rip carries the recording's and plays there, and a voice fit renders its candidate notes there (`RenderNoteAt`). [Audio §9](audio.md#9-ripping-a-recording) · `audio` rip.go `tuning`
 

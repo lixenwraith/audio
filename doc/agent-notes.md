@@ -236,6 +236,11 @@ that a document now states, and link the document instead.
 - The rip's front end is a seam: `analysis` and `ripmodel` both fill `RipFrames`,
   and the decoders read nothing else, so a front end is checked by the frames it
   makes and the rip they give, as `ripmodel`'s test does with an untrained model.
+- The harmonic stack (`stacked`) interpolates in float64 where the trainer's
+  `PitchNet.stack` does in float32, so a third of the floats differ in the last
+  bit (up to 4.8e-7); through PitchNet at the trainer's shape the heads differ
+  from PyTorch's by up to 4.8e-6 on outputs up to 11, rounding. Dump
+  `model.stack(x)` beside the outputs to tell the stack from the model.
 - The trainer's `ripmodel.features` and `features` agree bit for bit on the
   PCEN plane, but on a piano recording 63 of the dB plane's 534,520 floats
   differed in the last bits (up to 1.4e-14, all near zero): numpy's `mean` sums
