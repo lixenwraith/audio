@@ -412,8 +412,8 @@ and four, and the most change of chroma; a note or a hit more than half a step
 before the first bar line opens a pickup bar before it, its beats extrapolated
 into the time before the recording when it begins inside that bar
 (`Rip.Downbeat` is negative then), so a phrase that leads into the first bar is
-kept. What the front end hears before the recording first comes within 30 dB of
-its loudest block, a model's hits in the room's noise, is dropped first. The key is the root and scale whose tones hold the most chroma and whose
+kept. What the front end hears before the recording first comes within 80 dB of
+its loudest block, a model's hits in the silence, is dropped first. The key is the root and scale whose tones hold the most chroma and whose
 others the least, the bass register voting for the tonic.
 
 The meter is a choice among readings of the tracked beats (`readings`): each

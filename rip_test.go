@@ -1370,14 +1370,15 @@ func TestRipOpensAPickupBar(t *testing.T) {
 	}
 }
 
-// TestRipHearsNothingBeforeTheMusic: what a front end hears in the room noise
-// before the music, 30 dB under the recording's loudest block, is dropped; two
-// frames before the music stay, for a head that fires as an attack begins.
+// TestRipHearsNothingBeforeTheMusic: what a front end hears in the silence before
+// the music goes, and the music starts at its soft opening, not at its loudest.
 func TestRipHearsNothingBeforeTheMusic(t *testing.T) {
 	x := make([]float64, 100*RipHop)
 	for i := range x {
-		x[i] = 0.01 * math.Sin(float64(i)) // the room, 40 dB down
 		if i >= 40*RipHop {
+			x[i] = 0.01 * math.Sin(0.1*float64(i)) // a soft opening, 40 dB down
+		}
+		if i >= 60*RipHop {
 			x[i] = math.Sin(0.1 * float64(i))
 		}
 	}

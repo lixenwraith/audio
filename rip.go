@@ -1610,8 +1610,9 @@ func (g *ripGrid) stepFrames() float64 {
 	return float64(span) / float64(g.m.Steps()*g.bars)
 }
 
-// musicStart is the frame the recording's sound first comes within 30 dB of its
-// loudest: a model hears hits in the silence or room noise before that.
+// musicStart is the frame the recording's sound first comes within 80 dB of its
+// loudest: a model hears hits in the silence before that, and a soft opening can
+// sit 40 dB under the piece's loudest.
 func musicStart(x []float64) int {
 	var loudest float64
 	block := func(t int) float64 {
@@ -1626,7 +1627,7 @@ func musicStart(x []float64) int {
 		loudest = max(loudest, block(t))
 	}
 	for t := range n {
-		if block(t) >= loudest*1e-3 {
+		if block(t) >= loudest*1e-8 {
 			return t
 		}
 	}
