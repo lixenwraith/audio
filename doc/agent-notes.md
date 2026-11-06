@@ -207,6 +207,19 @@ that a document now states, and link the document instead.
   addresses: hash `MarshalPatternFile`'s document instead. `Rip.Notes` is the
   transcript before the grid, so it hashes the same when only the bars move.
 
+## The matched kit
+
+- A drum's tone picks the quarter of its hits with the least power before
+  them. A zero-phase `eq` rings ahead of a hit into a render's silence, so the
+  same hits rendered plain and through an eq can pick different hits, whose
+  variants differ by 10 dB in the bands the drum barely fills: compare the
+  bands within 15 dB of the drum's strongest, as `TestToneReadsBackAnEQ` does.
+- `aWeight` is the analog curve through the bilinear transform: at 44.1 kHz it
+  reads 10 kHz at -4.0 dB where the standard has -2.5 (-22 at 22.05 kHz), and
+  prewarping its poles is unstable under a 24.4 kHz rate. A matched kit's
+  balance reads both sides through it, so the bias cancels; elsewhere read
+  levels near Nyquist with that in mind.
+
 ## Front ends and fidelity
 
 - The rip's front end is a seam: `analysis` and `ripmodel` both fill `RipFrames`,

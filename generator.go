@@ -267,3 +267,43 @@ func sweepBiquadBP(buf floatBuffer, startHz, endHz, q float64) {
 		}
 	}
 }
+
+// equalize filters buf through bands' curve with no phase, in one transform of
+// the whole buffer padded to twice its length, so the ring either side of a
+// sample falls in the padding and not on the sound: a one-shot's filter, the
+// curve exact at every bin rather than an FIR's smoothed one
+func equalize(buf floatBuffer, bands []Band) {
+	n := 2
+	for n < 2*len(buf) {
+		n <<= 1
+	}
+	re, im := make([]float64, n), make([]float64, n)
+	copy(re, buf)
+	fft(re, im)
+	for k := 0; k <= n/2; k++ {
+		g := math.Pow(10, eqGain(bands, float64(k)*AudioSampleRate/float64(n))/20)
+		re[k], im[k] = re[k]*g, -im[k]*g // conjugated: the forward transform inverts it
+		if k > 0 && k < n/2 {
+			re[n-k], im[n-k] = re[n-k]*g, -im[n-k]*g
+		}
+	}
+	fft(re, im)
+	for i := range buf {
+		buf[i] = re[i] / float64(n)
+	}
+}
+
+// eqGain is the curve's dB at f: a smoothstep on the log axis between the two
+// centres either side, so it is flat at each centre and overshoots none
+func eqGain(bands []Band, f float64) float64 {
+	if f <= bands[0].Freq {
+		return bands[0].DB
+	}
+	for i := 1; i < len(bands); i++ {
+		if a, b := bands[i-1], bands[i]; f < b.Freq {
+			u := math.Log(f/a.Freq) / math.Log(b.Freq/a.Freq)
+			return a.DB + (b.DB-a.DB)*u*u*(3-2*u)
+		}
+	}
+	return bands[len(bands)-1].DB
+}

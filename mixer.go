@@ -260,6 +260,8 @@ func (m *Mixer) apply(c audioCmd) {
 		m.sequencer.autoFill = c.b
 	case cmdMusicTap:
 		m.musicTap = c.w
+	case cmdKit:
+		m.kit.bind(c.drums)
 	}
 }
 

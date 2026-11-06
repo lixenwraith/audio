@@ -287,6 +287,9 @@ func checkChain(c []Proc) error {
 }
 
 func checkProc(p *Proc) error {
+	if len(p.Bands) > 0 && p.Kind != "eq" {
+		return fmt.Errorf("bands set on %q", p.Kind)
+	}
 	if p.VelTrack != 0 || p.Stroke != 0 {
 		switch p.Kind {
 		case "lp", "hp", "bp", "sweepbp", "decay", "shape", "clip":
@@ -343,6 +346,18 @@ func checkProc(p *Proc) error {
 	case "gain":
 		if !finite(p.Amount) || p.Amount < 0 || p.Amount > 64 {
 			return fmt.Errorf("amount %v outside [0,64]", p.Amount)
+		}
+	case "eq":
+		if n := len(p.Bands); n == 0 || n > MaxEQBands {
+			return fmt.Errorf("%d bands, want 1..%d", n, MaxEQBands)
+		}
+		for i, b := range p.Bands {
+			if !finite(b.Freq) || b.Freq <= 0 || b.Freq >= nyquist || (i > 0 && b.Freq <= p.Bands[i-1].Freq) {
+				return fmt.Errorf("band %d: freq %v, want ascending in (0,%.0f)", i, b.Freq, nyquist)
+			}
+			if !finite(b.DB) || math.Abs(b.DB) > MaxEQDB {
+				return fmt.Errorf("band %d: %v dB outside [-%d,%d]", i, b.DB, MaxEQDB, MaxEQDB)
+			}
 		}
 	default:
 		return fmt.Errorf("unknown proc kind %q", p.Kind)

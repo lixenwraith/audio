@@ -128,7 +128,7 @@ type LFO struct {
 
 // Proc is the tagged union of in-place buffer processors.
 type Proc struct {
-	Kind string `toml:"kind"` // lp hp bp sweepbp ar decay am ringmod shape clip gain
+	Kind string `toml:"kind"` // lp hp bp sweepbp ar decay am ringmod shape clip gain eq
 
 	Freq       float64 `toml:"freq,omitempty"`
 	FreqEnd    float64 `toml:"freq_end,omitempty"` // sweepbp
@@ -150,6 +150,16 @@ type Proc struct {
 	// velocity to this power; Stroke scales it by 1+stroke·u, as Layer.Stroke
 	VelTrack float64 `toml:"vel_track,omitempty"`
 	Stroke   float64 `toml:"stroke,omitempty"`
+
+	// Bands is an eq's curve, a gain at each band's centre, ascending: smooth
+	// between the centres on a log axis and flat past the outer ones
+	Bands []Band `toml:"bands,omitempty"`
+}
+
+// Band is one point of an eq's curve, its gain in dB at its centre in Hz
+type Band struct {
+	Freq float64 `toml:"freq"`
+	DB   float64 `toml:"db"`
 }
 
 // Spec bounds. A spec is untrusted input from disk: these cap load-time
@@ -159,6 +169,8 @@ const (
 	MaxSoundLayers   = 32
 	MaxSoundBuses    = 8
 	MaxSoundChain    = 16
+	MaxEQBands       = 32
+	MaxEQDB          = 48 // an eq band's gain either way
 	MaxSoundVariants = 8
 	MaxSoundVelocity = 4 // velocity layers
 	MaxSoundNameLen  = 64
@@ -206,14 +218,14 @@ func (d *SoundDef) Clone() *SoundDef {
 	}
 	c := *d
 	c.Velocities = slices.Clone(d.Velocities)
-	c.Chain = slices.Clone(d.Chain)
+	c.Chain = cloneChain(d.Chain)
 	c.Bus = slices.Clone(d.Bus)
 	for i := range c.Bus {
-		c.Bus[i].Chain = slices.Clone(d.Bus[i].Chain)
+		c.Bus[i].Chain = cloneChain(d.Bus[i].Chain)
 	}
 	c.Layer = slices.Clone(d.Layer)
 	for i := range c.Layer {
-		c.Layer[i].Chain = slices.Clone(d.Layer[i].Chain)
+		c.Layer[i].Chain = cloneChain(d.Layer[i].Chain)
 		if b := d.Layer[i].Source.Burst; b != nil {
 			v := *b
 			c.Layer[i].Source.Burst = &v
@@ -224,4 +236,12 @@ func (d *SoundDef) Clone() *SoundDef {
 		}
 	}
 	return &c
+}
+
+func cloneChain(c []Proc) []Proc {
+	c = slices.Clone(c)
+	for i := range c {
+		c[i].Bands = slices.Clone(c[i].Bands)
+	}
+	return c
 }

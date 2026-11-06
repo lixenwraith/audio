@@ -1,6 +1,10 @@
 package audio
 
-import "math"
+import (
+	"math"
+	"math/cmplx"
+	"slices"
+)
 
 // fft is an in-place iterative radix-2 transform of re and im, whose length is a
 // power of two.
@@ -172,4 +176,39 @@ func resample(x []float64, from, to int) []float64 {
 		}
 	}
 	return out
+}
+
+// aWeight is x at rate through the A-weighting curve (IEC 61672), its analog
+// poles taken to the rate by the bilinear transform: three biquads, 0 dB at 1 kHz
+func aWeight(x []float64, rate int) []float64 {
+	w := func(hz float64) float64 { return 2 * math.Pi * hz }
+	p1, p2, p3, p4 := w(20.598997), w(107.65265), w(737.86223), w(12194.217)
+	k := 2 * float64(rate)
+	z := cmplx.Exp(complex(0, -w(1000)/float64(rate))) // z⁻¹ at 1 kHz
+	y := slices.Clone(x)
+	gain := 1.0
+	// each section's numerator and denominator, s² s¹ s⁰
+	for _, sec := range [3][2][3]float64{
+		{{1, 0, 0}, {1, 2 * p1, p1 * p1}},
+		{{1, 0, 0}, {1, p2 + p3, p2 * p3}},
+		{{0, 0, 1}, {1, 2 * p4, p4 * p4}},
+	} {
+		var c [2][3]float64
+		for i, q := range sec {
+			c[i] = [3]float64{q[0]*k*k + q[1]*k + q[2], 2 * (q[2] - q[0]*k*k), q[0]*k*k - q[1]*k + q[2]}
+		}
+		b0, b1, b2 := c[0][0]/c[1][0], c[0][1]/c[1][0], c[0][2]/c[1][0]
+		a1, a2 := c[1][1]/c[1][0], c[1][2]/c[1][0]
+		gain *= cmplx.Abs((complex(b0, 0) + complex(b1, 0)*z + complex(b2, 0)*z*z) / (1 + complex(a1, 0)*z + complex(a2, 0)*z*z))
+		var s1, s2 float64
+		for i, v := range y {
+			o := b0*v + s1
+			s1, s2 = b1*v-a1*o+s2, b2*v-a2*o
+			y[i] = o
+		}
+	}
+	for i := range y {
+		y[i] /= gain
+	}
+	return y
 }
