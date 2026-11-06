@@ -806,11 +806,14 @@ func (ae *AudioEngine) RenderBars(timeline [][MusicSlots]PatternID, heads []BarH
 	var buf []float64
 	for bar, h := range heads {
 		if bar > 0 {
+			// quantized, the change lands as the bar's first step fires; set at
+			// once, the new step length is held against the old step's count
+			// and the bar starts late by their difference
 			if h.Meter != heads[bar-1].Meter {
-				s.SetMeter(h.Meter, false)
+				s.SetMeter(h.Meter, true)
 			}
 			if h.BPM != heads[bar-1].BPM {
-				s.SetBPM(h.BPM, false)
+				s.SetBPM(h.BPM, true)
 			}
 			place(bar)
 		}

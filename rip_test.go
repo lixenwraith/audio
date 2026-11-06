@@ -1641,6 +1641,40 @@ func TestFidelityHearsTheDifference(t *testing.T) {
 // TestABarPlaysInTheMeterAndTempoItNames: a song's bar that names 2/8 renders
 // a quarter of a 4/4 bar and one naming 60bpm half as long again as at 120,
 // the words holding until another bar names, and they survive its MIDI file
+// TestARenderedBarStartsOnItsHead: a bar's first step sounds where its head
+// puts it, after a slower and a faster bar alike
+func TestARenderedBarStartsOnItsHead(t *testing.T) {
+	ae, _ := startLoopEngine(t)
+	id, err := ae.DefinePattern(&Pattern{Name: "tick", Steps: 16, Tracks: []Track{{Instr: InstrKick, Events: []Step{{Pos: 0, Vel: 1}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	heads := []BarHead{{Meter{}, 120}, {Meter{}, 60}, {Meter{}, 60}, {Meter{}, 180}, {Meter{}, 90}}
+	timeline := make([][MusicSlots]PatternID, len(heads))
+	for b := range timeline {
+		timeline[b] = [MusicSlots]PatternID{id, PatternSilence, PatternSilence, PatternSilence}
+	}
+	buf, err := ae.RenderBars(timeline, heads, DefaultRootNote, ScaleMajor, nil, 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := 0
+	for b, h := range heads {
+		n := SamplesPerBar(h.BPM, h.Meter)
+		first := -1
+		for i := at; i < at+n; i++ {
+			if math.Abs(buf[i]) > 0.05 {
+				first = i
+				break
+			}
+		}
+		if first < 0 || first-at > AudioSampleRate/100 {
+			t.Errorf("bar %d at %d bpm: its kick sounds %d samples after its line", b, h.BPM, first-at)
+		}
+		at += n
+	}
+}
+
 func TestABarPlaysInTheMeterAndTempoItNames(t *testing.T) {
 	ae, _ := startLoopEngine(t)
 	bass := &PatternDef{Name: "wbass", Steps: 16, Role: "bass", Track: []TrackDef{{Instr: "bass", Event: []StepDef{{Pos: 0, Vel: 1, Dur: 4}, {Pos: 8, Vel: 0.8, Deg: 4, Dur: 4}}}}}

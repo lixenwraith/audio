@@ -329,6 +329,11 @@ that a document now states, and link the document instead.
   user tapped out showed it in one run; the bench and the suite had not.
   Measure a decoder change against the recording's own truth before it
   ships, and keep the test only when the rule stays.
+- **An offline render changes tempo and meter quantized.** It sets them
+  so (`SetBPM(bpm, true)`, `SetMeter(m, true)`): set at once at the
+  bar line, the new step length is held against the sequencer's count of the
+  old bar's last step, and a slower bar starts late by the difference, a
+  delay a faster bar may never absorb. `TestARenderedBarStartsOnItsHead`.
 - **Replay a fitted rule on its dump once implemented.** A decision fitted
   on a candidate dump (`tmp/meter/fit.py`) is replayed on that dump before
   any set is regraded: the first
