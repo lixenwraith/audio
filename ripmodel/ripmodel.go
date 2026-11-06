@@ -54,7 +54,7 @@ func NotesSpec() transformer.Config {
 		Inputs: stackBins + 1, Channels: stackChannels,
 		Outputs: []transformer.Head{heads[2], heads[6], heads[7], heads[8], heads[0], heads[1], heads[3], heads[4], heads[5]},
 		Cells: &transformer.Cells{Bins: stackBins, Reduce: 8, Wide: 16, WideTime: 3, WideFreq: 39, Cell: 32, CellTime: 7, CellFreq: 3,
-			Stride: 3, NearTime: 7, NearFreq: 3, First: audio.RipMinMIDI - stackRootMIDI, Heads: 4, Regions: 16,
+			Stride: 3, Depth: 1, NearTime: 7, NearFreq: 3, First: audio.RipMinMIDI - stackRootMIDI, Read: audio.RipPitches, Heads: 4, Regions: 16,
 			Scalars: []int{stackBins, stackChannels/2*(stackBins+1) + stackBins}, Frame: 64, FrameTime: 5, AgainTime: 9, Dilation: 2},
 	}
 }
