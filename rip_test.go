@@ -660,7 +660,13 @@ func TestLowNotesAreReadByStrikes(t *testing.T) {
 			f.Velocity[at(t, n.midi)] = 0.4
 		}
 	}
-	bass, melody := f.lines(DefaultRipParams())
+	x := make([]float64, frames*RipHop)
+	for i := range x {
+		for _, m := range []float64{36, 40, 47} {
+			x[i] += math.Sin(2 * math.Pi * 440 * math.Pow(2, (m-69)/12) * float64(i) / RipRate)
+		}
+	}
+	bass, melody := f.lines(x, DefaultRipParams())
 	var got []int
 	for _, n := range bass {
 		got = append(got, n.midi)
@@ -670,6 +676,18 @@ func TestLowNotesAreReadByStrikes(t *testing.T) {
 	}
 	if want := []int{40, 47, 36}; !slices.Equal(got, want) || len(melody) != 0 {
 		t.Errorf("bass %v and %d melody notes, want %v and none", got, len(melody), want)
+	}
+}
+
+// TestALowNoteNeedsItsOwnPitch: a low strike stands where its pitch sounds and goes
+// where only the note an octave over it does, whose partials it shares.
+func TestALowNoteNeedsItsOwnPitch(t *testing.T) {
+	x := make([]float64, RipRate)
+	for i := range x {
+		x[i] = math.Sin(2 * math.Pi * 220 * float64(i) / RipRate)
+	}
+	if real, shadow := ownPitch(x, ripNote{midi: 57}, RipFrameSec), ownPitch(x, ripNote{midi: 45}, RipFrameSec); real < ripOwnPitch || shadow >= ripOwnPitch {
+		t.Errorf("its own pitch %.1f dB, its shadow %.1f dB, against a bar of %v", real, shadow, float64(ripOwnPitch))
 	}
 }
 

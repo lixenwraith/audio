@@ -533,8 +533,11 @@ the notes a pedal leaves ringing; a strike starts none when its pitch never
 sounds, when it is a stronger strike's partial in the register, or within
 `StrikeGap` of the pitch's last, and one under `StrikeAgain`, or under a strike a
 tone either side, leaves the pitch's sounding note ringing. The bass line's own
-notes stay only where no strike sounds and for 0.15 s at least (`lines`), as a
-plain bass is struck softly. A front end's drum strength is how sure it is, so a
+notes stay only where no strike sounds, for 0.15 s at least and at 0.8 of the
+register's reference (`lines`), as a plain bass is struck softly. A low note whose
+own pitch sits over 10 dB under its next partials goes (`ownPitch`): a harmonic
+stack hears a shadow a fifth or an octave under a real note, which shares its
+partials and not its fundamental. A front end's drum strength is how sure it is, so a
 drum it never grows sure of stays silent, where a bar set against its own loudest
 would raise its doubts to hits, and one striking under four times a minute is no
 part (`drumHits`). A register's voice is the mean of its notes' genes, one voice
