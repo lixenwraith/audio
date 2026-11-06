@@ -583,7 +583,9 @@ func (ae *AudioEngine) Tuning() float64 { return math.Float64frombits(ae.tuning.
 
 func (ae *AudioEngine) SetMusicVolume(vol float64) { ae.send(audioCmd{op: cmdMusicVol, f1: vol}) }
 
-// SetPattern targets a sequencer slot: 0 rhythm, 1 melody, 2 fill, 3 bass
+// SetPattern targets a sequencer slot: 0 rhythm, 1 melody, 2 fill, 3 bass. A
+// crossfade of 0 plays p under the notes the slot still rings, as a song's bar
+// line does; any other retires them over at least MinCrossfadeSamples.
 func (ae *AudioEngine) SetPattern(slot int, p PatternID, crossfadeSamples int, quantize bool) {
 	ae.send(audioCmd{op: cmdPattern, slot: int8(slot), pattern: p, i1: crossfadeSamples, b: quantize})
 }
@@ -736,8 +738,8 @@ func (ae *AudioEngine) RenderMusic(slots [MusicSlots]PatternID, bpm int, m Meter
 }
 
 // RenderTimeline is RenderMusic over a timeline, the patterns each bar's slots
-// hold, changed at the bar line: what a song is once its bars are matched to a
-// dictionary of patterns.
+// hold, changed at the bar line under the notes still ringing: what a song is
+// once its bars are matched to a dictionary of patterns.
 func (ae *AudioEngine) RenderTimeline(timeline [][MusicSlots]PatternID, bpm int, m Meter, root int, scale ScaleID, prog []int, seed int64) ([]float64, error) {
 	return ae.RenderLines(timeline, bpm, m, root, scale, prog, seed, nil)
 }

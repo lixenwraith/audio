@@ -227,6 +227,12 @@ that a document now states, and link the document instead.
 
 ## Front ends and fidelity
 
+- A corpus and a bench render one pattern a part (`RenderMusic`), so they never
+  change a slot's pattern at a bar line; the cut a changed bar line once made to
+  ringing notes (forty silent gaps in a ripped Für Elise) showed in songs alone.
+  Count a song render's silent runs (5 ms frames under -80 dBFS, four or more,
+  none touching an end) before blaming the model for a gap.
+
 - The rip's front end is a seam: `analysis` and `ripmodel` both fill `RipFrames`,
   and the decoders read nothing else, so a front end is checked by the frames it
   makes and the rip they give, as `ripmodel`'s test does with an untrained model.
