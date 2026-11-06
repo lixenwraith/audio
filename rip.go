@@ -47,11 +47,15 @@ type RipParams struct {
 	Release       float64 `toml:"release"`        // how sure a front end that hears each pitch let go must be before the release ends its note
 }
 
-// ripDrumsPerMinute is the least a drum strikes to be a part of the music, and
-// ripLineNote the seconds a bass line's note lasts to stand without a strike
+// ripDrumsPerMinute is the least a drum strikes to be a part of the music,
+// ripLineNote and ripLineStrength how long and strong a bass line's note is to stand
+// without a strike, and ripOwnPitch the dB a low note's own pitch stands at least
+// against its next partials, under which it is a higher note's shadow
 const (
 	ripDrumsPerMinute = 4
 	ripLineNote       = 0.15
+	ripLineStrength   = 0.8
+	ripOwnPitch       = -10
 )
 
 func DefaultRipParams() RipParams {
@@ -418,7 +422,7 @@ func (rp Ripper) Samples(x []float64, rate int) (*Rip, error) {
 	}
 	hits := f.drumHits(p)
 	root, scale := f.key()
-	bass, melody := f.lines(p)
+	bass, melody := f.lines(x, p)
 	bass, melody = settle(bass, melody)
 	melody = streams(melody, f.Hop, rp.Lead)
 	if t := musicStart(x); t > 0 {
@@ -2009,8 +2013,9 @@ func (f *RipFrames) strikes(lo, hi int, p RipParams) []ripNote {
 
 // lines reads the registers. A front end that hears each pitch struck reads both by
 // strikes, any number at once, the bass line's own notes kept only where no strike
-// sounds and for as long as ripLineNote, as a plain bass's are struck softly.
-func (f *RipFrames) lines(p RipParams) (bass, melody []ripNote) {
+// sounds, as a plain bass's are struck softly, and long and strong enough to be sure.
+// A low note with little sound at its own pitch is a higher note's shadow, and goes.
+func (f *RipFrames) lines(x []float64, p RipParams) (bass, melody []ripNote) {
 	line := f.notes(RipMinMIDI, RipBassReach, p)
 	if f.Strike == nil {
 		return line, f.notes(RipMelodyLow, RipMaxMIDI, p)
@@ -2018,7 +2023,7 @@ func (f *RipFrames) lines(p RipParams) (bass, melody []ripNote) {
 	melody, bass = f.strikes(RipBassTop, RipMaxMIDI, p), f.strikes(RipMinMIDI, RipBassTop, p)
 	struck := slices.Clone(bass)
 	for _, n := range line {
-		if n.midi >= RipBassTop || float64(n.end-n.start)*f.Hop < ripLineNote {
+		if n.midi >= RipBassTop || float64(n.end-n.start)*f.Hop < ripLineNote || n.strength < ripLineStrength {
 			continue
 		}
 		over := 0
@@ -2029,8 +2034,31 @@ func (f *RipFrames) lines(p RipParams) (bass, melody []ripNote) {
 			bass = append(bass, n)
 		}
 	}
+	bass = slices.DeleteFunc(bass, func(n ripNote) bool { return ownPitch(x, n, f.Hop) < ripOwnPitch })
 	slices.SortFunc(bass, func(a, b ripNote) int { return cmp.Or(a.start-b.start, a.midi-b.midi) })
 	return bass, melody
+}
+
+// ownPitch is how far a note's level at its own pitch stands over the stronger of
+// its next two partials, in dB, over the 160 ms after its attack; x at RipRate.
+func ownPitch(x []float64, n ripNote, hop float64) float64 {
+	const win = RipRate * 16 / 100
+	at := int((float64(n.start)*hop + 0.03) * RipRate)
+	if at+win > len(x) {
+		return 0
+	}
+	level := func(hz float64) float64 {
+		var re, im float64
+		for i := range win {
+			w := 0.5 - 0.5*math.Cos(2*math.Pi*float64(i)/win)
+			ph := 2 * math.Pi * hz * float64(i) / RipRate
+			re += w * x[at+i] * math.Cos(ph)
+			im += w * x[at+i] * math.Sin(ph)
+		}
+		return 10 * math.Log10(re*re+im*im+1e-12)
+	}
+	f0 := 440 * math.Pow(2, float64(n.midi-69)/12)
+	return level(f0) - max(level(2*f0), level(3*f0))
 }
 
 // settle gives a note both registers heard, where the bass's reach and the
