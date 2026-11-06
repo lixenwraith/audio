@@ -268,13 +268,17 @@ func sweepBiquadBP(buf floatBuffer, startHz, endHz, q float64) {
 	}
 }
 
+// eqReach is how many samples of an eq's ring either side of a sample are kept:
+// past it the steepest curve, -24 and +30 dB in turn, rings under -80 dB re peak
+const eqReach = 8192
+
 // equalize filters buf through bands' curve with no phase, in one transform of
-// the whole buffer padded to twice its length, so the ring either side of a
-// sample falls in the padding and not on the sound: a one-shot's filter, the
-// curve exact at every bin rather than an FIR's smoothed one
+// the whole buffer padded by its length or eqReach, the shorter, so the ring
+// either side of a sample falls in the padding and not on the sound: a one-shot's
+// filter, the curve exact at every bin rather than an FIR's smoothed one
 func equalize(buf floatBuffer, bands []Band) {
 	n := 2
-	for n < 2*len(buf) {
+	for n < len(buf)+min(len(buf), eqReach) {
 		n <<= 1
 	}
 	re, im := make([]float64, n), make([]float64, n)

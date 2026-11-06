@@ -396,19 +396,33 @@ func (r *Rip) Kit(name string) []*SoundDef {
 	if len(out) == 0 || r.Tone[InstrKick].Levels == 0 {
 		return out
 	}
+	// each drum's track rendered once and mixed at the gain its level moved by,
 	// read twice: a drum's level holds the tails of the others under it; each read
 	// finds the hits' starts again, as an eq moves where a hit's energy rises
+	var tracks [InstrClap][]float64
+	gain := [InstrClap]float64{}
+	for d := range kit {
+		var one [InstrClap]*SoundDef
+		one[d], gain[d] = kit[d], 1
+		tracks[d] = beat(hits, one)
+	}
 	for range 2 {
+		clear(y)
+		for d, track := range tracks {
+			for i, v := range track {
+				y[i] += gain[d] * v
+			}
+		}
 		var lv [InstrClap]RipTone
-		y := beat(hits, kit)
 		drumLevels(aWeight(y, AudioSampleRate), AudioSampleRate, hitStarts(resample(y, AudioSampleRate, RipRate), at), &lv)
 		for d, m := range kit {
 			rule := kitMatch[d]
 			if d == int(InstrKick) || m == plain[d] || r.Tone[d].Levels == 0 || lv[d].Levels == 0 || lv[InstrKick].Levels == 0 {
 				continue
 			}
-			want := min(max(r.Tone[d].Level-r.Tone[InstrKick].Level, rule.lo), rule.hi)
-			louder(m, want-(lv[d].Level-lv[InstrKick].Level))
+			db := min(max(r.Tone[d].Level-r.Tone[InstrKick].Level, rule.lo), rule.hi) - (lv[d].Level - lv[InstrKick].Level)
+			louder(m, db)
+			gain[d] *= math.Pow(10, db/20)
 		}
 	}
 	var loud float64
