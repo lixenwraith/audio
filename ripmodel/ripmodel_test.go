@@ -3,6 +3,7 @@ package ripmodel
 import (
 	"bytes"
 	"math"
+	"slices"
 	"testing"
 
 	"github.com/lixenwraith/audio"
@@ -13,7 +14,8 @@ import (
 // and the decoders: a model of Spec's shape, however weighted, yields frames on
 // the rip's grid with every field the rip reads, and the rip runs on them; one
 // from before the strike, release or velocity head loads without them, one of
-// two channels hears too, and one of three is refused.
+// two channels hears too, one of three is refused, and a notes model beside
+// it gives the notes, the model the rest.
 func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 	cfg := Spec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window = 16, 2, 1, 32, 8 // a small one for the test's sake
@@ -25,7 +27,7 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 	if err := m.Save(&b); err != nil {
 		t.Fatal(err)
 	}
-	fe, err := Load(&b)
+	fe, err := Load(&b, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +53,7 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 		older := cfg
 		older.Outputs = older.Outputs[:len(older.Outputs)-lack]
 		o, _ := transformer.NewRandom(older, 1)
-		ofe, err := New(o)
+		ofe, err := New(o, nil)
 		if err != nil {
 			t.Errorf("a model without its last %d heads: %v", lack, err)
 			continue
@@ -64,7 +66,7 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 	planes := cfg
 	planes.Channels = 2
 	p, _ := transformer.NewRandom(planes, 1)
-	pfe, err := New(p)
+	pfe, err := New(p, nil)
 	if err != nil {
 		t.Fatalf("a model of two channels: %v", err)
 	}
@@ -75,14 +77,95 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 	}
 	planes.Channels = 3
 	p, _ = transformer.NewRandom(planes, 1)
-	if _, err := New(p); err == nil {
+	if _, err := New(p, nil); err == nil {
 		t.Error("a model of three channels passed")
 	}
 	wrong := cfg
 	wrong.Outputs = wrong.Outputs[:3]
 	w, _ := transformer.NewRandom(wrong, 1)
-	if _, err := New(w); err == nil {
+	if _, err := New(w, nil); err == nil {
 		t.Error("a model without the voice heads passed")
+	}
+
+	notes := NotesSpec()
+	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
+	nm, _ := transformer.NewRandom(notes, 2)
+	var nb bytes.Buffer
+	nm.Save(&nb)
+	m.Save(&b)
+	nfe, err := Load(&b, &nb)
+	if err != nil {
+		t.Fatalf("a model and a notes model: %v", err)
+	}
+	nf, err := nfe.Hear(x, audio.AudioSampleRate, audio.DefaultRipParams())
+	if err != nil || len(nf.Flux) != n {
+		t.Fatalf("a model and a notes model heard %d frames of %d: %v", len(nf.Flux), n, err)
+	}
+	heard := nm.Forward(stacked(features(audio.MelFrames(x, audio.AudioSampleRate), true)))
+	for i, v := range nm.Slice(heard[n/2], HeadStrike) {
+		if s := float32(sigmoid(v)); nf.Strike[n/2*audio.RipPitches+i] != s || nf.Salience[n/2*audio.RipPitches+i] == f.Salience[n/2*audio.RipPitches+i] {
+			t.Fatalf("pitch %d struck at %g, the notes model says %g", i, nf.Strike[n/2*audio.RipPitches+i], s)
+		}
+	}
+	if !slices.Equal(nf.Voice, f.Voice) || !slices.Equal(nf.Onset[0], f.Onset[0]) {
+		t.Error("the notes model moved the voice or the kicks")
+	}
+	older := cfg
+	older.Outputs = older.Outputs[:len(older.Outputs)-optionalHeads]
+	o, _ := transformer.NewRandom(older, 1)
+	if ofe, err := New(o, nm); err != nil {
+		t.Errorf("a model without the strike heads beside a notes model: %v", err)
+	} else if of, err := ofe.Hear(x, audio.AudioSampleRate, audio.DefaultRipParams()); err != nil || of.Strike == nil || of.Velocity == nil {
+		t.Errorf("a model without the strike heads beside a notes model heard no strikes: %v", err)
+	}
+	if _, err := New(m, m); err == nil {
+		t.Error("a notes model that reads no harmonic stack passed")
+	}
+	notes.Outputs = slices.DeleteFunc(notes.Outputs, func(h transformer.Head) bool { return h.Name == HeadVoicing })
+	nv, _ := transformer.NewRandom(notes, 2)
+	if _, err := New(m, nv); err == nil {
+		t.Error("a notes model without voicing passed")
+	}
+}
+
+// TestTheStackLaysAPitchsHarmonicsOnItsBin: a plane reading each band's log
+// frequency, which the interpolation keeps exact, reads in the channel of
+// harmonic h at a pitch's bin that pitch's frequency 2^(shift/36) times, each
+// channel ending in its plane's scalar and holding zero past the bands.
+func TestTheStackLaysAPitchsHarmonicsOnItsBin(t *testing.T) {
+	mel := func(hz float64) float64 { return 2595 * math.Log10(1+hz/700) }
+	hz := func(m float64) float64 { return 700 * (math.Pow(10, m/2595) - 1) }
+	n := audio.RipMelBands
+	frame := make([]float32, 2*(n+1))
+	for b := range n {
+		c := math.Log(hz(mel(30) + (mel(audio.RipRate/2)-mel(30))*float64(b+1)/float64(n+1)))
+		frame[b], frame[n+1+b] = float32(c), float32(2*c)
+	}
+	frame[n], frame[2*n+1] = 0.25, 0.5
+	got := stacked([][]float32{frame})[0]
+	lo, hi := math.Log(hz(mel(30)+(mel(audio.RipRate/2)-mel(30))/float64(n+1))), math.Log(hz(mel(30)+(mel(audio.RipRate/2)-mel(30))*float64(n)/float64(n+1)))
+	var reached int
+	for c := range stackChannels {
+		plane, shift := float64(1+c/8), stackShifts[c%8]
+		row := got[c*(stackBins+1):][:stackBins+1]
+		if row[stackBins] != frame[n+c/8*(n+1)] {
+			t.Fatalf("channel %d ends in %g", c, row[stackBins])
+		}
+		for k, v := range row[:stackBins] {
+			f := math.Log(440) + math.Ln2*(float64(stackRootMIDI)+float64(k+shift)/3-69)/12
+			want := plane * f
+			if f < lo || f >= hi {
+				want = 0
+			} else {
+				reached++
+			}
+			if math.Abs(float64(v)-want) > 1e-5*math.Abs(want) {
+				t.Fatalf("channel %d bin %d reads %g, want %g", c, k, v, want)
+			}
+		}
+	}
+	if reached < stackChannels*stackBins*3/4 {
+		t.Errorf("the bands reach %d of %d bins", reached, stackChannels*stackBins)
 	}
 }
 

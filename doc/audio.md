@@ -536,6 +536,16 @@ tone either side, leaves the pitch's sounding note ringing. `ripmodel.Load` read
 a weight file into a front end; rip-train, stapes' trainer, writes one from loops
 the engine renders.
 
+A second file may give the notes: a notes model (`ripmodel.NotesSpec`, the
+trainer's PitchNet), a transformer module cell net of convolutions alone with
+the same weights at every pitch, gives the pitch, voicing, strike, release and
+velocity heads, and the model the onsets, drums, wave and voice. It reads the
+harmonic stack (`stacked`): both planes interpolated onto a log-frequency axis
+of three bins a semitone from MIDI 27, each a channel for each harmonic of a half
+and one to seven, shifted so a pitch's harmonics lie at its own bin, 16 channels
+of 213 bins, each ending in its plane's scalar. Without it the model gives every
+head, as before.
+
 The model's input (`features`) is each band in dB less the frame's mean, over
 80, and the mean, so the bands are level-free and loudness is one input. A model
 of two channels (`transformer.Config.Channels`) reads a second plane: each

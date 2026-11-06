@@ -29,7 +29,8 @@ the harmony resolves at play time.
   instrument, pattern, scale and tier, with no mixer, backend or synthesis
   dependency, for builds that leave the engine out.
 - `audio/ripmodel` is the rip's learned front end, a transformer
-  (`github.com/lixenwraith/transformer`) over mel frames.
+  (`github.com/lixenwraith/transformer`) over mel frames, with a notes model, a
+  cell net over their harmonic stack, beside it when one is given.
 - `audio/bank` is the set vif and stapes ship, embedded: the sound effects, the
   drum kit, the tonal voices and the music patterns. Any other embedder may
   ignore it and hand the engine its own; the high-quality tonal voices are the
