@@ -88,14 +88,21 @@ type offlineDrum struct {
 }
 
 // offlineTakes is a drum's takes for an offline render, rendered again only when
-// its definition or shape changed: a corpus renders thousands of loops on one kit
+// neither of the last two definitions and shapes it played is asked: a corpus
+// renders thousands of loops on one kit, and a song's render on its matched kit
+// swaps with the transport's
 func (ae *AudioEngine) offlineTakes(i InstrumentType, d *SoundDef, shape SoundShape) drumTakes {
 	ae.kitMu.Lock()
 	defer ae.kitMu.Unlock()
-	if o := &ae.offline[i]; o.d != d || o.shape != shape {
-		*o = offlineDrum{d: d, shape: shape, takes: renderTakes(d, shape, nil)}
+	o := &ae.offline[i]
+	switch {
+	case o[0].d == d && o[0].shape == shape:
+	case o[1].d == d && o[1].shape == shape:
+		o[0], o[1] = o[1], o[0]
+	default:
+		o[0], o[1] = offlineDrum{d: d, shape: shape, takes: renderTakes(d, shape, nil)}, o[0]
 	}
-	return ae.offline[i].takes
+	return o[0].takes
 }
 
 // rebind points the kit at a re-rendered set. Mix-goroutine confined. Voices

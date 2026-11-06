@@ -546,8 +546,8 @@ func TestDefineSoundRebindsDrumKit(t *testing.T) {
 }
 
 // TestSetKitBindsADrumToASound: a drum plays the sound a kit names, offline and
-// in the mixer, until a nil kit gives it its own back; a kit naming no drum or no
-// sound is refused.
+// in the mixer, until a nil kit gives it its own back, the kit bound before
+// rendered no more; a kit naming no drum or no sound is refused.
 func TestSetKitBindsADrumToASound(t *testing.T) {
 	ae := startNullEngine(t)
 	thud := &SoundDef{Name: "thud", Duration: 0.3, Layer: []Layer{{Source: Source{Kind: "noise"},
@@ -572,6 +572,7 @@ func TestSetKitBindsADrumToASound(t *testing.T) {
 	if slices.Equal(render(), own) {
 		t.Error("the render kept the kick's own sound")
 	}
+	thudTake := &ae.drumSet(ae.config.SoundShapes).takes[InstrKick].layers[0][0][0]
 	if ae.SetKit(map[string]string{"bass": "thud"}) == nil || ae.SetKit(map[string]string{"kick": "none"}) == nil {
 		t.Error("a kit naming no drum or no sound was taken")
 	}
@@ -580,6 +581,9 @@ func TestSetKitBindsADrumToASound(t *testing.T) {
 		t.Error("a nil kit did not give the kick its own sound back")
 	}
 	bind(map[string]string{"kick": "thud"})
+	if &ae.drumSet(ae.config.SoundShapes).takes[InstrKick].layers[0][0][0] != thudTake {
+		t.Error("the kit bound again rendered its takes again")
+	}
 	time.Sleep(3 * AudioBufferDuration)
 	ae.Stop()
 	if !ae.mixer.Wait(testStopWait) {

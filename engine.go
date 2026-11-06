@@ -86,8 +86,8 @@ type AudioEngine struct {
 	musicWAV   *wavSink // RecordMusic's file, closed by Stop
 
 	kitMu   sync.Mutex
-	offline [InstrumentCount]offlineDrum // the drums RenderLines last played, by kitMu
-	drums   [InstrClap + 1]string        // the sound each drum plays, SetKit's; "" its own, by kitMu
+	offline [InstrumentCount][2]offlineDrum // the drums RenderLines last played, the latest first, by kitMu
+	drums   [InstrClap + 1]string           // the sound each drum plays, SetKit's; "" its own, by kitMu
 
 	running    atomic.Bool
 	paused     atomic.Bool
