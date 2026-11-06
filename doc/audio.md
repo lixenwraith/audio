@@ -525,14 +525,22 @@ other, a transformer over the log-mel frames `MelFrames` makes, whose heads say
 per frame what struck, what sounds, which pitch is struck or let go and how hard
 (`RipFrames.Strike`, `Release`, `Velocity`), and the wave and voice genes
 (`VoiceDef.Genes`) the note is played with, so a rip through it also names the
-voices its registers were played with (`Rip.Voices`). From strikes the melody
-register's notes start where a pitch is struck, as hard as it was, and last while
+voices its registers were played with (`Rip.Voices`). From strikes both registers'
+notes start where a pitch is struck, as hard as it was, and last while
 it sounds or until it is let go (`Release`, the pitch ringing on as far as a new
 strike goes), any number at once, in place of the two-line path, which stays on
 the notes a pedal leaves ringing; a strike starts none when its pitch never
 sounds, when it is a stronger strike's partial in the register, or within
 `StrikeGap` of the pitch's last, and one under `StrikeAgain`, or under a strike a
-tone either side, leaves the pitch's sounding note ringing. `ripmodel.Load` reads
+tone either side, leaves the pitch's sounding note ringing. The bass line's own
+notes stay only where no strike sounds and for 0.15 s at least (`lines`), as a
+plain bass is struck softly. A front end's drum strength is how sure it is, so a
+drum it never grows sure of stays silent, where a bar set against its own loudest
+would raise its doubts to hits, and one striking under four times a minute is no
+part (`drumHits`). A register's voice is the mean of its notes' genes, one voice
+over the melody's two lines, with one oscillator, as that mean of two would beat,
+and a fade that keeps the line's long notes within 12 dB to their end (`lasting`).
+`ripmodel.Load` reads
 a weight file into a front end; rip-train, stapes' trainer, writes one from loops
 the engine renders.
 
