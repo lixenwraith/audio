@@ -708,6 +708,27 @@ func TestARipsVoiceLastsItsLongNotes(t *testing.T) {
 	}
 }
 
+// TestMatchNotesCountsANoteOnlyNearItsPlace: under a tempo that bends, every
+// note in its place matches, and a note of the right pitch half a second off
+// does not, where pitches in order alone would take it.
+func TestMatchNotesCountsANoteOnlyNearItsPlace(t *testing.T) {
+	var a, b []RipNote
+	at := 0.0
+	for i := range 60 {
+		m := 60 + i%7
+		b = append(b, RipNote{Start: 0.25 * float64(i), End: 0.25*float64(i) + 0.2, MIDI: m})
+		a = append(a, RipNote{Start: at, End: at + 0.2, MIDI: m})
+		at += 0.25 + 0.05*math.Sin(float64(i)/6) // up to a fifth either way, some 40 notes a cycle
+	}
+	const off = 30
+	a[off].Start += 0.5
+	slices.SortFunc(a, func(x, y RipNote) int { return cmpFloat(x.Start, y.Start) })
+	ag := MatchNotes(a, b)
+	if l := ag.Lines[0]; ag.Shift != 0 || l.Matched != 59 || len(l.OnlyA) != 1 || len(l.OnlyB) != 1 || l.OnlyB[0].Start != b[off].Start {
+		t.Errorf("shift %d, %d matched, only a %v, only b %v", ag.Shift, l.Matched, l.OnlyA, l.OnlyB)
+	}
+}
+
 // TestMatchNotesAlignsTwoTranscripts: a transcript against itself transposed,
 // stretched, one note dropped and one added matches every note but those,
 // finds the transposition and the time map, and parses back from the text

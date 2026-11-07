@@ -11,23 +11,23 @@ import (
 )
 
 // Agreement is how two transcripts of one piece agree: each line's notes of one
-// aligned to the other's in order, the same pitch under one transposition, so a
-// tempo that drifts or a phrase played freer does not break the match, the
-// melody register also as a whole in case the two part its lines differently,
-// and the time map the matched notes fit, a's seconds as a line of b's.
+// matched to the other's of the same pitch, under one transposition, where a
+// time map following the piece's tempo places them, so a tempo that drifts or a
+// phrase played freer does not break the match and a note far from its place
+// does not count, the melody register also as a whole in case the two part its
+// lines differently, and the map as a line, a's seconds of b's.
 type Agreement struct {
 	Shift           int // semitones added to b's pitches to match a's
 	Lines           [3]LineAgreement
 	Register        LineAgreement // the melody register, both lines as one
 	Stretch, Offset float64       // a's time of a matched note ≈ Stretch*b's + Offset
-	// paired are the seconds of b and of a of each note the register matched, in
-	// order, the map At follows
+	// paired are seconds of b and where each falls on a, in order, the map At follows
 	paired [][2]float64
 }
 
-// At places a second of b on a: between notes the register matched, on the
-// line through the two either side, so a tempo b's player bends is followed;
-// past them, and with fewer than two, on Stretch from the nearest
+// At places a second of b on a: between the map's points on the line through
+// the two either side, so a tempo b's player bends is followed; past them, and
+// with fewer than two, on Stretch from the nearest
 func (ag Agreement) At(s float64) float64 {
 	p := ag.paired
 	if len(p) < 2 {
@@ -73,8 +73,8 @@ func lineOf(n RipNote) int {
 
 // MatchNotes aligns two transcripts, trying every transposition within an
 // octave and keeping the one that matches most notes, nearer to none when two
-// tie. Within a line the alignment is the longest common subsequence of the
-// pitches in time order.
+// tie. The longest common subsequence of the pitches in time order finds the time
+// map, and a note then matches one of its pitch within matchWindow of its place.
 func MatchNotes(a, b []RipNote) Agreement {
 	a, b = slices.Clone(a), slices.Clone(b)
 	byStart := func(x, y RipNote) int { return cmpFloat(x.Start, y.Start) }
@@ -105,9 +105,7 @@ func align(a, b []RipNote, shift int) Agreement {
 	if slices.ContainsFunc(b, func(n RipNote) bool { return n.MIDI < 0 }) {
 		b = placed(a, b)
 	}
-	var xs, ys []float64
-	part := func(keep func(RipNote) bool) LineAgreement {
-		var la, lb []RipNote
+	split := func(keep func(RipNote) bool) (la, lb []RipNote) {
 		for _, n := range a {
 			if keep(n) {
 				la = append(la, n)
@@ -118,13 +116,51 @@ func align(a, b []RipNote, shift int) Agreement {
 				lb = append(lb, n)
 			}
 		}
-		var pairs [][2]int
-		rhythm := slices.ContainsFunc(lb, func(n RipNote) bool { return n.MIDI < 0 })
-		if rhythm {
-			pairs = onsets(la, lb)
-		} else {
-			pairs = subsequence(la, lb, shift)
+		return la, lb
+	}
+	isRhythm := func(lb []RipNote) bool { return slices.ContainsFunc(lb, func(n RipNote) bool { return n.MIDI < 0 }) }
+	ordered := func(la, lb []RipNote) [][2]int {
+		if isRhythm(lb) {
+			return onsets(la, lb)
 		}
+		return subsequence(la, lb, shift)
+	}
+	inPlace := func(la, lb []RipNote) [][2]int {
+		if isRhythm(lb) {
+			return onsets(la, lb)
+		}
+		return nearPlace(la, lb, shift, ag.At)
+	}
+	inLine := func(line int) func(RipNote) bool { return func(n RipNote) bool { return lineOf(n) == line } }
+	register := func(n RipNote) bool { return !n.Bass }
+	seconds := func(keep func(RipNote) bool, pairs func(la, lb []RipNote) [][2]int) [][2]float64 {
+		la, lb := split(keep)
+		var p [][2]float64
+		for _, q := range pairs(la, lb) {
+			p = append(p, [2]float64{lb[q[1]].Start, la[q[0]].Start})
+		}
+		return p
+	}
+	var xs, ys []float64
+	for line := range ag.Lines {
+		for _, q := range seconds(inLine(line), ordered) {
+			xs, ys = append(xs, q[0]), append(ys, q[1])
+		}
+	}
+	ag.Stretch, ag.Offset = fitLine(xs, ys)
+	// the register leads, as a low note's reported start is often its partial's;
+	// the second round's map has lost the first's pairs in the wrong place
+	ag.paired = smoothed(seconds(register, ordered))
+	if len(ag.paired) < 2 {
+		ag.paired = smoothed(seconds(inLine(2), ordered))
+	}
+	if p := seconds(register, inPlace); len(p) >= 2 {
+		ag.paired = smoothed(p)
+	}
+	part := func(keep func(RipNote) bool) LineAgreement {
+		la, lb := split(keep)
+		pairs := inPlace(la, lb)
+		rhythm := isRhythm(lb)
 		l := LineAgreement{A: len(la), B: len(lb), Matched: len(pairs), Rhythm: rhythm}
 		if rhythm {
 			l.Cut, l.Spanning = spans(la, lb)
@@ -133,7 +169,6 @@ func align(a, b []RipNote, shift int) Agreement {
 		inA, inB := make([]bool, len(la)), make([]bool, len(lb))
 		for _, p := range pairs {
 			inA[p[0]], inB[p[1]] = true, true
-			xs, ys = append(xs, lb[p[1]].Start), append(ys, la[p[0]].Start)
 		}
 		for i, n := range la {
 			if !inA[i] {
@@ -148,15 +183,76 @@ func align(a, b []RipNote, shift int) Agreement {
 		return l
 	}
 	for line := range ag.Lines {
-		ag.Lines[line] = part(func(n RipNote) bool { return lineOf(n) == line })
+		ag.Lines[line] = part(inLine(line))
 	}
-	ag.Stretch, ag.Offset = fitLine(xs, ys)
-	n := len(xs)
-	ag.Register = part(func(n RipNote) bool { return !n.Bass })
-	for k := n; k < len(xs); k++ {
-		ag.paired = append(ag.paired, [2]float64{xs[k], ys[k]})
-	}
+	ag.Register = part(register)
 	return ag
+}
+
+// Where a match may fall, in seconds: within matchWindow of the note's place on
+// the map, whose points read the offsets of the matches within mapSpan of them,
+// mapMatches of them at least, as a single false match must not drag its neighbours
+const (
+	matchWindow = 0.1
+	mapSpan     = 0.7
+	mapMatches  = 5
+)
+
+// smoothed is the map through pairs of b's and a's seconds, in order: each second
+// of b on the median of the offsets around it
+func smoothed(p [][2]float64) [][2]float64 {
+	if len(p) == 0 {
+		return nil
+	}
+	out := make([][2]float64, len(p))
+	near := make([]float64, 0, len(p))
+	lo, hi := 0, 0
+	for i, q := range p {
+		for p[lo][0] < q[0]-mapSpan {
+			lo++
+		}
+		for hi < len(p) && p[hi][0] <= q[0]+mapSpan {
+			hi++
+		}
+		from, to := lo, hi
+		for to-from < min(mapMatches, len(p)) {
+			if to == len(p) || from > 0 && q[0]-p[from-1][0] < p[to][0]-q[0] {
+				from--
+			} else {
+				to++
+			}
+		}
+		near = near[:0]
+		for _, r := range p[from:to] {
+			near = append(near, r[1]-r[0])
+		}
+		slices.Sort(near)
+		out[i] = [2]float64{q[0], q[0] + near[len(near)/2]}
+	}
+	return out
+}
+
+// nearPlace pairs each note of b, in time order, with the nearest note of a not
+// yet taken, of its pitch and within matchWindow of where at places it, as index
+// pairs in b's order; a is in time order
+func nearPlace(a, b []RipNote, shift int, at func(float64) float64) [][2]int {
+	taken := make([]bool, len(a))
+	var pairs [][2]int
+	for j, n := range b {
+		place := at(n.Start)
+		i, _ := slices.BinarySearchFunc(a, place-matchWindow, func(x RipNote, t float64) int { return cmpFloat(x.Start, t) })
+		best, away := -1, matchWindow
+		for ; i < len(a) && a[i].Start <= place+matchWindow; i++ {
+			if d := math.Abs(a[i].Start - place); !taken[i] && a[i].MIDI == n.MIDI+shift && d <= away {
+				best, away = i, d
+			}
+		}
+		if best >= 0 {
+			taken[best] = true
+			pairs = append(pairs, [2]int{best, j})
+		}
+	}
+	return pairs
 }
 
 // subsequence is the longest common subsequence of two lines' pitches, b's
