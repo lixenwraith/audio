@@ -86,7 +86,16 @@ ends on a sheet of the study alone. The scorer's truth map snaps each truth
 note to the reported note it matched, so a partial shadow at a real note's
 pitch pulls the map by 100 ms and the restrike labels with it; the stage was
 calibrated on maps by a local line over the matched notes' offsets instead
-(`tmp/explain/py/smoothmap.py`), which the scorer itself should write.
+(`tmp/explain/py/smoothmap.py`), which the scorer itself should write. A
+note struck softly under its octave's ring (the E3 at 8.52 s of the clean
+take, Sheet 12's miss) is a candidate whose fit sees a 2 dB rise; its memory
+reads its new sound only when a partial another pitch rang on from before
+is predicted through rather than left out, which costs the restrike kind
+across the four sets (same-pitch extras gone 11 of 24 against 15 on the
+clean take), and the candidate score refuses it either way, the level 19 dB
+under the reference outweighing it; candidates under a ring with new sound,
+a sure pitch head and a sure strike are right in only half of the clean
+take's cases and a tenth of the Pixel take's, so no rule admits them yet.
 
 ## Meters
 

@@ -333,7 +333,12 @@ that a document now states, and link the document instead.
   share (AUC .5 to .6); the fundamental alone separates soft restrikes at .65.
 - Sheet 12's miss at 8.48 s of the clean take is a soft E3 under its octave's
   ringing second partial: the fit saw a 2 dB rise and an unexplained
-  fundamental of .19, the memory a step of .83.
+  fundamental of .19, the memory a step of .83 in the prototype. In the stage
+  a partial another pitch's partial sits on is left out of the memory, so the
+  note reads as all new; predicting such a partial through when its note rang
+  from before reads the E3's step (.72) but the candidate score still refuses
+  it at .16, and the memory's wobble under other pitches' rings at the higher
+  partials costs the restrike kind, so the exclusion stays.
 
 ## Decoders
 
