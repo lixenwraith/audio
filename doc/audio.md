@@ -512,8 +512,10 @@ continue is not the bass's, and a note both registers hear goes to the line it
 continues, the one whose nearest other note is nearer in pitch, so a bass line
 that climbs over E3 is not cut and a melody that dips keeps its note.
 
-Two transcripts of one piece are compared by `MatchNotes`, each line's notes
-aligned in order under the transposition that matches most, and a transcript
+Two transcripts of one piece are compared by `MatchNotes`: the pitches in order,
+under the transposition that matches most, find a time map, a local median of the
+offsets that follows a tempo, and each line's notes then match one of their pitch
+within 0.1 s of their place, so a note far from its place does not count. A transcript
 against notes given as text a listener corrects by hand (`ParseTranscript`: `at
 N bpm`, then a note a line), or as a rhythm tapped out without pitches
 (`unit eighth`, `start 0.34s`, `melody (1-2-3---4-56---)x3 ...`), matched by when
