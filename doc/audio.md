@@ -575,7 +575,9 @@ voices its registers were played with (`Rip.Voices`). From strikes both register
 notes start where a pitch is struck, as hard as it was, and last while
 it sounds or until it is let go (`Release`, the pitch ringing on as far as a new
 strike goes), any number at once, in place of the two-line path, which stays on
-the notes a pedal leaves ringing; a strike starts none when its pitch never
+the notes a pedal leaves ringing; a low note's strike must clear the surer
+`StrikeLow`, as every attack rings a body's or a room's low mode (a guitar's at
+about 104 Hz, whatever the note); a strike starts none when its pitch never
 sounds, when it is a stronger strike's partial in the register, or within
 `StrikeGap` of the pitch's last, and one under `StrikeAgain`, or under a strike a
 tone either side, leaves the pitch's sounding note ringing. The bass line's own
