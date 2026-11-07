@@ -11,6 +11,8 @@ in a definition are entries of their own. Links point to the section of the
 
 ## A
 
+**accounting** (also: `account`, `accNote`, `accFit`, `accScore`, candidate, held to the recording) — The **rip**'s check of its notes against the sound: each reported note's harmonics read off the frames around its start, one template a pitch and one activation a note fitted to them all with a floor, and a logistic score over what the fit leaves the note (its own share, its unexplained fundamental and odd harmonics, their rise, the fit's loss without it, its level) and the heads' sureness; a note under the bar goes, two notes of one pitch at one start merge, and a candidate, a strike over the bar the decoder dropped, comes back where the kept notes leave its sound unexplained. [Audio §9](audio.md#9-ripping-a-recording) · `audio` account.go
+
 **accidental** (also: `acc`, `Step.Acc`, `StepPitch`, `PitchStep`) — A pattern step's semitones off its scale degree, at most two either way, so a note outside the key is written exactly and still resolves through the harmony and follows a chord: the **rip** writes one for a note off the key it heard. [Audio §7](audio.md#7-music-sequencer) · [Audio §9](audio.md#9-ripping-a-recording) · `audio` `Step`, `StepDef`, harmony.go
 
 **admission** (also: admit) — The mixer admits an sfx under its caps, two per sound and 12 in all, stealing a voice when full. [Audio §5](audio.md#5-sounds-and-sound-effects) · `audio` `Mixer`

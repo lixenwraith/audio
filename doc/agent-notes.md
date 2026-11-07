@@ -287,6 +287,36 @@ that a document now states, and link the document instead.
   reads a tuning offset as timbre. Render, play and fit at the recording's
   tuning (`SongDef.Tuning`, `SetTuning`, `RenderNoteAt`); the rip reads it.
 
+## The accounting
+
+- `lines` reports a bass note twice when the strike's short note and the bass
+  path's long note of one pitch share a start, as the path note overlaps the
+  struck one by under a quarter: 23 of the clean Für Elise take's 41 low
+  "same pitch again" extras were such pairs, which `accDedup` merges.
+- A truth mapped onto a take through `Agreement.At` sits about 100 ms off in
+  places (the repeated A2 bass of the B section at 105 s on the clean take): a
+  note counted missing there is often reported 100-110 ms away, so the bass
+  F1s of the takes undercount, and a change there is read on the renders.
+- Of the 240 notes the clean take misses, 120 have a strike over 0.7 at the
+  pitch within 100 ms: the decoder's rules after the bar drop them, a ringing
+  pitch struck under `StrikeAgain` above all (the B section's repeated A2s at
+  0.7 to 0.9), then `sounds`, the partial rule and `ownPitch`. Candidates
+  judged together with the reported notes let the strike head's partials of a
+  bass note (an octave, a twelfth and two octaves up, at the same start) split
+  its sound and the real note dropped; judged one by one against the notes
+  kept, they are precise. A window twice the rip's for notes under E3 changed
+  no number.
+- `RipFrames.register` sorts the whole recording's salience peaks for one
+  reference: called per note it took two thirds of the stage's time.
+- The scores were calibrated on a dump of each note's `accInput` beside its
+  odds, written by a scratch test in the package fed the notes model's saved
+  heads (`tmp/explain/audio/account_dump_test.go`, 318 floats a frame as
+  `tmp/round30/fa.py` reads them) over the clean and Pixel takes and the
+  acoustic-keyboard and distorted-guitar renders of Für Elise, then
+  `tmp/explain/py/cal.py`, a logistic fit by Newton's method with a unit L2
+  penalty, reported notes and candidates apart; the weights are `accReported`
+  and `accCandidate`.
+
 ## Decoders
 
 - **Fix the cut, not the labels.** A stream assignment over the notes two

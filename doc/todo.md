@@ -55,6 +55,24 @@ a matched drum's eq moves such a band by chance (the stand-ins of
 matched, as a rip hears none. The smallest close: leave a band the drum does not
 fill at the eq's neighbouring value, once a recording shows it audible.
 
+## The rip's notes
+
+### Hold more of the rip to the recording
+
+- Priority: P2
+- Affected files: `account.go`, `rip.go`
+
+The accounting ([Audio §9](audio.md#9-ripping-a-recording)) judges each note
+by its onset alone. What is left: a note's velocity and end from its fitted
+activation, against the half-second level the velocity head is moved by and
+the heads' release, which a listening sheet decides; on a clean piano half the
+partials reported over a chord still pass, as the template of the note under
+them is learned from frames the partial shares; a difference tone under
+distortion has a fundamental of its own, which no additive fit can rule out;
+and `ownPitch` and the decoder's partial rule are judged again by the fit, so
+either may go once a run without them holds the four graded sets. The smallest
+close: the velocity from the fit on a sheet beside `dynamics`.
+
 ## Meters
 
 ### Read more meters
