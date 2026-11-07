@@ -582,7 +582,10 @@ sounds, when it is a stronger strike's partial in the register, or within
 `StrikeGap` of the pitch's last, and one under `StrikeAgain`, or under a strike a
 tone either side, leaves the pitch's sounding note ringing. The bass line's own
 notes stay only where no strike sounds, for 0.15 s at least and at 0.8 of the
-register's reference (`lines`), as a plain bass is struck softly. A low note whose
+register's reference (`lines`), as a plain bass is struck softly. A note's velocity
+is the head's moved by the loudness of the second around it against the recording's
+median, up to 12 dB (`dynamics`), as the heads hear each frame over its own level
+and so a soft passage's notes as hard as a loud one's. A low note whose
 own pitch sits over 10 dB under its next partials goes (`ownPitch`): a harmonic
 stack hears a shadow a fifth or an octave under a real note, which shares its
 partials and not its fundamental. The registers' notes are then held to the
