@@ -592,7 +592,15 @@ semitones where a pitch's notes are few. What the fit says of a note over its
 first eight frames, the share of its points that are its own sound, what of
 its fundamental and of its odd harmonics the others leave unexplained, the
 rise of the sound at its harmonics over the frames before, its share over its
-whole span and its level against the loudest notes, is
+whole span and its level against the loudest notes, and the memory a listener
+keeps through a louder note (`memStep`): the sound at each of its first six
+partials no other pitch's partial sits on, read as a complex amplitude on the
+eight frames before the attack's smear and the eight after it with the other
+reported pitches' partials within the window's lobe fitted out of it, a line
+through each side in level and in phase, and the step between the lines at
+the attack in the sound before, so a pitch struck again under its own ring
+reads a step as large as the new sound in whatever phase it adds, and a ring
+that only sounds on reads none, is
 weighed with the heads' sureness in a logistic score set on graded recordings
 (Für Elise clean and through a phone, a keyboard and a distorted guitar), and a
 note under the bar goes: a pitch struck again that its ring explains, a partial
@@ -605,8 +613,9 @@ line's path can both report a note. Then every strike over the bar the decoder d
 strike's partial, a pitch it heard not sounding or a ringing pitch struck under
 `StrikeAgain`, is judged the same way against the notes kept, with an
 activation of its own alone, and comes back where its sound is its own, unless
-its pitch still sounds, which is the decoder's `StrikeAgain` to judge, as the
-fit cannot tell a held note's swell from a strike; the decoder's rules stay,
+its pitch still sounds, which is the decoder's `StrikeAgain` to judge, as neither
+the fit nor the memory tells a drone's pulse from a soft restrike, and
+candidates admitted on one cut it; the decoder's rules stay,
 since they sort the strikes into two populations the score weighs apart, and
 strikes judged all together let a bass note's partials take its sound. A front end's drum strength is how sure it is, so a
 drum it never grows sure of stays silent, where a bar set against its own loudest

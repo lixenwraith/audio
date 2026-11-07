@@ -72,14 +72,21 @@ distortion has a fundamental of its own, which no additive fit can rule out;
 and the decoder's partial rule is judged again by the fit, so it may go once
 a run without it holds the graded sets (`ownPitch` stays: without it the
 register's F1 holds within .005 on Für Elise's renders and takes while
-E2-D#3 loses .03 to .06 on five of the seven renders). The smallest close: the
-velocity from the fit on a sheet beside `dynamics`; and the memory a listener
-keeps through a louder note: a note's partials tracked by phase through a
-cover and re-attached where they continue after it, which the rip's 93 ms
-window cannot read (the phase jump at a restruck pitch's fundamental tells a
-restrike from a ring at 0.65 on the clean take and 0.43 on the keyboard
-render, other notes' attacks moving it as much), so it wants a partial tracker
-with the covering note's partials taken out.
+E2-D#3 loses .03 to .06 on five of the seven renders). The memory through a
+louder note reads a note's start; it does not yet follow a note past its end:
+on the clean take two fifths of the kept notes end while the pitch head still
+hears the pitch, but the right ones end at or after the score's (the hold is
+the pedal's ring), and on the study, where the held lines are, the sound after
+an end decays as the piano's does, so nothing yet tells a sustained line cut by
+the release head from a ring, and an extension would lengthen piano notes past
+the score. A candidate on a pitch still sounding stays the decoder's: judged
+with the memory, the study's C3 drone was cut in half by its pulse. The
+smallest close: the velocity from the fit on a sheet beside `dynamics`; the
+ends on a sheet of the study alone. The scorer's truth map snaps each truth
+note to the reported note it matched, so a partial shadow at a real note's
+pitch pulls the map by 100 ms and the restrike labels with it; the stage was
+calibrated on maps by a local line over the matched notes' offsets instead
+(`tmp/explain/py/smoothmap.py`), which the scorer itself should write.
 
 ## Meters
 
