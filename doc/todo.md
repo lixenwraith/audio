@@ -73,7 +73,13 @@ and the decoder's partial rule is judged again by the fit, so it may go once
 a run without it holds the graded sets (`ownPitch` stays: without it the
 register's F1 holds within .005 on Für Elise's renders and takes while
 E2-D#3 loses .03 to .06 on five of the seven renders). The smallest close: the
-velocity from the fit on a sheet beside `dynamics`.
+velocity from the fit on a sheet beside `dynamics`; and the memory a listener
+keeps through a louder note: a note's partials tracked by phase through a
+cover and re-attached where they continue after it, which the rip's 93 ms
+window cannot read (the phase jump at a restruck pitch's fundamental tells a
+restrike from a ring at 0.65 on the clean take and 0.43 on the keyboard
+render, other notes' attacks moving it as much), so it wants a partial tracker
+with the covering note's partials taken out.
 
 ## Meters
 
