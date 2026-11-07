@@ -157,3 +157,37 @@ func TestAHeldNoteTheFitCannotSeeStaysOnTheHeadsWord(t *testing.T) {
 		t.Errorf("notes kept %v, want the A3 and the held A4 alone, not the short A4", got)
 	}
 }
+
+// TestTheMemoryTellsARingFromAStrike: a note reported on a pitch still sounding
+// reads no step in its memory where the recording only rings on, even through a
+// louder neighbour's attack a semitone up, whose partials the memory takes out,
+// and a step as large as the new sound where the pitch is struck again.
+func TestTheMemoryTellsARingFromAStrike(t *testing.T) {
+	const frames = 600
+	ring := make([]float64, frames*RipHop)
+	accDrone(ring, 57, 50, 550, 0.3, 8)
+	neighbour := slices.Clone(ring)
+	accTone(neighbour, 58, 300, 550, 0.5, 8)
+	struck := slices.Clone(ring)
+	accTone(struck, 57, 300, 550, 0.3, 8)
+	reported := []ripNote{{start: 50, end: 300, midi: 57}, {start: 300, end: 550, midi: 57}}
+	step := func(x []float64, extra ...ripNote) float64 {
+		notes := accNotes(slices.Concat(reported, extra), false, 0, frames)
+		accMeasure(x, notes)
+		for _, n := range notes {
+			if n.start == 300 && n.midi == 57 {
+				return n.step
+			}
+		}
+		return -1
+	}
+	if s := step(ring); s > 0.3 {
+		t.Errorf("a ring sounding on reads a step of %.2f, want under 0.3", s)
+	}
+	if s := step(neighbour, ripNote{start: 300, end: 550, midi: 58}); s > 0.3 {
+		t.Errorf("a ring through a neighbour's attack reads a step of %.2f, want under 0.3", s)
+	}
+	if s := step(struck); s < 0.8 {
+		t.Errorf("a pitch struck again reads a step of %.2f, want over 0.8", s)
+	}
+}

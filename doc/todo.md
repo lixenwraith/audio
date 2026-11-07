@@ -72,14 +72,51 @@ distortion has a fundamental of its own, which no additive fit can rule out;
 and the decoder's partial rule is judged again by the fit, so it may go once
 a run without it holds the graded sets (`ownPitch` stays: without it the
 register's F1 holds within .005 on Für Elise's renders and takes while
-E2-D#3 loses .03 to .06 on five of the seven renders). The smallest close: the
-velocity from the fit on a sheet beside `dynamics`; and the memory a listener
-keeps through a louder note: a note's partials tracked by phase through a
-cover and re-attached where they continue after it, which the rip's 93 ms
-window cannot read (the phase jump at a restruck pitch's fundamental tells a
-restrike from a ring at 0.65 on the clean take and 0.43 on the keyboard
-render, other notes' attacks moving it as much), so it wants a partial tracker
-with the covering note's partials taken out.
+E2-D#3 loses .03 to .06 on five of the seven renders). The memory through a
+louder note reads a note's start; it does not yet follow a note past its end:
+on the clean take two fifths of the kept notes end while the pitch head still
+hears the pitch, but the right ones end at or after the score's (the hold is
+the pedal's ring), and on the study, where the held lines are, the sound after
+an end decays as the piano's does, so nothing yet tells a sustained line cut by
+the release head from a ring, and an extension would lengthen piano notes past
+the score. A candidate on a pitch still sounding stays the decoder's: judged
+with the memory, the study's C3 drone was cut in half by its pulse. The
+smallest close: the velocity from the fit on a sheet beside `dynamics`; the
+ends on a sheet of the study alone. The scorer's truth map snaps each truth
+note to the reported note it matched, so a partial shadow at a real note's
+pitch pulls the map by 100 ms and the restrike labels with it; the stage was
+calibrated on maps by a local line over the matched notes' offsets instead
+(`tmp/explain/py/smoothmap.py`), which the scorer itself should write. A
+note struck softly under its octave's ring (the E3 at 8.52 s of the clean
+take, Sheet 12's miss) is a candidate whose fit sees a 2 dB rise; its memory
+reads its new sound only when a partial another pitch rang on from before
+is predicted through rather than left out, which costs the restrike kind
+across the four sets (same-pitch extras gone 11 of 24 against 15 on the
+clean take), and the candidate score refuses it either way, the level 19 dB
+under the reference outweighing it; candidates under a ring with new sound,
+a sure pitch head and a sure strike are right in only half of the clean
+take's cases and a tenth of the Pixel take's, so no rule admits them yet.
+
+### The misses and extras the ear still hears
+
+- Priority: P1
+- Affected files: `account.go`, `rip.go`
+
+Sheet 13, on the memory's build, scored Für Elise clean 4 on the melody, the
+low notes, the timing and overall and 5 on note length, the study 3 and Billie
+Jean 3 to 4, every ask Better, and by ear better overall with misses and
+extras still. What is left, by ear and by the truths: on Für Elise clean some
+melody notes are missing, the under voice's soft notes of the bass figures
+above all (E3-D#4 right 162 of 246 where the decoder reported 175, the note
+under its octave's ring among them), and some low extras remain; at 27 to 31
+s the notes linger: every note there is right and none missing, but the C5 at
+29.9 s, the E3 at 30.4 s and the B4 and E2 at 31.4 s run 0.3 to 1.0 s past the
+score's ends under the pedal, which the ear hears as timing off, the other
+side of the ends above; on the study the melody is 40% right at 5.7 to 12 s
+with in-between notes on the beat's melody, which wants the notes model more
+than the accounting. The smallest close: the ends from the fitted activation
+on a Für Elise sheet, and the under voice's soft notes judged as a population
+of their own. A sheet's Note length row goes where extra sounds take over.
 
 ## Meters
 

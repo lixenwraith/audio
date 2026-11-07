@@ -316,6 +316,29 @@ that a document now states, and link the document instead.
   `tmp/explain/py/cal.py`, a logistic fit by Newton's method with a unit L2
   penalty, reported notes and candidates apart; the weights are `accReported`
   and `accCandidate`.
+- The scorer's truth map snaps each truth note to the reported note it
+  matched, so where the decoder reports a partial shadow at a real note's pitch
+  (the E3 at an E2's own frame in the bass figure at 8.3 s of the clean take)
+  the map puts the real note at the shadow's time and squeezes its neighbours
+  by 100 ms; the restrike labels under it were wrong. A map by a local line
+  over the matched notes' offsets (`tmp/explain/py/smoothmap.py`, ±0.7 s)
+  places the bass figures within 40 ms of the recording; the Pixel take is the
+  clean take's own timing and the renders are linear in the MIDI's.
+- A soft restrike on a loud ring moves the fundamental by the phase it adds
+  in: +3 to +8 dB in phase, -6 to -10 dB against it, a few dB in quadrature. A
+  ring misread as a strike moves it under 2 dB, with a wobble of .2 to .5 of
+  its amplitude from the unison strings' beating over the window's gap. So the
+  memory reads the step between the lines fitted either side of the attack in
+  the sound before, at the free partials, not a coherence or a residual's
+  share (AUC .5 to .6); the fundamental alone separates soft restrikes at .65.
+- Sheet 12's miss at 8.48 s of the clean take is a soft E3 under its octave's
+  ringing second partial: the fit saw a 2 dB rise and an unexplained
+  fundamental of .19, the memory a step of .83 in the prototype. In the stage
+  a partial another pitch's partial sits on is left out of the memory, so the
+  note reads as all new; predicting such a partial through when its note rang
+  from before reads the E3's step (.72) but the candidate score still refuses
+  it at .16, and the memory's wobble under other pitches' rings at the higher
+  partials costs the restrike kind, so the exclusion stays.
 
 ## Decoders
 
