@@ -69,9 +69,11 @@ the heads' release, which a listening sheet decides; on a clean piano half the
 partials reported over a chord still pass, as the template of the note under
 them is learned from frames the partial shares; a difference tone under
 distortion has a fundamental of its own, which no additive fit can rule out;
-and `ownPitch` and the decoder's partial rule are judged again by the fit, so
-either may go once a run without them holds the four graded sets. The smallest
-close: the velocity from the fit on a sheet beside `dynamics`.
+and the decoder's partial rule is judged again by the fit, so it may go once
+a run without it holds the graded sets (`ownPitch` stays: without it the
+register's F1 holds within .005 on Für Elise's renders and takes while
+E2-D#3 loses .03 to .06 on five of the seven renders). The smallest close: the
+velocity from the fit on a sheet beside `dynamics`.
 
 ## Meters
 
