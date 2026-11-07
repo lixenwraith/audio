@@ -51,12 +51,14 @@ type RipParams struct {
 // ripDrumsPerMinute is the least a drum strikes to be a part of the music,
 // ripLineNote and ripLineStrength how long and strong a bass line's note is to stand
 // without a strike, and ripOwnPitch the dB a low note's own pitch stands at least
-// against its next partials, under which it is a higher note's shadow
+// against its next partials, under which it is a higher note's shadow, and
+// ripDynamics the dB a passage's loudness moves a note's velocity by at most
 const (
 	ripDrumsPerMinute = 4
 	ripLineNote       = 0.15
 	ripLineStrength   = 0.8
 	ripOwnPitch       = -10
+	ripDynamics       = 12
 )
 
 func DefaultRipParams() RipParams {
@@ -441,6 +443,9 @@ func (rp Ripper) Samples(x []float64, rate int) (*Rip, error) {
 	root, scale := f.key()
 	bass, melody := f.lines(x, p)
 	bass, melody = settle(bass, melody)
+	if f.Velocity != nil {
+		dynamics(x, f.Hop, melody, bass)
+	}
 	bass, melody = f.account(x, p, bass, melody)
 	melody = streams(melody, f.Hop, rp.Lead)
 	if t := musicStart(x); t > 0 {
@@ -2276,6 +2281,41 @@ func ownPitch(x []float64, n ripNote, hop float64) float64 {
 	}
 	f0 := 440 * math.Pow(2, float64(n.midi-69)/12)
 	return level(f0) - max(level(2*f0), level(3*f0))
+}
+
+// dynamics moves each note's velocity with the loudness of its passage against the
+// recording's median, up to ripDynamics dB, as a model's heads see each frame's bands
+// over its own level and hear a soft passage's notes as hard as a loud one's
+func dynamics(x []float64, hop float64, lines ...[]ripNote) {
+	energy := make([]float64, len(x)+1)
+	for i, v := range x {
+		energy[i+1] = energy[i] + v*v
+	}
+	level := func(n ripNote) float64 {
+		at := int(float64(n.start) * hop * RipRate)
+		lo, hi := max(at-RipRate/2, 0), min(at+RipRate/2, len(x))
+		if hi <= lo {
+			return math.Inf(-1)
+		}
+		return 10 * math.Log10((energy[hi]-energy[lo])/float64(hi-lo)+1e-12)
+	}
+	var all []float64
+	for _, l := range lines {
+		for _, n := range l {
+			all = append(all, level(n))
+		}
+	}
+	if len(all) == 0 {
+		return
+	}
+	slices.Sort(all)
+	mid := all[len(all)/2]
+	for _, l := range lines {
+		for i := range l {
+			db := min(max(level(l[i])-mid, -ripDynamics), ripDynamics)
+			l[i].vel = min(max(l[i].vel*math.Pow(10, db/20), 0.1), 1)
+		}
+	}
 }
 
 // settle gives a note both registers heard, where the bass's reach and the

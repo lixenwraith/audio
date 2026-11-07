@@ -644,6 +644,32 @@ func TestAFrontEndsDoubtsAreNoDrums(t *testing.T) {
 	}
 }
 
+// TestANotesVelocityFollowsItsPassage: the same velocity heard in a loud passage
+// and a soft one comes out apart by their level, and a passage far softer stops at the bound.
+func TestANotesVelocityFollowsItsPassage(t *testing.T) {
+	hop := float64(RipHop) / RipRate
+	x := make([]float64, 6*RipRate)
+	for i := range x {
+		a := 0.5
+		switch {
+		case i >= 4*RipRate:
+			a = 0.5 / 1000
+		case i >= 2*RipRate:
+			a = 0.5 / 4
+		}
+		x[i] = a * math.Sin(2*math.Pi*440*float64(i)/RipRate)
+	}
+	frame := func(sec float64) int { return int(sec / hop) }
+	notes := []ripNote{{start: frame(1), vel: 0.2}, {start: frame(3), vel: 0.2}, {start: frame(5), vel: 0.2}}
+	dynamics(x, hop, notes)
+	if up := 20 * math.Log10(notes[0].vel/notes[1].vel); math.Abs(up-12) > 0.5 {
+		t.Errorf("the loud passage's note %.1f dB over the soft one's, want 12", up)
+	}
+	if notes[1].vel != 0.2 || notes[2].vel != 0.1 {
+		t.Errorf("velocities %v, want the median's kept and the far softer one at the floor", notes)
+	}
+}
+
 // TestALowNoteNeedsASurerStrike: a strike a melody note would start on starts no
 // low note, as every attack rings a body's or a room's low mode.
 func TestALowNoteNeedsASurerStrike(t *testing.T) {
