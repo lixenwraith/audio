@@ -43,6 +43,7 @@ type RipParams struct {
 	Strike        float64 `toml:"strike"`         // how sure a front end that hears each pitch struck must be before the strike starts a note
 	StrikeHold    float64 `toml:"strike_hold"`    // the share of the register's reference a struck pitch's salience reaches within MinNote, or the strike is no note
 	StrikeGap     float64 `toml:"strike_gap"`     // seconds within which a pitch struck again is the same strike
+	StrikeLow     float64 `toml:"strike_low"`     // how sure a strike under the melody's register must be, as every attack rings a body's or a room's low mode
 	StrikeAgain   float64 `toml:"strike_again"`   // how sure a strike of a pitch still sounding must be to end its note and start another
 	Release       float64 `toml:"release"`        // how sure a front end that hears each pitch let go must be before the release ends its note
 }
@@ -63,7 +64,7 @@ func DefaultRipParams() RipParams {
 		TempoPrior: 120, TempoWidth: 1, Tightness: 100,
 		OnsetFloor: 2.0, OnsetMin: 0.1, OnsetGap: 0.06, KickShare: 0.06, SnareShare: 0.45, SnareNoise: 0.1, HatShare: 0.3,
 		Harmonics: 6, HarmonicDecay: 0.8, Voicing: 0.3, Jump: 0.06, Switch: 0.35, Retrigger: 0.4, MinNote: 0.06,
-		SecondVoice: 0.5, Compress: 1, Cross: 0.003, Strike: 0.8, StrikeHold: 0.9, StrikeGap: 0.12, StrikeAgain: 0.95, Release: 0.8,
+		SecondVoice: 0.5, Compress: 1, Cross: 0.003, Strike: 0.8, StrikeLow: 0.9, StrikeHold: 0.9, StrikeGap: 0.12, StrikeAgain: 0.95, Release: 0.8,
 	}
 }
 
@@ -100,6 +101,7 @@ var ripGenes = []ripGene{
 	{"strike", 0.2, 0.99, func(p *RipParams) *float64 { return &p.Strike }},
 	{"strike_hold", 0.3, 1, func(p *RipParams) *float64 { return &p.StrikeHold }},
 	{"strike_gap", 0.03, 0.3, func(p *RipParams) *float64 { return &p.StrikeGap }},
+	{"strike_low", 0.2, 0.99, func(p *RipParams) *float64 { return &p.StrikeLow }},
 	{"strike_again", 0.5, 0.99, func(p *RipParams) *float64 { return &p.StrikeAgain }},
 	{"release", 0.2, 0.99, func(p *RipParams) *float64 { return &p.Release }},
 }
@@ -2165,7 +2167,11 @@ func (f *RipFrames) strikes(lo, hi int, p RipParams) []ripNote {
 		v := at(h, t, midi)
 		return h != nil && float64(v) >= over && v >= at(h, t-1, midi) && v > at(h, t+1, midi)
 	}
-	struck := func(t, s int) bool { return peak(f.Strike, t, lo+s, p.Strike) }
+	bar := p.Strike
+	if lo < RipBassTop {
+		bar = p.StrikeLow
+	}
+	struck := func(t, s int) bool { return peak(f.Strike, t, lo+s, bar) }
 	// stronger: a stronger strike within two frames at one of the intervals ds from midi, at or over from
 	stronger := func(t, midi, from int, ds ...int) bool {
 		for _, d := range ds {

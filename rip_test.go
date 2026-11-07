@@ -644,6 +644,23 @@ func TestAFrontEndsDoubtsAreNoDrums(t *testing.T) {
 	}
 }
 
+// TestALowNoteNeedsASurerStrike: a strike a melody note would start on starts no
+// low note, as every attack rings a body's or a room's low mode.
+func TestALowNoteNeedsASurerStrike(t *testing.T) {
+	const frames = 120
+	f := &RipFrames{Hop: RipFrameSec, Flux: make([]float64, frames), Salience: make([]float32, frames*RipPitches), Strike: make([]float32, frames*RipPitches)}
+	for _, midi := range []int{44, 64} {
+		f.Strike[10*RipPitches+midi-RipMinMIDI] = 0.85
+		for t := 10; t < 100; t++ {
+			f.Salience[t*RipPitches+midi-RipMinMIDI] = 0.9
+		}
+	}
+	p := DefaultRipParams()
+	if low, high := f.strikes(RipMinMIDI, RipBassTop, p), f.strikes(RipBassTop, RipMaxMIDI, p); len(low) != 0 || len(high) != 1 {
+		t.Errorf("%d low notes and %d high, want none and one", len(low), len(high))
+	}
+}
+
 // TestLowNotesAreReadByStrikes: two low notes struck together both sound, as hard as
 // the front end heard them, and the bass line's own note stands where no strike sounds.
 func TestLowNotesAreReadByStrikes(t *testing.T) {

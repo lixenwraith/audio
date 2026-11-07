@@ -940,6 +940,10 @@ func (f *RipFrames) accCandidates(p RipParams, reported []*accNote, refs [2]floa
 		if r.ref <= 0 {
 			continue
 		}
+		bar := p.Strike
+		if reg == 0 {
+			bar = p.StrikeLow
+		}
 		for s := range r.states {
 			midi := lo + s
 			var starts []int
@@ -951,7 +955,7 @@ func (f *RipFrames) accCandidates(p RipParams, reported []*accNote, refs [2]floa
 			last := -gap
 			for t := 0; t < T; t++ {
 				v := at(f.Strike, t, midi)
-				if float64(v) < p.Strike || v < at(f.Strike, t-1, midi) || v <= at(f.Strike, t+1, midi) || t-last < gap {
+				if float64(v) < bar || v < at(f.Strike, t-1, midi) || v <= at(f.Strike, t+1, midi) || t-last < gap {
 					continue
 				}
 				last = t
@@ -959,7 +963,7 @@ func (f *RipFrames) accCandidates(p RipParams, reported []*accNote, refs [2]floa
 					continue
 				}
 				end := t + 1
-				for end < T && r.sal(end, s) >= p.Voicing*r.ref && !(float64(at(f.Strike, end, midi)) >= p.Strike && at(f.Strike, end, midi) >= at(f.Strike, end-1, midi) && at(f.Strike, end, midi) > at(f.Strike, end+1, midi)) {
+				for end < T && r.sal(end, s) >= p.Voicing*r.ref && !(float64(at(f.Strike, end, midi)) >= bar && at(f.Strike, end, midi) >= at(f.Strike, end-1, midi) && at(f.Strike, end, midi) > at(f.Strike, end+1, midi)) {
 					end++
 				}
 				out = append(out, r.note(t, min(max(end, t+5), T), s))
