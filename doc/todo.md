@@ -55,6 +55,32 @@ a matched drum's eq moves such a band by chance (the stand-ins of
 matched, as a rip hears none. The smallest close: leave a band the drum does not
 fill at the eq's neighbouring value, once a recording shows it audible.
 
+## The rip's notes
+
+### Hold more of the rip to the recording
+
+- Priority: P2
+- Affected files: `account.go`, `rip.go`
+
+The accounting ([Audio §9](audio.md#9-ripping-a-recording)) judges each note
+by its onset alone. What is left: a note's velocity and end from its fitted
+activation, against the half-second level the velocity head is moved by and
+the heads' release, which a listening sheet decides; on a clean piano half the
+partials reported over a chord still pass, as the template of the note under
+them is learned from frames the partial shares; a difference tone under
+distortion has a fundamental of its own, which no additive fit can rule out;
+and the decoder's partial rule is judged again by the fit, so it may go once
+a run without it holds the graded sets (`ownPitch` stays: without it the
+register's F1 holds within .005 on Für Elise's renders and takes while
+E2-D#3 loses .03 to .06 on five of the seven renders). The smallest close: the
+velocity from the fit on a sheet beside `dynamics`; and the memory a listener
+keeps through a louder note: a note's partials tracked by phase through a
+cover and re-attached where they continue after it, which the rip's 93 ms
+window cannot read (the phase jump at a restruck pitch's fundamental tells a
+restrike from a ring at 0.65 on the clean take and 0.43 on the keyboard
+render, other notes' attacks moving it as much), so it wants a partial tracker
+with the covering note's partials taken out.
+
 ## Meters
 
 ### Read more meters

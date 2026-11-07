@@ -439,6 +439,7 @@ func (rp Ripper) Samples(x []float64, rate int) (*Rip, error) {
 	root, scale := f.key()
 	bass, melody := f.lines(x, p)
 	bass, melody = settle(bass, melody)
+	bass, melody = f.account(x, p, bass, melody)
 	melody = streams(melody, f.Hop, rp.Lead)
 	if t := musicStart(x); t > 0 {
 		hits, bass, melody = heardFrom(t, hits, bass, melody)
