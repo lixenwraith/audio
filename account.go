@@ -740,8 +740,8 @@ type accScore struct {
 }
 
 var (
-	accReported  = accScore{-3.83, 1.76, 1.48, 1.04, 0.60, 0, 0.13, 3.42, -0.09, 0.29, 0.64, 0.76, 1.04}
-	accCandidate = accScore{-4.61, 0.29, -1.58, 2.60, 0.46, 0, 0.32, 4.68, -0.35, 0.97, 0.94, 0.45, 0.35}
+	accReported  = accScore{-4.30, 1.60, 1.57, 1.22, 0.62, 0, 0.12, 3.49, -0.13, 0.19, 1.04, 0.87, 0.98}
+	accCandidate = accScore{-4.85, 0.21, -1.40, 2.46, 0.44, 0, 0.33, 4.68, -0.33, 0.93, 0.95, 0.63, 0.33}
 	// accBar and accCandBar are the odds a reported note keeps and a candidate
 	// comes back at
 	accBar, accCandBar = 0.35, 0.5
