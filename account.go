@@ -3,6 +3,7 @@ package audio
 import (
 	"cmp"
 	"math"
+	"math/cmplx"
 	"slices"
 	"sort"
 )
@@ -26,10 +27,16 @@ const (
 	accDup       = 2      // frames within which two notes of one pitch are one
 	accCovered   = 0.7    // the share of a note's harmonics the fit cannot see past which it has no say
 	accHeld      = 86     // frames a note the fit cannot see lasts to stay on the heads' word, a second
+	accPartials  = 6      // partials the memory follows through a note's start
+	accMemGap    = 4      // frames either side of the start over which the window smears the attack
+	accMemSpan   = 8      // frames the memory reads before that gap and after it
+	accSame      = 0.15   // bins within which two notes' partials are one sound
+	accStepCap   = 3.0    // the step a partial's new sound is read up to, in the sound before
 )
 
 // accNote is a note as the accounting measures it: its frames, its harmonics'
-// magnitudes there, its activation, and the other notes' harmonics under its own
+// magnitudes there, its activation, the other notes' harmonics under its own,
+// and the memory of the sound at its first partials through its start
 type accNote struct {
 	ripNote
 	cand   bool // a strike the decoder dropped, judged against the kept notes
@@ -41,6 +48,9 @@ type accNote struct {
 	g      []float32 // t1-t0
 	terms  []accTerm // by harmonic, termAt[h] to termAt[h+1]
 	termAt []int32
+	mem    []complex64 // 2·accMemSpan frames × its partials: the sound at each, other pitches' partials taken out
+	memCov []uint8     // per partial, the frames after the start another pitch's partial sits on it
+	step   float64     // the share of the sound at its free partials the memory does not predict
 }
 
 // accTerm is another note's harmonic k under one of this note's, at c of its
@@ -52,6 +62,9 @@ type accTerm struct {
 }
 
 func (n *accNote) frames() int { return n.t1 - n.t0 }
+
+// first is the first frame the measurement needs, where the memory starts
+func (n *accNote) first() int { return min(n.t0, n.start-accMemGap-accMemSpan) }
 
 // accLobe is a Hann window's response d bins off its centre, one at zero, zero
 // past two
@@ -78,7 +91,7 @@ func accNotes(notes []ripNote, cand bool, tuning float64, frames int) []*accNote
 	for _, n := range notes {
 		a := &accNote{ripNote: n, cand: cand, f0: NoteFreq(n.midi) * math.Pow(2, tuning/1200)}
 		a.t0 = max(n.start-accBefore, 0)
-		a.t1 = min(max(n.end+accAfter, n.start+accOnset+2), n.start+accSpan, frames)
+		a.t1 = min(max(n.end+accAfter, n.start+accMemGap+accMemSpan+1), n.start+accSpan, frames)
 		a.nh = min(accHarmonics, int(accMaxHz/a.f0))
 		if a.t1 <= a.t0 || a.nh < 1 {
 			continue
@@ -98,8 +111,8 @@ const accBin = float64(RipRate) / RipN
 
 // accMeasure reads each note's harmonics off the recording, frame by frame
 // under a Hann window of the rip's length, each harmonic's magnitude
-// interpolated between the bins either side; a note measured before keeps its
-// activation, a new one starts low
+// interpolated between the bins either side, and its memory through its start;
+// a note measured before keeps its activation, a new one starts low
 func accMeasure(x []float64, notes []*accNote) {
 	slices.SortFunc(notes, byFrame)
 	for _, n := range notes {
@@ -110,9 +123,11 @@ func accMeasure(x []float64, notes []*accNote) {
 				n.g[u] = 0.01
 			}
 		}
+		n.mem, n.memCov = make([]complex64, 2*accMemSpan*n.partials()), make([]uint8, n.partials())
 	}
 	s := newSTFT(RipN)
 	scale := 4.0 / RipN
+	var m accMemory
 	var active []*accNote
 	next := 0
 	T := 0
@@ -121,7 +136,7 @@ func accMeasure(x []float64, notes []*accNote) {
 	}
 	for t := 0; t < T; t++ {
 		active = slices.DeleteFunc(active, func(n *accNote) bool { return n.t1 <= t })
-		for next < len(notes) && notes[next].t0 <= t {
+		for next < len(notes) && notes[next].first() <= t {
 			active = append(active, notes[next])
 			next++
 		}
@@ -130,6 +145,12 @@ func accMeasure(x []float64, notes []*accNote) {
 		}
 		mag := s.at(x, t*RipHop)
 		for _, n := range active {
+			if k := n.memFrame(t); k >= 0 {
+				m.remember(n, k, t, s, scale, active)
+			}
+			if t < n.t0 {
+				continue
+			}
 			row := n.mag[(t-n.t0)*n.nh:][:n.nh]
 			for h := range n.nh {
 				pos := float64(h+1) * n.f0 / accBin
@@ -142,6 +163,208 @@ func accMeasure(x []float64, notes []*accNote) {
 			}
 		}
 	}
+	for _, n := range notes {
+		n.step = n.memStep()
+	}
+}
+
+// partials is how many of a note's harmonics its memory follows
+func (n *accNote) partials() int { return min(accPartials, n.nh) }
+
+// memFrame is frame t's index among the note's memory frames, the accMemSpan
+// before the gap around its start then the accMemSpan after, or -1
+func (n *accNote) memFrame(t int) int {
+	switch u := t - n.start; {
+	case u >= -accMemGap-accMemSpan && u < -accMemGap:
+		return u + accMemGap + accMemSpan
+	case u > accMemGap && u <= accMemGap+accMemSpan:
+		return accMemSpan + u - accMemGap - 1
+	}
+	return -1
+}
+
+// accMemory holds the small least-squares fit the memory reads a partial with:
+// the sinusoids within the window's lobe of it, its own and the other reported
+// pitches' partials, fitted together to the bins they span
+type accMemory struct {
+	fs []float64 // the sinusoids' frequencies, in bins, the note's own first
+	a  [][]float64
+	g  []float64 // each sinusoid's lobe at the bin being read
+	re []float64
+	im []float64
+}
+
+// remember reads note n's partials at its memory frame k, frame t of the
+// spectrum s: each partial's complex amplitude with the other reported pitches'
+// partials within the lobe fitted beside it; one within accSame bins is the same
+// sound and marks the partial covered instead
+func (m *accMemory) remember(n *accNote, k, t int, s *stft, scale float64, active []*accNote) {
+	P := n.partials()
+	for h := range P {
+		f := float64(h+1) * n.f0 / accBin
+		m.fs = append(m.fs[:0], f)
+		covered := false
+		for _, o := range active {
+			if o == n || o.cand || o.midi == n.midi || t < o.start-1 {
+				continue
+			}
+			k0 := int(math.Round(f * accBin / o.f0))
+			for q := max(k0-1, 1); q <= min(k0+1, o.nh); q++ {
+				switch d := math.Abs(float64(q)*o.f0/accBin - f); {
+				case d < accSame:
+					covered = true
+				case d < 2:
+					m.fs = append(m.fs, float64(q)*o.f0/accBin)
+				}
+			}
+		}
+		if covered && k >= accMemSpan {
+			n.memCov[h]++
+		}
+		n.mem[k*P+h] = complex64(m.solve(s, scale))
+	}
+}
+
+// solve fits the sinusoids at m.fs to the bins within the lobe of any of them,
+// by the normal equations, and returns the first's complex amplitude
+func (m *accMemory) solve(s *stft, scale float64) complex128 {
+	lo, hi := math.Inf(1), math.Inf(-1)
+	for _, f := range m.fs {
+		lo, hi = math.Min(lo, f), math.Max(hi, f)
+	}
+	b0, b1 := max(int(math.Floor(lo-2))+1, 1), min(int(math.Ceil(hi+2))-1, len(s.mag)-2)
+	u := len(m.fs)
+	for len(m.a) < u {
+		m.a = append(m.a, make([]float64, 0))
+	}
+	m.re, m.im, m.g = m.re[:0], m.im[:0], m.g[:0]
+	for i := range u {
+		m.a[i] = append(m.a[i][:0], make([]float64, u)...)
+		m.re, m.im, m.g = append(m.re, 0), append(m.im, 0), append(m.g, 0)
+	}
+	for b := b0; b <= b1; b++ {
+		xr, xi := s.re[b]*scale, s.im[b]*scale
+		if b%2 == 1 { // the window's centre as the phase's reference
+			xr, xi = -xr, -xi
+		}
+		for i := range u {
+			m.g[i] = accLobe(float64(b) - m.fs[i])
+		}
+		for i := range u {
+			if m.g[i] == 0 {
+				continue
+			}
+			m.re[i] += m.g[i] * xr
+			m.im[i] += m.g[i] * xi
+			for j := range u {
+				m.a[i][j] += m.g[i] * m.g[j]
+			}
+		}
+	}
+	for i := range u { // a ridge keeps two partials nearly one apart
+		m.a[i][i] += 1e-6
+	}
+	// Gaussian elimination with the two right-hand sides, the real and the imaginary
+	for c := range u {
+		p := c
+		for r := c + 1; r < u; r++ {
+			if math.Abs(m.a[r][c]) > math.Abs(m.a[p][c]) {
+				p = r
+			}
+		}
+		m.a[c], m.a[p] = m.a[p], m.a[c]
+		m.re[c], m.re[p] = m.re[p], m.re[c]
+		m.im[c], m.im[p] = m.im[p], m.im[c]
+		if math.Abs(m.a[c][c]) < 1e-12 {
+			return 0
+		}
+		for r := c + 1; r < u; r++ {
+			f := m.a[r][c] / m.a[c][c]
+			for j := c; j < u; j++ {
+				m.a[r][j] -= f * m.a[c][j]
+			}
+			m.re[r] -= f * m.re[c]
+			m.im[r] -= f * m.im[c]
+		}
+	}
+	for c := u - 1; c >= 0; c-- {
+		for j := c + 1; j < u; j++ {
+			m.re[c] -= m.a[c][j] * m.re[j]
+			m.im[c] -= m.a[c][j] * m.im[j]
+		}
+		m.re[c] /= m.a[c][c]
+		m.im[c] /= m.a[c][c]
+	}
+	return complex(m.re[0], m.im[0])
+}
+
+// accLine fits a partial's sound over the frames from t0 as a line in its
+// log-amplitude, the slope held within lo and hi a frame, and a line in its
+// phase about the nominal advance a frame, each frame weighted by its
+// magnitude, and returns the sound the lines predict at frame 0
+func accLine(z []complex64, t0 int, adv, lo, hi float64) complex128 {
+	var top float64
+	for _, v := range z {
+		top = math.Max(top, cmplx.Abs(complex128(v)))
+	}
+	if top <= 0 {
+		return 0
+	}
+	var sw, st, stt, sy, sty, sp, stp, prev float64
+	for i, v := range z {
+		zi := complex128(v)
+		mag := cmplx.Abs(zi)
+		w, t := mag/top, float64(t0+i)
+		y := math.Log(mag + 1e-12)
+		p := cmplx.Phase(zi) - adv*t
+		if i > 0 {
+			d := p - prev
+			p = prev + math.Atan2(math.Sin(d), math.Cos(d))
+		}
+		prev = p
+		sw, st, stt = sw+w, st+w*t, stt+w*t*t
+		sy, sty, sp, stp = sy+w*y, sty+w*t*y, sp+w*p, stp+w*t*p
+	}
+	det := sw*stt - st*st
+	if det <= 1e-9 {
+		return 0
+	}
+	slope := min(max((sw*sty-st*sy)/det, lo), hi)
+	d := (sw*stp - st*sp) / det
+	return cmplx.Rect(math.Exp((sy-slope*st)/sw), (sp-d*st)/sw)
+}
+
+// memStep is what the memory of the sound before a note's start does not
+// predict of the sound after it, at each of its partials no other pitch's
+// partial sits on: the step between the lines fitted either side of the
+// attack, in the sound before, weighed by that sound; a ring that sounds on
+// leaves no step, a strike one as large as its new sound, whatever its phase
+func (n *accNote) memStep() float64 {
+	P := n.partials()
+	var num, den float64
+	for h := range P {
+		if n.memCov[h] >= accMemSpan/2 {
+			continue
+		}
+		adv := 2 * math.Pi * float64(h+1) * n.f0 * RipHop / RipRate
+		before := make([]complex64, accMemSpan)
+		after := make([]complex64, accMemSpan)
+		for k := range accMemSpan {
+			before[k], after[k] = n.mem[k*P+h], n.mem[(accMemSpan+k)*P+h]
+		}
+		zb := accLine(before, -accMemGap-accMemSpan, adv, -0.5, 0.05)
+		za := accLine(after, accMemGap+1, adv, -0.5, 0.5)
+		ring := cmplx.Abs(zb)
+		if ring <= 0 {
+			continue
+		}
+		num += ring * math.Min(cmplx.Abs(za-zb)/ring, accStepCap)
+		den += ring
+	}
+	if den <= 0 {
+		return accStepCap
+	}
+	return num / den
 }
 
 // accTerms finds, for each note, the harmonics of every note it overlaps in time
@@ -380,10 +603,11 @@ func (f *accFit) share(numW, denW *[RipPitches][accHarmonics]float64) {
 // points that are its own sound, how much of its fundamental and of its odd
 // harmonics the others leave unexplained, the rise of the sound measured at its
 // harmonics over the frames before, the fit's loss without the note, its own
-// level in dB, its share over every frame measured, and the share of its
-// harmonics the fit cannot see as its own, under the floor or another pitch's
+// level in dB, its share over every frame measured, the share of its
+// harmonics the fit cannot see as its own, under the floor or another pitch's,
+// and the step its memory reads at its free partials
 type accEvidence struct {
-	share, unF0, unOdd, rise, loo, level, span, covered float64
+	share, unF0, unOdd, rise, loo, level, span, covered, step float64
 }
 
 // evidences is every note's evidence
@@ -458,7 +682,7 @@ func (f *accFit) evidence(i int) accEvidence {
 	return accEvidence{
 		share: sumOwn / (sumM + eps), unF0: unF0 / (mF0 + eps), unOdd: unOdd / (mOdd + eps),
 		rise: min(max(20*math.Log10((resOn+1e-7)/(resPre+1e-7)), -20), 60), loo: (klLess - klFull) / (sumM + eps),
-		level: 20 * math.Log10(peak+1e-7), span: spanOwn / (spanM + eps), covered: covered,
+		level: 20 * math.Log10(peak+1e-7), span: spanOwn / (spanM + eps), covered: covered, step: n.step,
 	}
 }
 
@@ -512,12 +736,12 @@ func (f *accFit) notesAt(t int) []int {
 // the fit's loss without the note is read but unweighed, its fitted sign running
 // against its sense beside the shares.
 type accScore struct {
-	bias, share, unF0, unOdd, rise, loo, strike, support, low, level, ringing, span float64
+	bias, share, unF0, unOdd, rise, loo, strike, support, low, level, ringing, span, step float64
 }
 
 var (
-	accReported  = accScore{-3.96, 1.05, 1.03, 0.53, 0.89, 0, 0.10, 4.01, -0.97, 0.08, 0.51, 0.25}
-	accCandidate = accScore{-5.32, -0.09, -1.32, 2.03, 0.49, 0, 0.24, 4.98, -0.35, 0.66, 0.92, 0.68}
+	accReported  = accScore{-3.83, 1.76, 1.48, 1.04, 0.60, 0, 0.13, 3.42, -0.09, 0.29, 0.64, 0.76, 1.04}
+	accCandidate = accScore{-4.61, 0.29, -1.58, 2.60, 0.46, 0, 0.32, 4.68, -0.35, 0.97, 0.94, 0.45, 0.35}
 	// accBar and accCandBar are the odds a reported note keeps and a candidate
 	// comes back at
 	accBar, accCandBar = 0.35, 0.5
@@ -540,7 +764,8 @@ func (s accScore) odds(in accInput, ref float64) float64 {
 	}
 	v := s.bias + s.share*math.Log(math.Max(in.share, 1e-3)) + s.unF0*in.unF0 + s.unOdd*in.unOdd + s.rise*in.rise/10 +
 		s.loo*math.Log(math.Max(in.loo, 1e-3)) + s.strike*logit(in.strike) + s.support*min(in.support, 1.5) + s.low*flag(in.low) +
-		s.level*min(max(in.level-ref, -60), 10)/10 + s.ringing*flag(in.ringing) + s.span*math.Log(math.Max(in.span, 1e-3))
+		s.level*min(max(in.level-ref, -60), 10)/10 + s.ringing*flag(in.ringing) + s.span*math.Log(math.Max(in.span, 1e-3)) +
+		s.step*math.Log(math.Max(in.step, 0.05))
 	return 1 / (1 + math.Exp(-v))
 }
 
