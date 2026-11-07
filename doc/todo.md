@@ -97,6 +97,27 @@ under the reference outweighing it; candidates under a ring with new sound,
 a sure pitch head and a sure strike are right in only half of the clean
 take's cases and a tenth of the Pixel take's, so no rule admits them yet.
 
+### The misses and extras the ear still hears
+
+- Priority: P1
+- Affected files: `account.go`, `rip.go`
+
+Sheet 13, on the memory's build, scored Für Elise clean 4 on the melody, the
+low notes, the timing and overall and 5 on note length, the study 3 and Billie
+Jean 3 to 4, every ask Better, and by ear better overall with misses and
+extras still. What is left, by ear and by the truths: on Für Elise clean some
+melody notes are missing, the under voice's soft notes of the bass figures
+above all (E3-D#4 right 162 of 246 where the decoder reported 175, the note
+under its octave's ring among them), and some low extras remain; at 27 to 31
+s the notes linger: every note there is right and none missing, but the C5 at
+29.9 s, the E3 at 30.4 s and the B4 and E2 at 31.4 s run 0.3 to 1.0 s past the
+score's ends under the pedal, which the ear hears as timing off, the other
+side of the ends above; on the study the melody is 40% right at 5.7 to 12 s
+with in-between notes on the beat's melody, which wants the notes model more
+than the accounting. The smallest close: the ends from the fitted activation
+on a Für Elise sheet, and the under voice's soft notes judged as a population
+of their own. A sheet's Note length row goes where extra sounds take over.
+
 ## Meters
 
 ### Read more meters
