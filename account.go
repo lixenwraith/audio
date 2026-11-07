@@ -634,7 +634,7 @@ func (f *RipFrames) accCandidates(p RipParams, reported []*accNote, refs [2]floa
 				for end < T && end-t < accSpan && r.sal(end, s) >= p.Voicing*r.ref && !(float64(at(f.Strike, end, midi)) >= p.Strike && at(f.Strike, end, midi) >= at(f.Strike, end-1, midi) && at(f.Strike, end, midi) > at(f.Strike, end+1, midi)) {
 					end++
 				}
-				out = append(out, r.note(t, max(end, t+5), s))
+				out = append(out, r.note(t, min(max(end, t+5), T), s))
 			}
 		}
 	}
