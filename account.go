@@ -17,9 +17,10 @@ const (
 	accMaxHz     = 6000.0 // under this frequency
 	accBefore    = 6      // frames measured before a note's start, for its rise
 	accAfter     = 8      // and after its end
-	accSpan      = 130    // frames a note is measured over at most
+	accSpan      = 1720   // frames a note is measured over at most, twenty seconds
 	accOnset     = 8      // frames from the start its evidence is read over
-	accRise      = 4      // frames after the start an activation may still rise
+	accRise      = 4      // frames after the start an activation may still rise freely
+	accSwell     = 1.0116 // and after that by a tenth of a decibel a frame, a held note's swell, never a strike's
 	accSweeps    = 5      // passes over the frames fitting the activations and templates
 	accInner     = 4      // activation updates a frame each pass
 	accDup       = 2      // frames within which two notes of one pitch are one
@@ -201,8 +202,9 @@ func newAccFit(notes []*accNote, frames int) *accFit {
 }
 
 // predict is harmonic h of note i at the frame the local indices are set for:
-// the floor, its own sound and the other sounding notes' harmonics under it
-func (f *accFit) predict(i, h, t int) (p, own float32) {
+// the floor, its own sound and the other sounding notes' harmonics under it,
+// and apart what other notes of its own pitch add, the ring a restrike rises over
+func (f *accFit) predict(i, h, t int) (p, own, ring float32) {
 	n := f.notes[i]
 	p = f.b[t] * n.floor[h]
 	for _, tm := range n.terms[n.termAt[h]:n.termAt[h+1]] {
@@ -213,11 +215,14 @@ func (f *accFit) predict(i, h, t int) (p, own float32) {
 		o := f.notes[tm.j]
 		v := o.g[u] * f.w[o.midi-RipMinMIDI][tm.k] * tm.c
 		p += v
-		if int(tm.j) == i {
+		switch {
+		case int(tm.j) == i:
 			own = v
+		case o.midi == n.midi:
+			ring += v
 		}
 	}
-	return p, own
+	return p, own, ring
 }
 
 // sweep fits the activations frame by frame, and the floor, by multiplicative
@@ -228,8 +233,6 @@ func (f *accFit) sweep(frozen func(*accNote) bool, templates bool) {
 	var numW, denW [RipPitches][accHarmonics]float64
 	var active []int
 	next := 0
-	const eps = 1e-9
-	num, den := make([]float32, len(notes)), make([]float32, len(notes))
 	for t := range f.b {
 		active = slices.DeleteFunc(active, func(i int) bool { return notes[i].t1 <= t })
 		for next < len(notes) && notes[next].t0 <= t {
@@ -242,43 +245,11 @@ func (f *accFit) sweep(frozen func(*accNote) bool, templates bool) {
 		for _, i := range active {
 			f.local[i] = t - notes[i].t0
 		}
-		for it := range accInner {
-			last := it == accInner-1
-			for _, i := range active {
-				num[i], den[i] = 0, 0
-			}
-			var numB, denB float32
-			for _, i := range active {
-				n := notes[i]
-				row := n.mag[f.local[i]*n.nh:][:n.nh]
-				for h := range n.nh {
-					p, _ := f.predict(i, h, t)
-					r := row[h] / (p + eps)
-					numB, denB = numB+r*n.floor[h], denB+n.floor[h]
-					for _, tm := range n.terms[n.termAt[h]:n.termAt[h+1]] {
-						u := f.local[tm.j]
-						if u < 0 {
-							continue
-						}
-						o := notes[tm.j]
-						wk := f.w[o.midi-RipMinMIDI][tm.k] * tm.c
-						num[tm.j] += r * wk
-						den[tm.j] += wk
-						if last && templates {
-							numW[o.midi-RipMinMIDI][tm.k] += float64(r * o.g[u] * tm.c)
-							denW[o.midi-RipMinMIDI][tm.k] += float64(o.g[u] * tm.c)
-						}
-					}
-				}
-			}
-			for _, j := range active {
-				if frozen != nil && frozen(notes[j]) {
-					continue
-				}
-				notes[j].g[f.local[j]] *= (num[j] + eps) / (den[j] + eps)
-			}
-			f.b[t] *= (numB + eps) / (denB + eps)
+		var acc *accTemplates
+		if templates {
+			acc = &accTemplates{&numW, &denW}
 		}
+		f.settle(t, active, -1, frozen, acc)
 		for _, i := range active {
 			f.local[i] = -1
 		}
@@ -286,16 +257,71 @@ func (f *accFit) sweep(frozen func(*accNote) bool, templates bool) {
 	if templates {
 		f.share(&numW, &denW)
 	}
-	// a note's activation may rise through its attack and only fall after
+	// a note's activation may rise through its attack and only swell after
 	for _, n := range notes {
 		if frozen != nil && frozen(n) {
 			continue
 		}
 		for u := n.start - n.t0 + accRise + 1; u < len(n.g); u++ {
-			if u > 0 && n.g[u] > n.g[u-1] {
-				n.g[u] = n.g[u-1]
+			if u > 0 && n.g[u] > n.g[u-1]*accSwell {
+				n.g[u] = n.g[u-1] * accSwell
 			}
 		}
+	}
+}
+
+// accTemplates accumulates what a frame says of each template's harmonics
+type accTemplates struct {
+	num, den *[RipPitches][accHarmonics]float64
+}
+
+// settle fits the activations of the notes active at frame t, their local
+// indices set, and the floor there, over accInner multiplicative updates, a
+// frozen note's held and note skip absent; the last update feeds the templates'
+// accumulators when given
+func (f *accFit) settle(t int, active []int, skip int, frozen func(*accNote) bool, acc *accTemplates) {
+	notes := f.notes
+	const eps = 1e-9
+	num, den := make([]float32, len(notes)), make([]float32, len(notes))
+	for it := range accInner {
+		last := it == accInner-1
+		for _, i := range active {
+			num[i], den[i] = 0, 0
+		}
+		var numB, denB float32
+		for _, i := range active {
+			if i == skip {
+				continue
+			}
+			n := notes[i]
+			row := n.mag[f.local[i]*n.nh:][:n.nh]
+			for h := range n.nh {
+				p, _, _ := f.predict(i, h, t)
+				r := row[h] / (p + eps)
+				numB, denB = numB+r*n.floor[h], denB+n.floor[h]
+				for _, tm := range n.terms[n.termAt[h]:n.termAt[h+1]] {
+					u := f.local[tm.j]
+					if u < 0 {
+						continue
+					}
+					o := notes[tm.j]
+					wk := f.w[o.midi-RipMinMIDI][tm.k] * tm.c
+					num[tm.j] += r * wk
+					den[tm.j] += wk
+					if last && acc != nil {
+						acc.num[o.midi-RipMinMIDI][tm.k] += float64(r * o.g[u] * tm.c)
+						acc.den[o.midi-RipMinMIDI][tm.k] += float64(o.g[u] * tm.c)
+					}
+				}
+			}
+		}
+		for _, j := range active {
+			if j == skip || frozen != nil && frozen(notes[j]) {
+				continue
+			}
+			notes[j].g[f.local[j]] *= (num[j] + eps) / (den[j] + eps)
+		}
+		f.b[t] *= (numB + eps) / (denB + eps)
 	}
 }
 
@@ -350,10 +376,12 @@ func (f *accFit) share(numW, denW *[RipPitches][accHarmonics]float64) {
 
 // accEvidence is what the fit says of one note over its onset: the share of its
 // points that are its own sound, how much of its fundamental and of its odd
-// harmonics the others leave unexplained, the rise of that unexplained sound over
-// the frames before, the fit's loss without the note, and its own level in dB
+// harmonics the others leave unexplained, the rise of the sound measured at its
+// harmonics over the frames before, the fit's loss without the note, its own
+// level in dB, its share over every frame measured, and how many of its
+// harmonics another pitch's cover
 type accEvidence struct {
-	share, unF0, unOdd, rise, loo, level float64
+	share, unF0, unOdd, rise, loo, level, span, covered float64
 }
 
 // evidences is every note's evidence
@@ -368,34 +396,33 @@ func (f *accFit) evidences() []accEvidence {
 func (f *accFit) evidence(i int) accEvidence {
 	n := f.notes[i]
 	const eps = 1e-9
-	// the notes whose harmonics fall under this one's, the only ones predict reads
-	var near []int
-	for _, tm := range n.terms {
-		if !slices.Contains(near, int(tm.j)) {
-			near = append(near, int(tm.j))
-		}
-	}
-	var sumM, sumOwn, mF0, unF0, mOdd, unOdd, klFull, klLess, resOn, resPre, peak float64
+	var sumM, sumOwn, mF0, unF0, mOdd, unOdd, klFull, klLess, resOn, resPre, peak, spanM, spanOwn float64
+	var coveredH [accHarmonics]bool
 	for t := n.t0; t < n.t1; t++ {
 		u := t - n.t0
 		onset := t >= n.start-1 && t < n.start+accOnset
-		if !onset && t >= n.start-2 {
+		if !onset && t >= n.start-2 && t < n.start+accOnset {
 			continue
 		}
-		for _, j := range near {
-			if o := f.notes[j]; o.t0 <= t && t < o.t1 {
-				f.local[j] = t - o.t0
-			}
+		active := f.notesAt(t)
+		for _, j := range active {
+			f.local[j] = t - f.notes[j].t0
 		}
 		row := n.mag[u*n.nh:][:n.nh]
 		var res float64
 		for h := range n.nh {
-			p, own := f.predict(i, h, t)
+			p, own, ring := f.predict(i, h, t)
 			m, others := float64(row[h]), float64(p-own)
 			un := math.Max(m-others, 0)
-			res += un
+			res += m
+			if t >= n.start {
+				spanM, spanOwn = spanM+m, spanOwn+float64(own)
+			}
 			if !onset {
 				continue
+			}
+			if others-float64(ring) > float64(f.b[t]*n.floor[h]) {
+				coveredH[h] = true
 			}
 			sumM, sumOwn = sumM+m, sumOwn+float64(own)
 			peak = math.Max(peak, float64(own))
@@ -406,35 +433,90 @@ func (f *accFit) evidence(i int) accEvidence {
 				mOdd, unOdd = mOdd+m, unOdd+un
 			}
 			klFull += m*math.Log((m+eps)/(float64(p)+eps)) - m + float64(p)
-			klLess += m*math.Log((m+eps)/(others+eps)) - m + others
 		}
-		if onset {
+		if onset { // the fit's loss here without the note, the others settled again in its absence
+			klLess += f.without(i, t, active)
+		}
+		switch {
+		case onset:
 			resOn = math.Max(resOn, res)
-		} else {
+		case t < n.start:
 			resPre = math.Max(resPre, res)
 		}
-		for _, j := range near {
+		for _, j := range active {
 			f.local[j] = -1
 		}
 	}
+	var covered float64
+	for h := range n.nh {
+		if coveredH[h] {
+			covered++
+		}
+	}
+	covered /= float64(n.nh)
 	return accEvidence{
 		share: sumOwn / (sumM + eps), unF0: unF0 / (mF0 + eps), unOdd: unOdd / (mOdd + eps),
 		rise: min(max(20*math.Log10((resOn+1e-7)/(resPre+1e-7)), -20), 60), loo: (klLess - klFull) / (sumM + eps),
-		level: 20 * math.Log10(peak+1e-7),
+		level: 20 * math.Log10(peak+1e-7), span: spanOwn / (spanM + eps), covered: covered,
 	}
+}
+
+// without is the Kullback-Leibler loss over note i's harmonics at frame t with
+// the note absent and the other notes and the floor settled again without it,
+// their fit restored after
+func (f *accFit) without(i, t int, active []int) float64 {
+	const eps = 1e-9
+	saved := make([]float32, len(active))
+	for k, j := range active {
+		saved[k] = f.notes[j].g[f.local[j]]
+	}
+	b := f.b[t]
+	u := f.local[i]
+	f.local[i] = -1
+	f.settle(t, active, i, nil, nil)
+	n := f.notes[i]
+	row := n.mag[u*n.nh:][:n.nh]
+	var kl float64
+	for h := range n.nh {
+		p, _, _ := f.predict(i, h, t)
+		m := float64(row[h])
+		kl += m*math.Log((m+eps)/(float64(p)+eps)) - m + float64(p)
+	}
+	f.local[i] = u
+	for k, j := range active {
+		f.notes[j].g[f.local[j]] = saved[k]
+	}
+	f.b[t] = b
+	return kl
+}
+
+// notesAt is the notes measured at frame t
+func (f *accFit) notesAt(t int) []int {
+	var out []int
+	for j, o := range f.notes {
+		if o.t0 > t {
+			break
+		}
+		if o.t1 > t {
+			out = append(out, j)
+		}
+	}
+	return out
 }
 
 // accScore weighs a note's evidence with what the front end said of it into the
 // odds that it is a note of the recording: a logistic fit on graded recordings, a
 // piano in a room and through a phone, a keyboard and a distorted guitar
-// rendered from the same piece. Reported notes and candidates are weighed apart.
+// rendered from the same piece. Reported notes and candidates are weighed apart;
+// the fit's loss without the note is read but unweighed, its fitted sign running
+// against its sense beside the shares.
 type accScore struct {
-	bias, share, unF0, unOdd, rise, loo, strike, support, low, level, ringing float64
+	bias, share, unF0, unOdd, rise, loo, strike, support, low, level, ringing, span float64
 }
 
 var (
-	accReported  = accScore{-4.87, 1.18, 1.58, 1.18, 0.55, -0.19, 0.15, 3.93, -0.99, 0.17, 0.24}
-	accCandidate = accScore{-5.29, 0.52, -1.15, 2.07, 0.39, 0.04, 0.26, 4.42, -0.28, 0.61, 0.76}
+	accReported  = accScore{-3.96, 1.05, 1.03, 0.53, 0.89, 0, 0.10, 4.01, -0.97, 0.08, 0.51, 0.25}
+	accCandidate = accScore{-5.32, -0.09, -1.32, 2.03, 0.49, 0, 0.24, 4.98, -0.35, 0.66, 0.92, 0.68}
 	// accBar and accCandBar are the odds a reported note keeps and a candidate
 	// comes back at
 	accBar, accCandBar = 0.35, 0.5
@@ -457,7 +539,7 @@ func (s accScore) odds(in accInput, ref float64) float64 {
 	}
 	v := s.bias + s.share*math.Log(math.Max(in.share, 1e-3)) + s.unF0*in.unF0 + s.unOdd*in.unOdd + s.rise*in.rise/10 +
 		s.loo*math.Log(math.Max(in.loo, 1e-3)) + s.strike*logit(in.strike) + s.support*min(in.support, 1.5) + s.low*flag(in.low) +
-		s.level*min(max(in.level-ref, -60), 10)/10 + s.ringing*flag(in.ringing)
+		s.level*min(max(in.level-ref, -60), 10)/10 + s.ringing*flag(in.ringing) + s.span*math.Log(math.Max(in.span, 1e-3))
 	return 1 / (1 + math.Exp(-v))
 }
 
@@ -481,12 +563,15 @@ func (f *RipFrames) account(x []float64, p RipParams, bass, melody []ripNote) ([
 	}
 	ev := fit.evidences()
 	ref := accRef(ev)
-	var kept []*accNote
+	var kept, dropped []*accNote
 	for i, n := range notes {
 		if accReported.odds(f.accInput(n, ev[i], notes, refs), ref) >= accBar {
 			kept = append(kept, n)
+		} else {
+			dropped = append(dropped, n)
 		}
 	}
+	accRingOn(kept, dropped)
 	if len(cands) > 0 {
 		all = slices.Concat(kept, cands)
 		slices.SortFunc(all, byFrame)
@@ -499,9 +584,11 @@ func (f *RipFrames) account(x []float64, p RipParams, bass, melody []ripNote) ([
 		for range accSweeps - 2 {
 			fit2.sweep(frozen, false)
 		}
+		// a strike on a pitch still sounding is the decoder's StrikeAgain to judge: the
+		// fit cannot tell a held note's swell from a new strike, and one admitted cuts it
 		ev2 := fit2.evidences()
 		for i, n := range all {
-			if n.cand && accCandidate.odds(f.accInput(n, ev2[i], all, refs), ref) >= accCandBar {
+			if in := f.accInput(n, ev2[i], all, refs); n.cand && !in.ringing && accCandidate.odds(in, ref) >= accCandBar {
 				kept = append(kept, n)
 			}
 		}
@@ -533,6 +620,19 @@ func (f *RipFrames) accRefs() [2]float64 {
 		refs[1] = r.ref
 	}
 	return refs
+}
+
+// accRingOn lets a kept note sound on through a dropped note of its pitch that
+// started where it ended: the decoder cuts a note at every strike of its pitch,
+// and a strike its ring explains is no new note but the same one still sounding
+func accRingOn(kept, dropped []*accNote) {
+	for _, d := range dropped {
+		for _, k := range kept {
+			if k.midi == d.midi && k.start < d.start && k.end >= d.start-accDup && k.end < d.end {
+				k.end = d.end
+			}
+		}
+	}
 }
 
 // accDedup merges two notes of one pitch starting within accDup frames of each
@@ -631,7 +731,7 @@ func (f *RipFrames) accCandidates(p RipParams, reported []*accNote, refs [2]floa
 					continue
 				}
 				end := t + 1
-				for end < T && end-t < accSpan && r.sal(end, s) >= p.Voicing*r.ref && !(float64(at(f.Strike, end, midi)) >= p.Strike && at(f.Strike, end, midi) >= at(f.Strike, end-1, midi) && at(f.Strike, end, midi) > at(f.Strike, end+1, midi)) {
+				for end < T && r.sal(end, s) >= p.Voicing*r.ref && !(float64(at(f.Strike, end, midi)) >= p.Strike && at(f.Strike, end, midi) >= at(f.Strike, end-1, midi) && at(f.Strike, end, midi) > at(f.Strike, end+1, midi)) {
 					end++
 				}
 				out = append(out, r.note(t, min(max(end, t+5), T), s))

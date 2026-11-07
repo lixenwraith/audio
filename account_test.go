@@ -59,6 +59,11 @@ func TestANoteTheOthersAccountForGoes(t *testing.T) {
 		}
 	}
 	f := accFrames(frames, reported, nil)
+	at := 700*RipPitches + 69 - RipMinMIDI
+	f.Strike[at] = 0.8 // the head's doubt of a partial, as it reads one in a recording
+	for t := 700; t < 950; t++ {
+		f.Salience[t*RipPitches+69-RipMinMIDI] = 0.75
+	}
 	bass, melody := f.account(x, DefaultRipParams(), nil, reported)
 	if got := accPitches(slices.Concat(bass, melody)); !slices.Equal(got, []int{57, 57, 57, 64}) {
 		t.Errorf("notes kept %v, want the three A3s and the E4 and not the A4 their sound accounts for", got)
@@ -75,6 +80,9 @@ func TestAStrikeWhoseSoundIsItsOwnComesBack(t *testing.T) {
 	accTone(x, 62, 150, 350, 0.3)
 	reported := []ripNote{{start: 50, end: 350, midi: 57, vel: 0.5}}
 	f := accFrames(frames, slices.Concat(reported, []ripNote{{start: 150, end: 350, midi: 62}, {start: 150, end: 350, midi: 71}}), nil)
+	for t := 150; t < 350; t++ { // the pitch head's doubt of a pitch that never sounds
+		f.Salience[t*RipPitches+71-RipMinMIDI] = 0.4
+	}
 	bass, melody := f.account(x, DefaultRipParams(), nil, reported)
 	if got := accPitches(slices.Concat(bass, melody)); !slices.Equal(got, []int{57, 62}) {
 		t.Errorf("notes kept %v, want the A3 reported and the D4 struck in the recording, not the B4 struck on silence", got)
@@ -92,5 +100,17 @@ func TestTwoNotesOfOnePitchAtOneStartAreOne(t *testing.T) {
 	bass, melody := f.account(x, DefaultRipParams(), reported, nil)
 	if len(bass) != 1 || len(melody) != 0 || bass[0].start != 50 || bass[0].end != 300 || bass[0].vel != 0.6 {
 		t.Errorf("bass %+v and %d melody notes, want one E2 from 50 to 300 at the strike's velocity", bass, len(melody))
+	}
+}
+
+// TestARingingNoteSoundsOnThroughADroppedRestrike: a note the decoder cut at a
+// strike of its pitch sounds on to the dropped note's end when that strike was
+// no new note, and is left alone where the dropped note started later.
+func TestARingingNoteSoundsOnThroughADroppedRestrike(t *testing.T) {
+	kept := []*accNote{{ripNote: ripNote{start: 50, end: 150, midi: 60}}, {ripNote: ripNote{start: 400, end: 450, midi: 60}}, {ripNote: ripNote{start: 50, end: 150, midi: 64}}}
+	dropped := []*accNote{{ripNote: ripNote{start: 150, end: 300, midi: 60}}, {ripNote: ripNote{start: 470, end: 500, midi: 60}}}
+	accRingOn(kept, dropped)
+	if kept[0].end != 300 || kept[1].end != 450 || kept[2].end != 150 {
+		t.Errorf("ends %d %d %d, want 300 (sounding on), 450 (the drop started later) and 150 (another pitch)", kept[0].end, kept[1].end, kept[2].end)
 	}
 }
