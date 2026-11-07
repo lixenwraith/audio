@@ -2,15 +2,34 @@ package audio
 
 import (
 	"math"
+	"math/rand"
 	"slices"
 	"testing"
 )
 
-// accTone is a note of harmonics falling as 1/h, struck at from and ringing to
-// end, each harmonic fading at its own rate, added into x at RipRate
-func accTone(x []float64, midi, from, end int, level float64) {
+// accDrone is a note held without fading, its harmonics falling as 1/h
+func accDrone(x []float64, midi, from, end int, level float64, harmonics int) {
 	f0 := NoteFreq(midi)
-	for h := 1; h <= 8; h++ {
+	for h := 1; h <= harmonics; h++ {
+		for i := from * RipHop; i < end*RipHop && i < len(x); i++ {
+			x[i] += level / float64(h) * math.Sin(2*math.Pi*f0*float64(h)*float64(i)/RipRate)
+		}
+	}
+}
+
+// accNoise lays a white floor level under x, the same every run
+func accNoise(x []float64, level float64) {
+	r := rand.New(rand.NewSource(1))
+	for i := range x {
+		x[i] += level * (2*r.Float64() - 1)
+	}
+}
+
+// accTone is a note of harmonics harmonics falling as 1/h, struck at from and
+// ringing to end, each harmonic fading at its own rate, added into x at RipRate
+func accTone(x []float64, midi, from, end int, level float64, harmonics int) {
+	f0 := NoteFreq(midi)
+	for h := 1; h <= harmonics; h++ {
 		for i := from * RipHop; i < end*RipHop && i < len(x); i++ {
 			dt := float64(i-from*RipHop) / RipRate
 			x[i] += level / float64(h) * math.Exp(-dt*float64(h)) * math.Sin(2*math.Pi*f0*float64(h)*dt)
@@ -45,23 +64,23 @@ func accPitches(notes []ripNote) []int {
 	return out
 }
 
-// TestANoteTheOthersAccountForGoes: a note reported at the octave of a note
-// still ringing, whose harmonics the ringing note's own account for, goes, the
-// lower note having sounded alone before so its template knows its second
+// TestANoteTheOthersAccountForGoes: a short note reported at the octave of a
+// note still ringing, whose harmonics the ringing note's own account for, goes,
+// the lower note having sounded alone before so its template knows its second
 // harmonic; the ringing note and a note of its own sound struck beside it stay.
 func TestANoteTheOthersAccountForGoes(t *testing.T) {
 	const frames = 1000
 	x := make([]float64, frames*RipHop)
-	reported := []ripNote{{start: 50, end: 300, midi: 57, vel: 0.5}, {start: 350, end: 600, midi: 57, vel: 0.5}, {start: 650, end: 950, midi: 57, vel: 0.5}, {start: 700, end: 950, midi: 64, vel: 0.5}, {start: 700, end: 950, midi: 69, vel: 0.5}}
+	reported := []ripNote{{start: 50, end: 300, midi: 57, vel: 0.5}, {start: 350, end: 600, midi: 57, vel: 0.5}, {start: 650, end: 950, midi: 57, vel: 0.5}, {start: 700, end: 950, midi: 64, vel: 0.5}, {start: 700, end: 760, midi: 69, vel: 0.5}}
 	for _, n := range reported {
 		if n.midi != 69 {
-			accTone(x, n.midi, n.start, n.end, 0.3)
+			accTone(x, n.midi, n.start, n.end, 0.3, 8)
 		}
 	}
 	f := accFrames(frames, reported, nil)
 	at := 700*RipPitches + 69 - RipMinMIDI
 	f.Strike[at] = 0.8 // the head's doubt of a partial, as it reads one in a recording
-	for t := 700; t < 950; t++ {
+	for t := 700; t < 760; t++ {
 		f.Salience[t*RipPitches+69-RipMinMIDI] = 0.75
 	}
 	bass, melody := f.account(x, DefaultRipParams(), nil, reported)
@@ -76,8 +95,8 @@ func TestANoteTheOthersAccountForGoes(t *testing.T) {
 func TestAStrikeWhoseSoundIsItsOwnComesBack(t *testing.T) {
 	const frames = 400
 	x := make([]float64, frames*RipHop)
-	accTone(x, 57, 50, 350, 0.3)
-	accTone(x, 62, 150, 350, 0.3)
+	accTone(x, 57, 50, 350, 0.3, 8)
+	accTone(x, 62, 150, 350, 0.3, 8)
 	reported := []ripNote{{start: 50, end: 350, midi: 57, vel: 0.5}}
 	f := accFrames(frames, slices.Concat(reported, []ripNote{{start: 150, end: 350, midi: 62}, {start: 150, end: 350, midi: 71}}), nil)
 	for t := 150; t < 350; t++ { // the pitch head's doubt of a pitch that never sounds
@@ -94,7 +113,7 @@ func TestAStrikeWhoseSoundIsItsOwnComesBack(t *testing.T) {
 func TestTwoNotesOfOnePitchAtOneStartAreOne(t *testing.T) {
 	const frames = 400
 	x := make([]float64, frames*RipHop)
-	accTone(x, 40, 50, 350, 0.3)
+	accTone(x, 40, 50, 350, 0.3, 8)
 	reported := []ripNote{{start: 50, end: 120, midi: 40, vel: 0.6}, {start: 51, end: 300, midi: 40, vel: 0.4}}
 	f := accFrames(frames, reported, nil)
 	bass, melody := f.account(x, DefaultRipParams(), reported, nil)
@@ -112,5 +131,29 @@ func TestARingingNoteSoundsOnThroughADroppedRestrike(t *testing.T) {
 	accRingOn(kept, dropped)
 	if kept[0].end != 300 || kept[1].end != 450 || kept[2].end != 150 {
 		t.Errorf("ends %d %d %d, want 300 (sounding on), 450 (the drop started later) and 150 (another pitch)", kept[0].end, kept[1].end, kept[2].end)
+	}
+}
+
+// TestAHeldNoteTheFitCannotSeeStaysOnTheHeadsWord: a soft line held at the
+// octave of a loud note, whose harmonics cover all of its own, stays, as the fit
+// has no evidence of its own there, while a short note under the same cover is
+// judged.
+func TestAHeldNoteTheFitCannotSeeStaysOnTheHeadsWord(t *testing.T) {
+	const frames = 800
+	x := make([]float64, frames*RipHop)
+	accDrone(x, 57, 50, 750, 0.5, 16)  // A3, loud and held
+	accDrone(x, 69, 100, 400, 0.02, 8) // A4 held soft under it
+	accNoise(x, 1e-3)                  // a room's floor
+	reported := []ripNote{{start: 50, end: 750, midi: 57, vel: 0.5}, {start: 100, end: 400, midi: 69, vel: 0.3}, {start: 500, end: 520, midi: 69, vel: 0.3}}
+	f := accFrames(frames, reported, nil)
+	for _, n := range reported[1:] { // the heads' doubt of a soft line
+		f.Strike[n.start*RipPitches+69-RipMinMIDI] = 0.8
+		for u := n.start; u < n.end; u++ {
+			f.Salience[u*RipPitches+69-RipMinMIDI] = 0.6
+		}
+	}
+	bass, melody := f.account(x, DefaultRipParams(), nil, reported)
+	if got := accPitches(slices.Concat(bass, melody)); !slices.Equal(got, []int{57, 69}) || melody[1].end != 400 {
+		t.Errorf("notes kept %v, want the A3 and the held A4 alone, not the short A4", got)
 	}
 }

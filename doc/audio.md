@@ -583,27 +583,32 @@ own pitch sits over 10 dB under its next partials goes (`ownPitch`): a harmonic
 stack hears a shadow a fifth or an octave under a real note, which shares its
 partials and not its fundamental. The registers' notes are then held to the
 recording (`account`): each note's harmonics, sixteen under 6 kHz, are read off
-the rip's frames around its start, and one template a pitch, the share of each
-harmonic in its sound, with one activation a note, free to rise through its
-attack and only to fall after, and a floor a frame, are fitted to them all
-together by multiplicative updates of the Kullback-Leibler fit, a template
-shared with its neighbours within two semitones where a pitch's notes are few.
-What the fit says of a note over its first eight frames, the share of its
-points that are its own sound, what of its fundamental and of its odd
-harmonics the others leave unexplained, the rise of that over the frames
-before, the fit's loss without it and its level against the loudest notes, is
+the rip's frames from before its start to its end, and one template a pitch,
+the share of each harmonic in its sound, with one activation a note, free to
+rise through its attack and only to swell slowly after, and a floor a frame,
+are fitted to them all together by multiplicative updates of the
+Kullback-Leibler fit, a template shared with its neighbours within two
+semitones where a pitch's notes are few. What the fit says of a note over its
+first eight frames, the share of its points that are its own sound, what of
+its fundamental and of its odd harmonics the others leave unexplained, the
+rise of the sound at its harmonics over the frames before, its share over its
+whole span and its level against the loudest notes, is
 weighed with the heads' sureness in a logistic score set on graded recordings
 (Für Elise clean and through a phone, a keyboard and a distorted guitar), and a
 note under the bar goes: a pitch struck again that its ring explains, a partial
-of the note under it, a shadow without a fundamental of its own. Two notes of
-one pitch at one start are one, as the strike and the bass line's path can both
-report a note. Then every strike over the bar the decoder dropped, a stronger
+of the note under it, a shadow without a fundamental of its own; a kept note
+sounds on through a dropped restrike that started where it ended. A note held
+a second or more, seven tenths of whose harmonics the fit cannot see as its own,
+under the floor or a third of them another pitch's, is a soft line under a
+chord and stays on the heads' word. Two notes of one pitch at one start are one, as the strike and the bass
+line's path can both report a note. Then every strike over the bar the decoder dropped, a stronger
 strike's partial, a pitch it heard not sounding or a ringing pitch struck under
 `StrikeAgain`, is judged the same way against the notes kept, with an
-activation of its own alone, and comes back where its sound is its own; the
-decoder's rules stay, since they sort the strikes into two populations the
-score weighs apart, and strikes judged all together let a bass note's partials
-take its sound. A front end's drum strength is how sure it is, so a
+activation of its own alone, and comes back where its sound is its own, unless
+its pitch still sounds, which is the decoder's `StrikeAgain` to judge, as the
+fit cannot tell a held note's swell from a strike; the decoder's rules stay,
+since they sort the strikes into two populations the score weighs apart, and
+strikes judged all together let a bass note's partials take its sound. A front end's drum strength is how sure it is, so a
 drum it never grows sure of stays silent, where a bar set against its own loudest
 would raise its doubts to hits, and one striking under four times a minute is no
 part (`drumHits`). A register's voice is the mean of its notes' genes, one voice

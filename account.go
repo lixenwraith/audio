@@ -24,6 +24,8 @@ const (
 	accSweeps    = 5      // passes over the frames fitting the activations and templates
 	accInner     = 4      // activation updates a frame each pass
 	accDup       = 2      // frames within which two notes of one pitch are one
+	accCovered   = 0.7    // the share of a note's harmonics the fit cannot see past which it has no say
+	accHeld      = 86     // frames a note the fit cannot see lasts to stay on the heads' word, a second
 )
 
 // accNote is a note as the accounting measures it: its frames, its harmonics'
@@ -378,8 +380,8 @@ func (f *accFit) share(numW, denW *[RipPitches][accHarmonics]float64) {
 // points that are its own sound, how much of its fundamental and of its odd
 // harmonics the others leave unexplained, the rise of the sound measured at its
 // harmonics over the frames before, the fit's loss without the note, its own
-// level in dB, its share over every frame measured, and how many of its
-// harmonics another pitch's cover
+// level in dB, its share over every frame measured, and the share of its
+// harmonics the fit cannot see as its own, under the floor or another pitch's
 type accEvidence struct {
 	share, unF0, unOdd, rise, loo, level, span, covered float64
 }
@@ -397,7 +399,7 @@ func (f *accFit) evidence(i int) accEvidence {
 	n := f.notes[i]
 	const eps = 1e-9
 	var sumM, sumOwn, mF0, unF0, mOdd, unOdd, klFull, klLess, resOn, resPre, peak, spanM, spanOwn float64
-	var coveredH [accHarmonics]bool
+	var hM, hNotes, hFloor [accHarmonics]float64 // each harmonic over the onset: measured, other pitches' notes, the floor
 	for t := n.t0; t < n.t1; t++ {
 		u := t - n.t0
 		onset := t >= n.start-1 && t < n.start+accOnset
@@ -421,9 +423,8 @@ func (f *accFit) evidence(i int) accEvidence {
 			if !onset {
 				continue
 			}
-			if others-float64(ring) > float64(f.b[t]*n.floor[h]) {
-				coveredH[h] = true
-			}
+			floor := float64(f.b[t] * n.floor[h])
+			hM[h], hNotes[h], hFloor[h] = hM[h]+m, hNotes[h]+others-float64(ring)-floor, hFloor[h]+floor
 			sumM, sumOwn = sumM+m, sumOwn+float64(own)
 			peak = math.Max(peak, float64(own))
 			if h == 0 {
@@ -447,9 +448,9 @@ func (f *accFit) evidence(i int) accEvidence {
 			f.local[j] = -1
 		}
 	}
-	var covered float64
+	var covered float64 // the harmonics the fit cannot see as the note's: under the floor, or a third of them another pitch's
 	for h := range n.nh {
-		if coveredH[h] {
+		if hM[h] <= 2*hFloor[h] || hNotes[h] >= hM[h]/3 {
 			covered++
 		}
 	}
@@ -565,7 +566,9 @@ func (f *RipFrames) account(x []float64, p RipParams, bass, melody []ripNote) ([
 	ref := accRef(ev)
 	var kept, dropped []*accNote
 	for i, n := range notes {
-		if accReported.odds(f.accInput(n, ev[i], notes, refs), ref) >= accBar {
+		// a held note whose harmonics all sit under louder pitches' is one the fit
+		// cannot see, a soft line under a chord: it stays on the heads' word
+		if ev[i].covered > accCovered && n.end-n.start >= accHeld || accReported.odds(f.accInput(n, ev[i], notes, refs), ref) >= accBar {
 			kept = append(kept, n)
 		} else {
 			dropped = append(dropped, n)
