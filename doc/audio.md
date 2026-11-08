@@ -398,7 +398,8 @@ the program of the shipped voice nearest it, its wave first, then its genes
 `RipWAV` and `RipSamples` listen to a recording and estimate what the sequencer
 would need to play it: the tempo, the meter and where the bars fall, the key, the
 chord root each bar leans on, and per bar the kick, snare and hihat hits, the
-melody and the bass line as steps of the sixteenth grid (`Rip`). `Patterns`
+melody and the bass line as steps of the sixteenth grid (`Rip`), a line holding
+every pitch struck at a step, so a chord keeps its notes. `Patterns`
 writes them as patterns of up to four bars, named `<name>_beat_<n>`,
 `<name>_melody_<n>` and `<name>_bass_<n>` in a group of their own and no tier.
 `ReadWAV` reads the file, any PCM or float width. A `Ripper` with a `Grid` pins

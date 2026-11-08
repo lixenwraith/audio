@@ -2692,8 +2692,8 @@ func (f *RipFrames) voiceOver(a, b int) []float64 {
 }
 
 // place quantizes a note onto the grid as a step of the key's nearest degree
-// with an accidental for the semitones left, its length in sixteenths, the
-// louder of two on one step kept.
+// with an accidental for the semitones left, its length in sixteenths: a line
+// holds every pitch struck at a step, the louder kept of one pitch struck twice.
 func (g *ripGrid) place(r *Rip, n ripNote, part func(*RipBar) *[]Step) {
 	bar, step, ok := g.at(n.start)
 	if !ok {
@@ -2703,7 +2703,7 @@ func (g *ripGrid) place(r *Rip, n ripNote, part func(*RipBar) *[]Step) {
 	dur := min(max(int(math.Round(float64(n.end-n.start)/g.stepFrames())), 1), MaxPatternLen)
 	s := Step{Pos: step, Vel: n.vel, Deg: deg, Oct: oct, Acc: acc, Dur: dur}
 	evs := part(&r.Bars[bar])
-	if i := slices.IndexFunc(*evs, func(e Step) bool { return e.Pos == step }); i >= 0 {
+	if i := slices.IndexFunc(*evs, func(e Step) bool { return e.Pos == step && e.Deg == deg && e.Oct == oct && e.Acc == acc }); i >= 0 {
 		if (*evs)[i].Vel < s.Vel {
 			(*evs)[i] = s
 		}
