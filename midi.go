@@ -155,11 +155,12 @@ type midiTrack struct {
 type MIDIScore struct {
 	Notes   []RipNote
 	Hits    []RipHit
-	BPM     float64 // quarter notes a minute at the start, 120 when the file names none
-	Changes int     // tempo changes after the start
-	Meter   Meter   // the time signature the music starts in, 4/4 when the file names none
-	Meters  int     // time signatures changed to after the first bar
-	Left    int     // parts past the three lines, left out
+	BPM     float64   // quarter notes a minute at the start, 120 when the file names none
+	Changes int       // tempo changes after the start
+	Meter   Meter     // the time signature the music starts in, 4/4 when the file names none
+	Meters  int       // time signatures changed to after the first bar
+	Left    int       // parts past the three lines, left out of them
+	Further []RipNote // those parts' notes, as an under line's, for what wants the whole arrangement
 	// Voices are the shipped voices the melody, under and bass parts' programs
 	// play on (midiVoice), General MIDI's piano where a file sets none
 	Voices [3]InstrumentType
@@ -294,6 +295,9 @@ func ReadMIDI(r io.Reader) (*MIDIScore, error) {
 	for i, line := range midiLinesOf(tonal) {
 		if line < 0 {
 			m.Left++
+			for _, n := range tonal[i].notes {
+				m.Further = append(m.Further, RipNote{Start: seconds(n.on), End: seconds(n.off), MIDI: int(n.key), Vel: float64(n.vel) / 127, Second: true, Bright: RipUnmeasured})
+			}
 			continue
 		}
 		m.Voices[line] = midiVoice(tonal[i].notes[0].prog)
@@ -738,15 +742,13 @@ func midiLinesOf(parts []midiPart) []int {
 // readMIDITrack reads the track chunk numbered track: its notes by channel, each
 // part named by the track, and the tempo changes, signatures and program changes
 // in it. A note-off ends the earliest note of its channel and pitch still
-// sounding, or, under the channel's sustain pedal, the pedal's lift or the
-// key's next strike does; a note still sounding when the track ends ends with it.
+// sounding, under the sustain pedal too, the pedal's ring being the sound's; a
+// note still sounding when the track ends ends with it.
 func readMIDITrack(b []byte, track int) (midiTrack, error) {
 	var t midiTrack
 	var name string
 	var notes []midiNote
 	open := map[[2]byte][]int{} // channel and pitch: the notes sounding, oldest first
-	pedal := map[byte]bool{}    // a channel's sustain pedal down
-	held := map[byte][]int{}    // a channel's notes whose keys went up under its pedal
 	var tick int64
 	var running byte
 	for i := 0; i < len(b); {
@@ -813,29 +815,11 @@ func readMIDITrack(b []byte, track int) (midiTrack, error) {
 			at := [2]byte{ch, key}
 			switch {
 			case kind == 0x90 && vel > 0:
-				held[ch] = slices.DeleteFunc(held[ch], func(j int) bool {
-					if notes[j].key == key {
-						notes[j].off = tick
-					}
-					return notes[j].key == key
-				})
 				open[at] = append(open[at], len(notes))
 				notes = append(notes, midiNote{on: tick, off: -1, ch: ch, key: key, vel: vel})
 			case kind == 0x80 || kind == 0x90:
 				if q := open[at]; len(q) > 0 {
-					if pedal[ch] {
-						held[ch] = append(held[ch], q[0])
-					} else {
-						notes[q[0]].off = tick
-					}
-					open[at] = q[1:]
-				}
-			case kind == 0xB0 && key == 64 && (vel >= 64) != pedal[ch]:
-				if pedal[ch] = vel >= 64; !pedal[ch] {
-					for _, j := range held[ch] {
-						notes[j].off = tick
-					}
-					held[ch] = nil
+					notes[q[0]].off, open[at] = tick, q[1:]
 				}
 			case kind == 0xC0:
 				t.programs = append(t.programs, midiChange{tick: tick, ch: ch, program: key})

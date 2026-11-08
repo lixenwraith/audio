@@ -77,6 +77,21 @@ func TestReadMIDIReadsTheSameTranscript(t *testing.T) {
 	}
 }
 
+// TestMIDIKeepsThePartsPastTheLinesApart: of four parts, the one past melody,
+// under and bass is left out of the lines and kept whole as a further part
+func TestMIDIKeepsThePartsPastTheLinesApart(t *testing.T) {
+	m, err := ReadMIDI(bytes.NewReader(append(smf(1), track(
+		0x00, 0x90, 72, 100, 0x00, 0x91, 64, 90, 0x00, 0x92, 36, 90, 0x00, 0x93, 67, 60, // C5, E4, C2 and G4 on four channels
+		0x83, 0x60, 0x80, 72, 0, 0x00, 0x81, 64, 0, 0x00, 0x82, 36, 0, 0x00, 0x83, 67, 0,
+		0x00, 0xFF, 0x2F, 0)...)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Notes) != 3 || m.Left != 1 || len(m.Further) != 1 || m.Further[0].MIDI != 67 || !m.Further[0].Second || m.Further[0].End != 0.5 {
+		t.Errorf("lines %+v, %d part(s) left out, further %+v; want G4 apart", m.Notes, m.Left, m.Further)
+	}
+}
+
 // sounding is what a song plays, a line a note or hit: its instrument and desc,
 // the step from the song's start, the pitch under the song's key, the velocity
 // as a note-on holds it and the length in steps, sorted
@@ -329,17 +344,15 @@ func TestAScoreInThreeCompressesToItsPatterns(t *testing.T) {
 	}
 }
 
-// TestMIDINotesSoundOnUnderTheSustainPedal: a key let go under its channel's
-// pedal sounds on until the pedal lifts or the key strikes again, and a note of
-// a channel without the pedal ends at its key
-func TestMIDINotesSoundOnUnderTheSustainPedal(t *testing.T) {
+// TestMIDINotesEndAtTheirKeysUnderThePedal: a note reads as played, ending at its
+// key's release whatever the sustain pedal holds, as a score writes it and as
+// the corpus labels the loops it rings on
+func TestMIDINotesEndAtTheirKeysUnderThePedal(t *testing.T) {
 	file := append(smf(1), track(
 		0x00, 0x90, 60, 100, 0x00, 0xB0, 64, 127, // C4 and the pedal down
-		0x81, 0x70, 0x80, 60, 0, 0x00, 0x90, 64, 100, 0x00, 0x91, 36, 100, // C4's key up at 0.25 s; E4, and C2 on a second channel
-		0x81, 0x70, 0x80, 64, 0, 0x00, 0x81, 36, 0, // both keys up at 0.5 s
-		0x83, 0x60, 0x90, 60, 100, // C4 again at 1 s
-		0x81, 0x70, 0x80, 60, 0, // its key up
-		0x81, 0x70, 0xB0, 64, 0, // the pedal up at 1.5 s
+		0x81, 0x70, 0x80, 60, 0, 0x00, 0x90, 64, 100, // C4's key up at 0.25 s, E4
+		0x81, 0x70, 0x80, 64, 0, // its key up at 0.5 s
+		0x83, 0x60, 0xB0, 64, 0, // the pedal up at 1 s
 		0x83, 0x60, 0xFF, 0x2F, 0)...)
 	m, err := ReadMIDI(bytes.NewReader(file))
 	if err != nil {
@@ -350,7 +363,7 @@ func TestMIDINotesSoundOnUnderTheSustainPedal(t *testing.T) {
 		got = append(got, fmt.Sprintf("%d %.2f-%.2f", n.MIDI, n.Start, n.End))
 	}
 	slices.Sort(got)
-	if want := []string{"36 0.25-0.50", "60 0.00-1.00", "60 1.00-1.50", "64 0.25-1.50"}; !slices.Equal(got, want) {
+	if want := []string{"60 0.00-0.25", "64 0.25-0.50"}; !slices.Equal(got, want) {
 		t.Errorf("notes %q, want %q", got, want)
 	}
 }
