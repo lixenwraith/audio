@@ -155,11 +155,12 @@ type midiTrack struct {
 type MIDIScore struct {
 	Notes   []RipNote
 	Hits    []RipHit
-	BPM     float64 // quarter notes a minute at the start, 120 when the file names none
-	Changes int     // tempo changes after the start
-	Meter   Meter   // the time signature the music starts in, 4/4 when the file names none
-	Meters  int     // time signatures changed to after the first bar
-	Left    int     // parts past the three lines, left out
+	BPM     float64   // quarter notes a minute at the start, 120 when the file names none
+	Changes int       // tempo changes after the start
+	Meter   Meter     // the time signature the music starts in, 4/4 when the file names none
+	Meters  int       // time signatures changed to after the first bar
+	Left    int       // parts past the three lines, left out of them
+	Further []RipNote // those parts' notes, as an under line's, for what wants the whole arrangement
 	// Voices are the shipped voices the melody, under and bass parts' programs
 	// play on (midiVoice), General MIDI's piano where a file sets none
 	Voices [3]InstrumentType
@@ -294,6 +295,9 @@ func ReadMIDI(r io.Reader) (*MIDIScore, error) {
 	for i, line := range midiLinesOf(tonal) {
 		if line < 0 {
 			m.Left++
+			for _, n := range tonal[i].notes {
+				m.Further = append(m.Further, RipNote{Start: seconds(n.on), End: seconds(n.off), MIDI: int(n.key), Vel: float64(n.vel) / 127, Second: true, Bright: RipUnmeasured})
+			}
 			continue
 		}
 		m.Voices[line] = midiVoice(tonal[i].notes[0].prog)

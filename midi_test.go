@@ -77,6 +77,21 @@ func TestReadMIDIReadsTheSameTranscript(t *testing.T) {
 	}
 }
 
+// TestMIDIKeepsThePartsPastTheLinesApart: of four parts, the one past melody,
+// under and bass is left out of the lines and kept whole as a further part
+func TestMIDIKeepsThePartsPastTheLinesApart(t *testing.T) {
+	m, err := ReadMIDI(bytes.NewReader(append(smf(1), track(
+		0x00, 0x90, 72, 100, 0x00, 0x91, 64, 90, 0x00, 0x92, 36, 90, 0x00, 0x93, 67, 60, // C5, E4, C2 and G4 on four channels
+		0x83, 0x60, 0x80, 72, 0, 0x00, 0x81, 64, 0, 0x00, 0x82, 36, 0, 0x00, 0x83, 67, 0,
+		0x00, 0xFF, 0x2F, 0)...)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Notes) != 3 || m.Left != 1 || len(m.Further) != 1 || m.Further[0].MIDI != 67 || !m.Further[0].Second || m.Further[0].End != 0.5 {
+		t.Errorf("lines %+v, %d part(s) left out, further %+v; want G4 apart", m.Notes, m.Left, m.Further)
+	}
+}
+
 // sounding is what a song plays, a line a note or hit: its instrument and desc,
 // the step from the song's start, the pitch under the song's key, the velocity
 // as a note-on holds it and the length in steps, sorted

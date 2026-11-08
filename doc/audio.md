@@ -529,7 +529,8 @@ holds its note until the pedal lifts or the key strikes again. A track
 named melody, under or bass is that line, and of the other parts (a track's notes
 on one channel) the lowest is the bass when its notes centre under E3, kept whole
 as the bass decoder settles a line that climbs over it, the rest the melody then
-the under in file order, any further part left out; the drum channel's kicks,
+the under in file order, any further part left out of them and kept apart for
+what wants the whole arrangement (`MIDIScore.Further`); the drum channel's kicks,
 snares and hats are hits (`RipHit`), a ride, tambourine or shaker a hat, and its
 other strikes (a tom, a crash) onsets of no line (`MIDIScore.Struck`).
 `MatchHits` lays the hits on the rip's own (`Rip.Hits`, each step placed on its
