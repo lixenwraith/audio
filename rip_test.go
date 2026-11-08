@@ -1073,6 +1073,28 @@ func TestMIDIScoreKeepsItsFirstTempo(t *testing.T) {
 	}
 }
 
+// TestALineKeepsEveryPitchStruckAtAStep: a chord of three in one line rips as
+// three steps at its step, and a pitch struck twice there as its louder one
+func TestALineKeepsEveryPitchStruckAtAStep(t *testing.T) {
+	m, err := ReadMIDI(bytes.NewReader(append(smf(1), track(
+		0x00, 0x90, 60, 100, 0x00, 0x90, 64, 100, 0x00, 0x90, 67, 100, 0x00, 0x90, 67, 60, // C4 E4 G4, and G4 again
+		0x83, 0x60, 0x80, 60, 0, 0x00, 0x80, 64, 0, 0x00, 0x80, 67, 0, 0x00, 0x80, 67, 0,
+		0x00, 0xFF, 0x2F, 0)...)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, _ := m.Rip()
+	var at0 []Step
+	for _, s := range r.Bars[0].Melody {
+		if s.Pos == 0 {
+			at0 = append(at0, s)
+		}
+	}
+	if len(at0) != 3 || at0[2].Vel < 0.7 {
+		t.Errorf("steps at the chord's step %+v, want C4, E4 and G4 once each", at0)
+	}
+}
+
 // TestMIDIScoreBarsFromItsTimeSignature: a file that names no time signature is
 // in 4/4 from its start; one whose first bar is shorter than its signature's,
 // a pickup, rips in that signature with its first bar line where the full bars
