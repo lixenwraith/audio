@@ -63,7 +63,7 @@ const (
 
 func DefaultRipParams() RipParams {
 	return RipParams{
-		TempoPrior: 120, TempoWidth: 1, Tightness: 100,
+		TempoPrior: 120, TempoWidth: 1, Tightness: 50,
 		OnsetFloor: 2.0, OnsetMin: 0.1, OnsetGap: 0.06, KickShare: 0.06, SnareShare: 0.45, SnareNoise: 0.1, HatShare: 0.3,
 		Harmonics: 6, HarmonicDecay: 0.8, Voicing: 0.3, Jump: 0.06, Switch: 0.35, Retrigger: 0.4, MinNote: 0.06,
 		SecondVoice: 0.5, Compress: 1, Cross: 0.003, Strike: 0.8, StrikeLow: 0.9, StrikeHold: 0.9, StrikeGap: 0.12, StrikeAgain: 0.95, Release: 0.8,
@@ -1659,14 +1659,14 @@ func (f *RipFrames) lineCues(hits [InstrClap][]ripHit, rootPC int, bass []ripNot
 
 // ripBarSlack is the pulses a bar may hold beyond or short of a whole bar's,
 // where the tracker added or lost one; ripBarMove what such a bar costs per
-// pulse of difference; ripBarLine the weight of a line's cues beside its comb,
-// ripBarBeat that of its pulse standing out as a beat and ripBarAccent that
-// of the bass starting on it
+// pulse of difference, dear, as a slipped bar moves every line after it;
+// ripBarLine the weight of a line's cues beside its comb, ripBarBeat that of
+// its pulse standing out as a beat and ripBarAccent that of the bass on it
 const ripBarLine = 1.0
 
 var (
 	ripBarSlack  = 2
-	ripBarMove   = 0.5
+	ripBarMove   = 2.0
 	ripBarBeat   = 1.0
 	ripBarAccent = 0.5
 )
