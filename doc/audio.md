@@ -417,7 +417,8 @@ cents flat, where every note sits between two semitone rows and wobbles between
 them, reads as one in tune. The percussive onsets, each drum's band against its
 own peak with the kick's counting double, give the tempo (autocorrelation under a
 log-Gaussian prior centred on 120 BPM, folded into 80–200) and the pulses the
-bars are read over (a dynamic programme that holds to the period): the tatum,
+bars are read over (a dynamic programme loose enough to follow a tempo that
+moves): the tatum,
 three pulses a beat when the beats hold onsets on both their thirds (a swung
 beat sounds near its second third alone), else the finer of two or four whose
 lag is a peak of the onset autocorrelation at least half the beat's, each
@@ -425,15 +426,16 @@ spanning 140 ms at least, else the beat itself (`tatum`). A hit is a kick by
 its rise under 100 Hz, a hihat by its rise above 5 kHz, a snare by the middle
 with some noise above 5 kHz, and may be two drums at once. The bars are a path
 over the pulses (`barPath`): each a whole bar's pulses, or within two of them
-at a cost per pulse where the tracker added or lost one, scored for the time
+where the tracker added or lost one, at a cost per pulse that only the bar's
+own cues pay, since a slipped bar moves every line after it, scored for the time
 it covers by its comb, the mean onset on its sixteenths read as fractions of
 its span, and its line's cues, a kick and no snare on it, the snare on the
 felt backbeats, the key's root in the bass over the first beat, the change of
 chroma over four beats from the line against the four before, how much its
 pulse stands out as a beat against the pulses around it, and how much more
 often a bass note starts on it than on the bar's other sixteenths. So a
-played take's ritardando is a longer bar, not a lost beat, and the line keeps
-its place through it; a note or a hit more than half a step before the first
+played take's ritardando stretches the pulses, not the count, and the line
+keeps its place through it; a note or a hit more than half a step before the first
 bar line opens a pickup bar before it, as long as the first, into the time
 before the recording when it begins inside that bar (`Rip.Downbeat` is
 negative then), so a phrase that leads into the first bar is kept. What the front end hears before the recording first comes within 80 dB of
