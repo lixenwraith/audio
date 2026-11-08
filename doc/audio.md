@@ -594,8 +594,13 @@ median, up to 12 dB (`dynamics`), as the heads hear each frame over its own leve
 and so a soft passage's notes as hard as a loud one's. A low note whose
 own pitch sits over 10 dB under its next partials goes (`ownPitch`): a harmonic
 stack hears a shadow a fifth or an octave under a real note, which shares its
-partials and not its fundamental. The registers' notes are then held to the
-recording (`account`): each note's harmonics, sixteen under 6 kHz, are read off
+partials and not its fundamental. So does one that rises under 6 dB over its
+pitch's steady level at each of its first three partials, the level a fifth of
+the recording's quarter seconds sit under (`steadyRise`): a tone that never
+stops, as the mains hum under a phone's recording, reads as a held low note,
+while a bass note the phone thins rises at its second or third. The registers'
+notes are then held to the recording (`account`): each note's harmonics, sixteen
+under 6 kHz, are read off
 the rip's frames from before its start to its end, and one template a pitch,
 the share of each harmonic in its sound, with one activation a note, free to
 rise through its attack and only to swell slowly after, and a floor a frame,

@@ -50,14 +50,16 @@ type RipParams struct {
 
 // ripDrumsPerMinute is the least a drum strikes to be a part of the music,
 // ripLineNote and ripLineStrength how long and strong a bass line's note is to stand
-// without a strike, and ripOwnPitch the dB a low note's own pitch stands at least
-// against its next partials, under which it is a higher note's shadow, and
+// without a strike, ripOwnPitch the dB a low note's own pitch stands at least
+// against its next partials, under which it is a higher note's shadow,
+// ripSteadyRise the dB it rises at least over its pitch's steady level, and
 // ripDynamics the dB a passage's loudness moves a note's velocity by at most
 const (
 	ripDrumsPerMinute = 4
 	ripLineNote       = 0.15
 	ripLineStrength   = 0.8
 	ripOwnPitch       = -10
+	ripSteadyRise     = 6
 	ripDynamics       = 12
 )
 
@@ -2236,7 +2238,8 @@ func (f *RipFrames) strikes(lo, hi int, p RipParams) []ripNote {
 // lines reads the registers. A front end that hears each pitch struck reads both by
 // strikes, any number at once, the bass line's own notes kept only where no strike
 // sounds, as a plain bass's are struck softly, and long and strong enough to be sure.
-// A low note with little sound at its own pitch is a higher note's shadow, and goes.
+// A low note with little sound at its own pitch is a higher note's shadow, and one
+// that rises over none of its partials' steady levels is a tone that never stops.
 func (f *RipFrames) lines(x []float64, p RipParams) (bass, melody []ripNote) {
 	line := f.notes(RipMinMIDI, RipBassReach, p)
 	if f.Strike == nil {
@@ -2256,7 +2259,10 @@ func (f *RipFrames) lines(x []float64, p RipParams) (bass, melody []ripNote) {
 			bass = append(bass, n)
 		}
 	}
-	bass = slices.DeleteFunc(bass, func(n ripNote) bool { return ownPitch(x, n, f.Hop) < ripOwnPitch })
+	steady := map[[2]int]ripSteady{}
+	bass = slices.DeleteFunc(bass, func(n ripNote) bool {
+		return ownPitch(x, n, f.Hop) < ripOwnPitch || steadyRise(x, n, f.Hop, steady) < ripSteadyRise
+	})
 	slices.SortFunc(bass, func(a, b ripNote) int { return cmp.Or(a.start-b.start, a.midi-b.midi) })
 	return bass, melody
 }
@@ -2264,23 +2270,77 @@ func (f *RipFrames) lines(x []float64, p RipParams) (bass, melody []ripNote) {
 // ownPitch is how far a note's level at its own pitch stands over the stronger of
 // its next two partials, in dB, over the 160 ms after its attack; x at RipRate.
 func ownPitch(x []float64, n ripNote, hop float64) float64 {
-	const win = RipRate * 16 / 100
 	at := int((float64(n.start)*hop + 0.03) * RipRate)
-	if at+win > len(x) {
+	if at+ripToneWin > len(x) {
 		return 0
 	}
-	level := func(hz float64) float64 {
-		var re, im float64
-		for i := range win {
-			w := 0.5 - 0.5*math.Cos(2*math.Pi*float64(i)/win)
-			ph := 2 * math.Pi * hz * float64(i) / RipRate
-			re += w * x[at+i] * math.Cos(ph)
-			im += w * x[at+i] * math.Sin(ph)
-		}
-		return 10 * math.Log10(re*re+im*im+1e-12)
+	f0 := 440 * math.Pow(2, float64(n.midi-69)/12)
+	return newRipTone(f0).level(x, at) - max(newRipTone(2*f0).level(x, at), newRipTone(3*f0).level(x, at))
+}
+
+// ripToneWin is the samples a tone's level is read over, 160 ms at RipRate, and
+// ripSteadyReads the most times a steady level is read across a recording
+const (
+	ripToneWin     = RipRate * 16 / 100
+	ripSteadyReads = 240
+)
+
+// ripTone reads one frequency's level under a Hann window ripToneWin long
+type ripTone struct{ c, s []float64 }
+
+func newRipTone(hz float64) ripTone {
+	t := ripTone{make([]float64, ripToneWin), make([]float64, ripToneWin)}
+	for i := range ripToneWin {
+		w, ph := 0.5-0.5*math.Cos(2*math.Pi*float64(i)/ripToneWin), 2*math.Pi*hz*float64(i)/RipRate
+		t.c[i], t.s[i] = w*math.Cos(ph), w*math.Sin(ph)
+	}
+	return t
+}
+
+// level is the tone's in x from at, in dB
+func (t ripTone) level(x []float64, at int) float64 {
+	var re, im float64
+	c, s := t.c, t.s[:len(t.c)]
+	for i, v := range x[at : at+len(c)] {
+		re += v * c[i]
+		im += v * s[i]
+	}
+	return 10 * math.Log10(re*re+im*im+1e-12)
+}
+
+// ripSteady is a partial's tone and its steady level across a recording
+type ripSteady struct {
+	tone  ripTone
+	floor float64
+}
+
+// steadyRise is how far a note's level stands over its pitch's steady level, the
+// level a fifth of the recording's quarter seconds (at most ripSteadyReads) sit
+// under, at the strongest of its first three partials, in dB: a tone that never
+// stops, as a mains hum, rises at none, while a bass note a phone thins still
+// rises at its second or third
+func steadyRise(x []float64, n ripNote, hop float64, steady map[[2]int]ripSteady) float64 {
+	at := int((float64(n.start)*hop + 0.03) * RipRate)
+	if at+ripToneWin > len(x) {
+		return math.Inf(1)
 	}
 	f0 := 440 * math.Pow(2, float64(n.midi-69)/12)
-	return level(f0) - max(level(2*f0), level(3*f0))
+	rise := math.Inf(-1)
+	for h := 1; h <= 3; h++ {
+		p, ok := steady[[2]int{n.midi, h}]
+		if !ok {
+			p.tone = newRipTone(float64(h) * f0)
+			var levels []float64
+			for a := 0; a+ripToneWin <= len(x); a += max(RipRate/4, (len(x)-ripToneWin)/ripSteadyReads) {
+				levels = append(levels, p.tone.level(x, a))
+			}
+			slices.Sort(levels)
+			p.floor = levels[len(levels)/5]
+			steady[[2]int{n.midi, h}] = p
+		}
+		rise = max(rise, p.tone.level(x, at)-p.floor)
+	}
+	return rise
 }
 
 // dynamics moves each note's velocity with the loudness of its passage against the

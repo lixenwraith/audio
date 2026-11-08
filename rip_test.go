@@ -694,6 +694,7 @@ func TestLowNotesAreReadByStrikes(t *testing.T) {
 	f := &RipFrames{Hop: RipFrameSec, Flux: make([]float64, frames), Salience: make([]float32, frames*RipPitches),
 		Strike: make([]float32, frames*RipPitches), Velocity: make([]float32, frames*RipPitches)}
 	at := func(t, midi int) int { return t*RipPitches + midi - RipMinMIDI }
+	x := make([]float64, frames*RipHop)
 	for _, n := range []struct {
 		midi, from, to int
 		strike         float32
@@ -703,11 +704,8 @@ func TestLowNotesAreReadByStrikes(t *testing.T) {
 			f.Salience[at(t, n.midi)] = 0.9
 			f.Velocity[at(t, n.midi)] = 0.4
 		}
-	}
-	x := make([]float64, frames*RipHop)
-	for i := range x {
-		for _, m := range []float64{36, 40, 47} {
-			x[i] += math.Sin(2 * math.Pi * 440 * math.Pow(2, (m-69)/12) * float64(i) / RipRate)
+		for i := n.from * RipHop; i < n.to*RipHop; i++ {
+			x[i] += math.Sin(2 * math.Pi * 440 * math.Pow(2, float64(n.midi-69)/12) * float64(i) / RipRate)
 		}
 	}
 	bass, melody := f.lines(x, DefaultRipParams())
@@ -732,6 +730,26 @@ func TestALowNoteNeedsItsOwnPitch(t *testing.T) {
 	}
 	if real, shadow := ownPitch(x, ripNote{midi: 57}, RipFrameSec), ownPitch(x, ripNote{midi: 45}, RipFrameSec); real < ripOwnPitch || shadow >= ripOwnPitch {
 		t.Errorf("its own pitch %.1f dB, its shadow %.1f dB, against a bar of %v", real, shadow, float64(ripOwnPitch))
+	}
+}
+
+// TestASteadyToneIsNoBassNote: a mains hum never rises over its own steady level
+// and goes, while a bass note a phone has thinned to its upper partials rises at
+// them and stands.
+func TestASteadyToneIsNoBassNote(t *testing.T) {
+	x := make([]float64, 4*RipRate)
+	for i := range x {
+		s := float64(i) / RipRate
+		x[i] = 0.05 * math.Sin(2*math.Pi*50*s)
+		if s >= 2 {
+			x[i] += 0.3 * math.Exp(-(s-2)/0.6) * (math.Sin(2*math.Pi*2*65.41*s) + math.Sin(2*math.Pi*3*65.41*s))
+		}
+	}
+	steady := map[[2]int]ripSteady{}
+	hum := steadyRise(x, ripNote{midi: 31, start: RipRate / RipHop}, RipFrameSec, steady)
+	note := steadyRise(x, ripNote{midi: 36, start: 2 * RipRate / RipHop}, RipFrameSec, steady)
+	if hum >= ripSteadyRise || note < ripSteadyRise {
+		t.Errorf("the hum rises %.1f dB, the note %.1f dB, against a bar of %v", hum, note, float64(ripSteadyRise))
 	}
 }
 
