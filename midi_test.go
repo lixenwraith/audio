@@ -329,6 +329,32 @@ func TestAScoreInThreeCompressesToItsPatterns(t *testing.T) {
 	}
 }
 
+// TestMIDINotesSoundOnUnderTheSustainPedal: a key let go under its channel's
+// pedal sounds on until the pedal lifts or the key strikes again, and a note of
+// a channel without the pedal ends at its key
+func TestMIDINotesSoundOnUnderTheSustainPedal(t *testing.T) {
+	file := append(smf(1), track(
+		0x00, 0x90, 60, 100, 0x00, 0xB0, 64, 127, // C4 and the pedal down
+		0x81, 0x70, 0x80, 60, 0, 0x00, 0x90, 64, 100, 0x00, 0x91, 36, 100, // C4's key up at 0.25 s; E4, and C2 on a second channel
+		0x81, 0x70, 0x80, 64, 0, 0x00, 0x81, 36, 0, // both keys up at 0.5 s
+		0x83, 0x60, 0x90, 60, 100, // C4 again at 1 s
+		0x81, 0x70, 0x80, 60, 0, // its key up
+		0x81, 0x70, 0xB0, 64, 0, // the pedal up at 1.5 s
+		0x83, 0x60, 0xFF, 0x2F, 0)...)
+	m, err := ReadMIDI(bytes.NewReader(file))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, n := range m.Notes {
+		got = append(got, fmt.Sprintf("%d %.2f-%.2f", n.MIDI, n.Start, n.End))
+	}
+	slices.Sort(got)
+	if want := []string{"36 0.25-0.50", "60 0.00-1.00", "60 1.00-1.50", "64 0.25-1.50"}; !slices.Equal(got, want) {
+		t.Errorf("notes %q, want %q", got, want)
+	}
+}
+
 // TestMIDIProgramsReadAsTheirVoice: every program reads as one shipped voice, of
 // its family's row; a voice's own program and a kit piece's keys read back as it
 func TestMIDIProgramsReadAsTheirVoice(t *testing.T) {
