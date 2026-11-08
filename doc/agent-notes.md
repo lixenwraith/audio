@@ -282,6 +282,12 @@ that a document now states, and link the document instead.
   the wrong transcript. `Fidelity` compares the render's frames with the
   recording's through one front end; a render a semitone sharp scores 0.56 in
   pitch against 1.0 for itself, with its onsets still at 1.0.
+- Silence past a recording's ends is the right guess for the model: on 110
+  GuitarSet test cuts, half 150 ms into a held strum and half 5 ms before one,
+  mirroring a second of the recording past each end found one note more at a
+  mid-sound start, four fewer at an attack, and added sixteen extras at a
+  mid-sound end. A gate on the high band's level misses a soft attack (a bossa
+  thumb), so it cannot choose the edges to mirror either.
 - A render at A440 beside a recording forty cents flat is heard as the same
   notes sharpened, "a stretched string", before any note is judged: the ear
   reads a tuning offset as timbre. Render, play and fit at the recording's
