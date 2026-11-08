@@ -520,7 +520,9 @@ against notes given as text a listener corrects by hand (`ParseTranscript`: `at
 N bpm`, then a note a line), or as a rhythm tapped out without pitches
 (`unit eighth`, `start 0.34s`, `melody (1-2-3---4-56---)x3 ...`), matched by when
 the notes start, or as a Standard MIDI File (`ReadMIDI`): the ground truth the
-numbers above lack. `ReadMIDI` reads type 0 or 1 under its tempo map; a track
+numbers above lack. `ReadMIDI` reads type 0 or 1 under its tempo map, a note
+sounding as long as it is heard: a key let go under its channel's sustain pedal
+holds its note until the pedal lifts or the key strikes again. A track
 named melody, under or bass is that line, and of the other parts (a track's notes
 on one channel) the lowest is the bass when its notes centre under E3, kept whole
 as the bass decoder settles a line that climbs over it, the rest the melody then
