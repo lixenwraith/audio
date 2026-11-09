@@ -82,6 +82,11 @@ that a document now states, and link the document instead.
   CC0 Sonor kick set holds one head at six pressures, and Iowa's MIS has a hihat
   at pp, mf and ff by tip and shoulder. Previews stop near 16 kHz: read every
   figure under it, the kit's too.
+- GuitarSet's JAMS files (beats, downbeats and notes of solo guitar) reach a
+  cloud container as mirdata's test resource, one file cut short:
+  `cdn.jsdelivr.net/gh/mir-dataset-loaders/mirdata@master/tests/resources/mir_datasets/guitarset/annotation/03_BN3-119-G_solo.jams`.
+  Its `pitch_contour` holds its data as arrays by field, `beat_position` as a
+  list of observations, so a reader decodes `data` by namespace.
 - A spectrum of a one-shot under a Hann window reads its attack at nothing: the
   window is near zero where the hit starts, so a click or a stick vanished from
   the band shares. Start the segment a millisecond before the onset and taper
