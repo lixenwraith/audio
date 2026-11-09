@@ -427,6 +427,41 @@ func (m *MIDIScore) Rip() (*Rip, int) {
 	return r, dropped
 }
 
+// Beats is the score's beats and downbeats under its time signatures and tempo
+// map, placed on a recording by at (a truth's Agreement.At): each signature's
+// beats and bars from where it starts, cut where the next starts, from the beat
+// and the bar holding the first note or hit to the last's end; a downbeat from
+// the first full bar (firstBar) on, as a pickup's line is none
+func (m *MIDIScore) Beats(at func(float64) float64) (beats, downbeats []float64) {
+	first := float64(m.end)
+	for _, p := range m.parts {
+		for _, n := range p.notes {
+			first = min(first, float64(n.on))
+		}
+	}
+	meters := m.meters
+	if len(meters) == 0 || meters[0].tick > 0 {
+		meters = append([]midiMeter{{num: 4, den: 4}}, meters...)
+	}
+	for i, mt := range meters {
+		end := m.end
+		if i+1 < len(meters) {
+			end = min(end, meters[i+1].tick)
+		}
+		beat := 4 * float64(m.division) / float64(mt.den)
+		for k := 0; float64(mt.tick)+float64(k)*beat < float64(end); k++ {
+			t := float64(mt.tick) + float64(k)*beat
+			if t+beat > first {
+				beats = append(beats, at(m.seconds(t)))
+			}
+			if k%mt.num == 0 && t >= float64(m.line) && t+float64(mt.num)*beat > first {
+				downbeats = append(downbeats, at(m.seconds(t)))
+			}
+		}
+	}
+	return beats, downbeats
+}
+
 // Song reads the score as patterns and a song under name: a pattern a part a
 // bar of its time signature's steps at the folded tempo (foldMeter), the drum
 // channel the beat, the parts a bass program plays the bass and the rest the

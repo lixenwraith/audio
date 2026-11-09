@@ -2,7 +2,10 @@ package audio
 
 import (
 	"bufio"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"math"
 	"regexp"
 	"slices"
@@ -533,6 +536,120 @@ func pairHits(a, b []RipHit, stretch, offset, tol float64, line *HitLine) int {
 		}
 	}
 	return n
+}
+
+// BarScore is how a rip's bar lines sit on a truth's beats and downbeats
+type BarScore struct {
+	Ratio     float64 // the median rip bar's length over the median truth bar's, 0 without two of either
+	Same      bool    // Ratio within a tenth of one
+	Downbeats float64 // the share of truth downbeats with a rip bar line within an eighth of their bar, 0 unless Same
+	Phase     float64 // the median offset of the nearest rip bar line from a truth downbeat, in its bars, in [-0.5, 0.5)
+	Beats     float64 // the share of truth beats with a rip beat within a quarter of their beat
+}
+
+// MatchBars scores a rip's bar lines, one every Meter.Beats() of its Beats from
+// the first, against a truth's beats and downbeats in the recording's seconds:
+// the notes' time map never sees a bar line, and the bar's phase decides every
+// pattern the rip compresses into
+func MatchBars(r *Rip, beats, downbeats []float64) BarScore {
+	var lines []float64
+	for i := 0; i < len(r.Beats); i += r.Meter.Beats() {
+		lines = append(lines, r.Beats[i])
+	}
+	beats = slices.Compact(slices.Sorted(slices.Values(beats)))
+	downbeats = slices.Compact(slices.Sorted(slices.Values(downbeats)))
+	gap := func(xs []float64, i int) float64 { // to the next, the last's from the one before
+		if i+1 < len(xs) {
+			return xs[i+1] - xs[i]
+		}
+		return xs[i] - xs[i-1]
+	}
+	nearest := func(xs []float64, v float64) float64 {
+		i, _ := slices.BinarySearch(xs, v)
+		if i == len(xs) || i > 0 && v-xs[i-1] < xs[i]-v {
+			return xs[i-1]
+		}
+		return xs[i]
+	}
+	bar := func(xs []float64) float64 {
+		if len(xs) < 2 {
+			return 0
+		}
+		gaps := make([]float64, len(xs)-1)
+		for i := range gaps {
+			gaps[i] = gap(xs, i)
+		}
+		return median(gaps)
+	}
+	var s BarScore
+	if rip, truth := bar(lines), bar(downbeats); rip > 0 && truth > 0 {
+		s.Ratio = rip / truth
+	}
+	s.Same = math.Abs(s.Ratio-1) <= 0.1
+	if len(lines) > 0 && len(downbeats) > 1 {
+		on, phases := 0, make([]float64, len(downbeats))
+		for i, d := range downbeats {
+			off := nearest(lines, d) - d
+			if math.Abs(off) <= gap(downbeats, i)/8 {
+				on++
+			}
+			p := off / gap(downbeats, i)
+			phases[i] = p - math.Floor(p+0.5)
+		}
+		s.Phase = median(phases)
+		if s.Same {
+			s.Downbeats = float64(on) / float64(len(downbeats))
+		}
+	}
+	if len(r.Beats) > 0 && len(beats) > 1 {
+		on := 0
+		for j, b := range beats {
+			if math.Abs(nearest(r.Beats, b)-b) <= gap(beats, j)/4 {
+				on++
+			}
+		}
+		s.Beats = float64(on) / float64(len(beats))
+	}
+	return s
+}
+
+// ReadJAMSBeats reads a JAMS file's beat_position annotation, as GuitarSet's
+// are, in the recording's own clock: each datum's time a beat, a downbeat where
+// its value's position is 1
+func ReadJAMSBeats(r io.Reader) (beats, downbeats []float64, err error) {
+	var doc struct {
+		Annotations []struct {
+			Namespace string          `json:"namespace"`
+			Data      json.RawMessage `json:"data"` // another namespace's may be arrays by field
+		} `json:"annotations"`
+	}
+	if err := json.NewDecoder(r).Decode(&doc); err != nil {
+		return nil, nil, fmt.Errorf("jams: %w", err)
+	}
+	for _, a := range doc.Annotations {
+		if a.Namespace != "beat_position" {
+			continue
+		}
+		var data []struct {
+			Time  float64 `json:"time"`
+			Value struct {
+				Position float64 `json:"position"`
+			} `json:"value"`
+		}
+		if err := json.Unmarshal(a.Data, &data); err != nil {
+			return nil, nil, fmt.Errorf("jams: beat_position: %w", err)
+		}
+		for _, d := range data {
+			beats = append(beats, d.Time)
+			if d.Value.Position == 1 {
+				downbeats = append(downbeats, d.Time)
+			}
+		}
+		if len(beats) > 0 {
+			return beats, downbeats, nil
+		}
+	}
+	return nil, nil, errors.New("jams: no beat_position annotation with beats")
 }
 
 // transcriptLine reads one note of a transcript as the notes verb prints it, or
