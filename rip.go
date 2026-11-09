@@ -233,6 +233,9 @@ type RipNote struct {
 	// partials, 1 for a pure tone; RipUnmeasured for a bass note, a note given
 	// as text, and one whose fundamental a concurrent note covered throughout
 	Bright float64
+	// Bend and BendAt are its glide, as a pattern step's: the semitones it
+	// reaches by its end from the share of its length before it moves
+	Bend, BendAt float64
 }
 
 // RipUnmeasured is a RipNote's Bright where none was measured, never a share
@@ -524,7 +527,7 @@ func (rp Ripper) Samples(x []float64, rate int) (*Rip, error) {
 			if i == 1 {
 				n.bright = RipUnmeasured
 			}
-			r.Notes = append(r.Notes, RipNote{Start: float64(n.start) * f.Hop, End: float64(n.end) * f.Hop, MIDI: n.midi, Vel: n.vel, Bass: i == 1, Second: n.second, Bright: n.bright})
+			r.Notes = append(r.Notes, RipNote{Start: float64(n.start) * f.Hop, End: float64(n.end) * f.Hop, MIDI: n.midi, Vel: n.vel, Bass: i == 1, Second: n.second, Bright: n.bright, Bend: n.bend, BendAt: n.bendAt})
 		}
 	}
 	slices.SortFunc(r.Notes, func(a, b RipNote) int { return cmp.Compare(a.Start, b.Start) })
@@ -2116,6 +2119,7 @@ type ripNote struct {
 	strength         float64 // mean salience over the note, against the register's reference loudness
 	second           bool    // heard under another note of the register
 	bright           float64 // RipNote.Bright
+	bend, bendAt     float64 // RipNote.Bend and BendAt
 	voice            []float64
 }
 
@@ -2760,7 +2764,7 @@ func (g *ripGrid) place(r *Rip, n ripNote, part func(*RipBar) *[]Step) {
 	}
 	deg, oct, acc := PitchStep(r.Root, r.Scale, n.midi)
 	dur := min(max(int(math.Round(float64(n.end-n.start)/g.stepFrames())), 1), MaxPatternLen)
-	s := Step{Pos: step, Vel: n.vel, Deg: deg, Oct: oct, Acc: acc, Dur: dur}
+	s := Step{Pos: step, Vel: n.vel, Deg: deg, Oct: oct, Acc: acc, Dur: dur, Bend: n.bend, BendAt: n.bendAt}
 	evs := part(&r.Bars[bar])
 	if i := slices.IndexFunc(*evs, func(e Step) bool { return e.Pos == step && e.Deg == deg && e.Oct == oct && e.Acc == acc }); i >= 0 {
 		if (*evs)[i].Vel < s.Vel {

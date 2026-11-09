@@ -228,7 +228,12 @@ A pattern has up to 64 steps, 32 tracks, and 512 events per track. A track sets
 its instrument, chord-following, and humanization; its events set step position,
 velocity, scale degree, octave, an accidental (`acc`, the semitones off the
 degree, so a note outside the key is written exactly), duration, and
-probability. The tonal voices are data: a `[[voice]]` of the sound document
+probability. A step may glide: `bend` is the semitones its pitch reaches by the
+end of its duration, up to 24 either way, from `bend_at`, the share of the
+duration before it moves (0 the whole note, 0.75 a scoop at its end), linear in
+semitones on top of the pitch the harmony resolves, and every voice follows it:
+an oscillator's frequency, a string's line with its all-pass, retuned every
+sample, and a modal voice's partials. The tonal voices are data: a `[[voice]]` of the sound document
 names an instrument and its synthesis, an oscillator stage (sine, saw or square),
 with a vibrato and a vowel's formants if a voice has them, through a resonant
 low-pass under a filter envelope into an ADSR, or a string, as a delay line or as
@@ -374,6 +379,11 @@ the program of the shipped voice nearest it, its wave first, then its genes
   long at its velocity, resolved through the song's harmony as the sequencer
   resolves it; a drum a sixteenth on channel 10. A pattern is a song in its meter
   that plays it once through. Probability, humanize and tuning are not written.
+- Glides: a step's `bend` is pitch bend across its note, its channel's range
+  set by RPN 0 to the least of 2, 12 or 24 semitones that holds the lane's
+  largest bend and a lane that glides on a channel of its own, as a channel
+  bends every note it sounds; `MIDIScore` reads a note's bend back as `bend` and
+  `bend_at`, to the hundredth, where it moves a quarter tone or more.
 - Reading (`MIDIScore.Song`): the file's parts quantized on its ticks, a step its
   sixteenth at its first tempo folded by octaves into the sequencer's range, as
   `MIDIScore.Rip` folds; a pattern a part a bar, named and shared between bars as

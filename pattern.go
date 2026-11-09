@@ -14,6 +14,9 @@ type Step struct {
 	Acc  int     // semitones off the degree, an accidental (tonal only)
 	Dur  int     // steps (tonal only); <=0 = 1
 	Prob float64 // 0 or 1 = always
+	// Bend is the semitones the pitch reaches by the step's end, BendAt the share
+	// of its duration before the glide begins, linear in semitones (tonal only)
+	Bend, BendAt float64
 }
 
 // Track is one instrument lane within a pattern

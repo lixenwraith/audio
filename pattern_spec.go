@@ -3,6 +3,7 @@ package audio
 import (
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 )
@@ -50,6 +51,10 @@ type StepDef struct {
 	Acc  int     `toml:"acc,omitempty"`  // semitones off the degree, tonal only
 	Dur  int     `toml:"dur,omitempty"`  // steps; 0 = 1
 	Prob float64 `toml:"prob,omitempty"` // 0 or 1 = always
+	// semitones the pitch reaches by the step's end, and the share of its length
+	// before the glide begins: 0 the whole, 0.75 a scoop at its end; tonal only
+	Bend   float64 `toml:"bend,omitempty"`
+	BendAt float64 `toml:"bend_at,omitempty"`
 }
 
 // Signature is the pattern's meter, 4/4 when unnamed or unread
@@ -101,7 +106,7 @@ func (d *PatternDef) Pattern() (*Pattern, error) {
 			tr.Events = make([]Step, n)
 			for j := range td.Event {
 				e := &td.Event[j]
-				tr.Events[j] = Step{Pos: e.Pos, Vel: e.Vel, Deg: e.Deg, Oct: e.Oct, Acc: e.Acc, Dur: e.Dur, Prob: e.Prob}
+				tr.Events[j] = Step{Pos: e.Pos, Vel: e.Vel, Deg: e.Deg, Oct: e.Oct, Acc: e.Acc, Dur: e.Dur, Prob: e.Prob, Bend: e.Bend, BendAt: e.BendAt}
 			}
 		}
 		p.Tracks = append(p.Tracks, tr)
@@ -136,7 +141,7 @@ func (p *Pattern) Def() *PatternDef {
 			td.Event = make([]StepDef, n)
 			for j := range tr.Events {
 				e := &tr.Events[j]
-				td.Event[j] = StepDef{Pos: e.Pos, Vel: e.Vel, Deg: e.Deg, Oct: e.Oct, Acc: e.Acc, Dur: e.Dur, Prob: e.Prob}
+				td.Event[j] = StepDef{Pos: e.Pos, Vel: e.Vel, Deg: e.Deg, Oct: e.Oct, Acc: e.Acc, Dur: e.Dur, Prob: e.Prob, Bend: e.Bend, BendAt: e.BendAt}
 			}
 		}
 		d.Track = append(d.Track, td)
@@ -209,6 +214,9 @@ func ValidatePattern(p *Pattern) error {
 			}
 			if err := StepPitchBounds(ev.Deg, ev.Oct, ev.Acc); err != nil {
 				return e("track %d event %d: %v", i, j, err)
+			}
+			if !finite(ev.Bend) || math.Abs(ev.Bend) > MaxStepBend || !finite(ev.BendAt) || ev.BendAt < 0 || ev.BendAt >= 1 {
+				return e("track %d event %d: bend %v outside ±%d or bend_at %v outside [0,1)", i, j, ev.Bend, MaxStepBend, ev.BendAt)
 			}
 		}
 	}

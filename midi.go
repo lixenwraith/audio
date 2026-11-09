@@ -21,7 +21,10 @@ const midiDivision = 480
 
 const (
 	midiDrums        = 9      // the channel General MIDI keeps for percussion, which has no pitch
+	midiChannels     = 15     // the channels besides the drums'
 	midiDefaultTempo = 500000 // microseconds a quarter note before a file's first tempo, 120 bpm
+	midiBendTicks    = 10     // ticks between a written glide's bends, a hundredth of a second at 120 bpm
+	midiBendRange    = 2.0    // General MIDI's bend range in semitones until a file sets one
 )
 
 // midiInstruments is each shipped instrument as General MIDI writes and reads it:
@@ -100,10 +103,11 @@ func midiProgram(instr InstrumentType) byte {
 }
 
 // midiNote is a note of a track in ticks, before the tempo map, with the program
-// its channel plays at its start
+// its channel plays at its start and its glide as a step's (Step.Bend)
 type midiNote struct {
 	on, off            int64
 	ch, key, vel, prog byte
+	bend, bendAt       float64
 }
 
 // midiPart is one track's notes on one channel: what ReadMIDI maps to a line
@@ -296,13 +300,13 @@ func ReadMIDI(r io.Reader) (*MIDIScore, error) {
 		if line < 0 {
 			m.Left++
 			for _, n := range tonal[i].notes {
-				m.Further = append(m.Further, RipNote{Start: seconds(n.on), End: seconds(n.off), MIDI: int(n.key), Vel: float64(n.vel) / 127, Second: true, Bright: RipUnmeasured})
+				m.Further = append(m.Further, RipNote{Start: seconds(n.on), End: seconds(n.off), MIDI: int(n.key), Vel: float64(n.vel) / 127, Second: true, Bright: RipUnmeasured, Bend: n.bend, BendAt: n.bendAt})
 			}
 			continue
 		}
 		m.Voices[line] = midiVoice(tonal[i].notes[0].prog)
 		for _, n := range tonal[i].notes {
-			m.Notes = append(m.Notes, RipNote{Start: seconds(n.on), End: seconds(n.off), MIDI: int(n.key), Vel: float64(n.vel) / 127, Bass: line == 2, Second: line == 1, Bright: RipUnmeasured})
+			m.Notes = append(m.Notes, RipNote{Start: seconds(n.on), End: seconds(n.off), MIDI: int(n.key), Vel: float64(n.vel) / 127, Bass: line == 2, Second: line == 1, Bright: RipUnmeasured, Bend: n.bend, BendAt: n.bendAt})
 		}
 	}
 	if len(m.Notes) == 0 && len(m.Hits) == 0 {
@@ -376,7 +380,7 @@ func (m *MIDIScore) Rip() (*Rip, int) {
 			continue
 		}
 		r.Notes = append(r.Notes, n)
-		notes = append(notes, ripNote{start: at(n.Start), end: at(n.End), midi: n.MIDI, vel: n.Vel})
+		notes = append(notes, ripNote{start: at(n.Start), end: at(n.End), midi: n.MIDI, vel: n.Vel, bend: n.Bend, bendAt: n.BendAt})
 		c[n.MIDI%12] += n.End - n.Start
 		if n.MIDI < RipBassTop {
 			b[n.MIDI%12] += n.End - n.Start
@@ -464,8 +468,8 @@ func (m *MIDIScore) Beats(at func(float64) float64) (beats, downbeats []float64)
 
 // Song reads the score as patterns and a song under name: a pattern a part a
 // bar of its time signature's steps at the folded tempo (foldMeter), the drum
-// channel the beat, the parts a bass program plays the bass and the rest the
-// melody, a track each, named as compress names them; the song plays them in
+// channel the beat, a bass program's parts the bass and the rest the melody, a
+// track each, glides kept, named as compress names them; the song plays them in
 // order, in the key signed or its notes'. It says what it could not keep.
 func (m *MIDIScore) Song(name string) ([]*PatternDef, *SongDef, []string) {
 	var said []string
@@ -643,6 +647,7 @@ func (m *MIDIScore) Song(name string) ([]*PatternDef, *SongDef, []string) {
 					long++
 				}
 				s.Dur = min(max(dur, 1), MaxPatternLen)
+				s.Bend, s.BendAt = n.bend, n.bendAt
 				if s.Deg, s.Oct, s.Acc = PitchStep(root, scale, int(n.key)); StepPitchBounds(s.Deg, s.Oct, s.Acc) != nil {
 					unheld++
 					continue
@@ -774,16 +779,22 @@ func midiLinesOf(parts []midiPart) []int {
 	return lines
 }
 
-// readMIDITrack reads the track chunk numbered track: its notes by channel, each
-// part named by the track, and the tempo changes, signatures and program changes
-// in it. A note-off ends the earliest note of its channel and pitch still
+// readMIDITrack reads the track chunk numbered track: its notes by channel with
+// their glides, each part named by the track, and its tempo changes, signatures
+// and program changes. A note-off ends the earliest note of its channel and pitch
 // sounding, under the sustain pedal too, the pedal's ring being the sound's; a
 // note still sounding when the track ends ends with it.
 func readMIDITrack(b []byte, track int) (midiTrack, error) {
 	var t midiTrack
 	var name string
 	var notes []midiNote
+	var heard []midiHeard
 	open := map[[2]byte][]int{} // channel and pitch: the notes sounding, oldest first
+	var bend, span [16]float64  // each channel's bend and its range, in semitones
+	var rpn [16][2]byte         // each channel's registered parameter
+	for ch := range span {
+		span[ch], rpn[ch] = midiBendRange, [2]byte{127, 127}
+	}
 	var tick int64
 	var running byte
 	for i := 0; i < len(b); {
@@ -852,20 +863,48 @@ func readMIDITrack(b []byte, track int) (midiTrack, error) {
 			case kind == 0x90 && vel > 0:
 				open[at] = append(open[at], len(notes))
 				notes = append(notes, midiNote{on: tick, off: -1, ch: ch, key: key, vel: vel})
+				heard = append(heard, midiHeard{from: bend[ch], at: tick})
 			case kind == 0x80 || kind == 0x90:
 				if q := open[at]; len(q) > 0 {
-					notes[q[0]].off, open[at] = tick, q[1:]
+					notes[q[0]].glide(tick, bend[ch], heard[q[0]])
+					open[at] = q[1:]
 				}
 			case kind == 0xC0:
 				t.programs = append(t.programs, midiChange{tick: tick, ch: ch, program: key})
+			case kind == 0xB0 && (key == 101 || key == 100):
+				rpn[ch][101-key] = vel
+			case kind == 0xB0 && (key == 99 || key == 98):
+				rpn[ch] = [2]byte{127, 127} // a non-registered parameter deselects it
+			case kind == 0xB0 && key == 6 && rpn[ch] == [2]byte{}:
+				span[ch] = float64(vel)
+			case kind == 0xB0 && key == 38 && rpn[ch] == [2]byte{}:
+				span[ch] = math.Floor(span[ch]) + float64(vel)/100
+			case kind == 0xE0:
+				bend[ch] = float64(int(key)|int(vel)<<7-8192) / 8192 * span[ch]
+				for k, q := range open {
+					if k[0] != ch {
+						continue
+					}
+					for _, i := range q {
+						switch h := &heard[i]; {
+						case h.moved:
+						case bend[ch] == h.from:
+							h.at = tick
+						default:
+							h.moved = true
+						}
+					}
+				}
 			}
+		}
+	}
+	for i := range notes {
+		if notes[i].off < 0 {
+			notes[i].glide(tick, bend[notes[i].ch], heard[i])
 		}
 	}
 	of := map[byte]int{}
 	for _, n := range notes {
-		if n.off < 0 {
-			n.off = tick
-		}
 		p, ok := of[n.ch]
 		if !ok {
 			p, of[n.ch] = len(t.parts), len(t.parts)
@@ -874,6 +913,25 @@ func readMIDITrack(b []byte, track int) (midiTrack, error) {
 		t.parts[p].notes = append(t.parts[p].notes, n)
 	}
 	return t, nil
+}
+
+// midiHeard is what a sounding note has heard of its channel's bend: the bend at
+// its start, the last tick it stood there, and whether it has left it since
+type midiHeard struct {
+	from  float64
+	at    int64
+	moved bool
+}
+
+// glide ends the note at off with its channel's bend at bend: one that moved a
+// quarter tone or more glides by the difference, to the hundredth, from the share
+// of its length where the bend last stood at its start
+func (n *midiNote) glide(off int64, bend float64, h midiHeard) {
+	n.off = off
+	if d := bend - h.from; math.Abs(d) >= 0.5 && off > n.on {
+		n.bend = min(max(math.Round(d*100)/100, -MaxStepBend), MaxStepBend)
+		n.bendAt = min(math.Round(float64(h.at-n.on)/float64(off-n.on)*100)/100, 0.99)
+	}
 }
 
 // readVLQ reads a variable-length quantity: its value and its bytes, none when
@@ -902,7 +960,8 @@ func appendVLQ(b []byte, v int64) []byte {
 }
 
 // midiEvent is an event a writer puts in a track: its tick, its place among the
-// events of one tick (meta, program, note-off, note-on) and its bytes
+// events of one tick (meta, program, a glide's bend, note-off, a note's first
+// bend, note-on) and its bytes
 type midiEvent struct {
 	tick int64
 	rank int
@@ -919,11 +978,11 @@ func midiTempoAt(bpm float64) midiEvent {
 }
 
 func midiNoteOn(tick int64, ch, key, vel byte) midiEvent {
-	return midiEvent{tick: tick, rank: 3, data: []byte{0x90 | ch, key, vel}}
+	return midiEvent{tick: tick, rank: 5, data: []byte{0x90 | ch, key, vel}}
 }
 
 func midiNoteOff(tick int64, ch, key byte) midiEvent {
-	return midiEvent{tick: tick, rank: 2, data: []byte{0x80 | ch, key, 0}}
+	return midiEvent{tick: tick, rank: 3, data: []byte{0x80 | ch, key, 0}}
 }
 
 func midiProgramAt(ch, program byte) midiEvent {
@@ -1063,7 +1122,8 @@ func WritePatternMIDI(w io.Writer, p *PatternDef, bpm, root int, scale ScaleID, 
 // WriteSongMIDI writes a song as a Standard MIDI File of type 1: a track of its
 // tempo, key and meter, then a track a pattern track by slot, instrument and
 // order, a slot's pattern playing at the song's step: a voice on its program
-// (midiProgram), a drum on the drum channel, each note as long as its step.
+// (midiProgram), a drum on the drum channel, each note as long as its step and
+// its glide as pitch bend (midiBends).
 func WriteSongMIDI(w io.Writer, d *SongDef, pattern func(string) *PatternDef) error {
 	if err := ValidateSong(d); err != nil {
 		return err
@@ -1094,9 +1154,9 @@ func WriteSongMIDI(w io.Writer, d *SongDef, pattern func(string) *PatternDef) er
 		nth   int // of the tracks of its instrument in its pattern
 	}
 	var lanes []lane
-	events := map[lane][]midiEvent{}
-	held := map[lane]map[byte]int{} // a lane's last note-on of each key
-	channels := map[byte]byte{}     // a program's channel, the drums' kept apart
+	names := map[lane]string{}
+	notes := map[lane][]midiPlayed{}
+	held := map[lane]map[byte]int{} // a lane's last note of each key
 	h := newHarmony()
 	h.set(d.Root, d.ScaleID(), d.Chords)
 	at := 0
@@ -1122,65 +1182,158 @@ func WriteSongMIDI(w io.Writer, d *SongDef, pattern func(string) *PatternDef) er
 			for _, tr := range p.Tracks {
 				ln := lane{slot, tr.Instr, nth[tr.Instr]}
 				nth[tr.Instr]++
-				ch, program := byte(midiDrums), byte(0)
-				if !tr.Instr.IsDrum() {
-					program = midiProgram(tr.Instr)
-					c, ok := channels[program]
-					if !ok {
-						c = byte(len(channels))
-						if c >= midiDrums {
-							c++
-						}
-						channels[program] = c
-					}
-					ch = c
-				}
-				evs, ok := events[ln]
-				if !ok {
+				if _, ok := names[ln]; !ok {
 					lanes = append(lanes, ln)
-					evs = []midiEvent{midiMeta(0, 0x03, []byte(cmp.Or(tr.Desc, InstrumentName(tr.Instr)))...)}
-					if ch != midiDrums {
-						evs = append(evs, midiProgramAt(ch, program))
-					}
+					names[ln], held[ln] = cmp.Or(tr.Desc, InstrumentName(tr.Instr)), map[byte]int{}
 				}
-				if held[ln] == nil {
-					held[ln] = map[byte]int{}
-				}
+				ns := notes[ln]
 				for j := range steps {
 					local, tick := (at+j)%p.Steps, int64((at+j)*perStep)
 					for _, e := range tr.Events {
 						if e.Pos != local || e.Vel <= 0 {
 							continue
 						}
-						var key byte
-						off := tick + int64(max(e.Dur, 1)*perStep)
-						if ch == midiDrums {
-							key, off = midiInstruments[tr.Instr].keys[0], tick+perStep
+						n := midiPlayed{on: tick, off: tick + perStep, vel: midiVel(e.Vel)}
+						if tr.Instr.IsDrum() {
+							n.key = midiInstruments[tr.Instr].keys[0]
 						} else {
-							key = byte(h.resolve(e.Deg, e.Oct, e.Acc, tr.FollowChord))
+							n.key = byte(h.resolve(e.Deg, e.Oct, e.Acc, tr.FollowChord))
+							n.off = tick + int64(max(e.Dur, 1)*perStep)
+							n.end, n.bend, n.bendAt = n.off, e.Bend, e.BendAt
 						}
 						// a key sounding again ends its note before, as a reader pairs a
 						// note-off with the earliest of its key; on one tick, once, the louder
-						if i, ok := held[ln][key]; ok && evs[i+1].tick > tick {
-							if evs[i].tick == tick {
-								evs[i].data[2], evs[i+1].tick = max(evs[i].data[2], midiVel(e.Vel)), max(evs[i+1].tick, off)
+						if i, ok := held[ln][n.key]; ok && ns[i].off > tick {
+							if ns[i].on == tick {
+								ns[i].vel, ns[i].off = max(ns[i].vel, n.vel), max(ns[i].off, n.off)
 								continue
 							}
-							evs[i+1].tick = tick
+							ns[i].off = tick
 						}
-						held[ln][key] = len(evs)
-						evs = append(evs, midiNoteOn(tick, ch, key, midiVel(e.Vel)), midiNoteOff(off, ch, key))
+						held[ln][n.key] = len(ns)
+						ns = append(ns, n)
 					}
 				}
-				events[ln] = evs
+				notes[ln] = ns
 			}
 		}
 		at += steps
 	}
-	slices.SortStableFunc(lanes, func(a, b lane) int { return cmp.Compare(a.slot, b.slot) })
-	tracks := [][]midiEvent{conductor}
-	for _, ln := range lanes {
-		tracks = append(tracks, events[ln])
+	// a channel a program, the drums' kept apart; a lane that glides has one of
+	// its own while five stay for the shipped voices' programs, since a channel
+	// bends every note it sounds
+	channels := map[byte]byte{}
+	used := 0
+	channel := func() byte {
+		c := byte(used)
+		if used++; c >= midiDrums {
+			c++
+		}
+		return c
 	}
-	return writeSMF(w, tracks)
+	tracks := map[lane][]midiEvent{}
+	for _, ln := range lanes {
+		evs := []midiEvent{midiMeta(0, 0x03, []byte(names[ln])...)}
+		if ln.instr.IsDrum() {
+			tracks[ln] = append(evs, midiNotes(midiDrums, notes[ln])...)
+			continue
+		}
+		program, reach := midiProgram(ln.instr), 0.0
+		for _, n := range notes[ln] {
+			reach = max(reach, math.Abs(n.bend))
+		}
+		ch, ok := channels[program]
+		switch {
+		case reach > 0 && used < midiChannels-int(InstrumentCount-InstrBass):
+			ch = channel()
+		case !ok:
+			ch = channel()
+			channels[program] = ch
+		}
+		evs = append(evs, midiProgramAt(ch, program))
+		if reach > 0 {
+			evs = append(evs, midiBends(ch, reach, notes[ln])...)
+		}
+		tracks[ln] = append(evs, midiNotes(ch, notes[ln])...)
+	}
+	slices.SortStableFunc(lanes, func(a, b lane) int { return cmp.Compare(a.slot, b.slot) })
+	all := [][]midiEvent{conductor}
+	for _, ln := range lanes {
+		all = append(all, tracks[ln])
+	}
+	return writeSMF(w, all)
+}
+
+// midiPlayed is a note a writer writes: its ticks, key and velocity, and its
+// glide, bend semitones by end from bendAt of its length
+type midiPlayed struct {
+	on, off, end int64
+	key, vel     byte
+	bend, bendAt float64
+}
+
+// midiNotes is each note's note-on and note-off on channel ch
+func midiNotes(ch byte, notes []midiPlayed) []midiEvent {
+	evs := make([]midiEvent, 0, 2*len(notes))
+	for _, n := range notes {
+		evs = append(evs, midiNoteOn(n.on, ch, n.key, n.vel), midiNoteOff(n.off, ch, n.key))
+	}
+	return evs
+}
+
+// midiBends is a gliding lane's pitch bend on channel ch: its range by RPN 0, the
+// least of 2, 12 and 24 semitones that reaches its largest bend, then from each
+// onset to the next the glide of its first note that bends, a marker at the start
+// pitch where it begins and a bend each midiBendTicks to its end, centred again
+// at the next onset; ReadMIDI reads each note's back to the hundredth
+func midiBends(ch byte, reach float64, notes []midiPlayed) []midiEvent {
+	span := 24.0
+	if reach <= 2 {
+		span = 2
+	} else if reach <= 12 {
+		span = 12
+	}
+	cc := func(c, v byte) midiEvent { return midiEvent{rank: 1, data: []byte{0xB0 | ch, c, v}} }
+	evs := []midiEvent{cc(101, 0), cc(100, 0), cc(6, byte(span)), cc(38, 0), cc(101, 127), cc(100, 127)}
+	bend := func(tick int64, rank int, semis float64) midiEvent {
+		v := min(max(int(math.Round(8192+semis/span*8192)), 0), 16383)
+		return midiEvent{tick: tick, rank: rank, data: []byte{0xE0 | ch, byte(v & 0x7F), byte(v >> 7)}}
+	}
+	bent := false
+	for i := 0; i < len(notes); {
+		on := notes[i].on
+		j, g := i, -1
+		for ; j < len(notes) && notes[j].on == on; j++ {
+			if g < 0 && notes[j].bend != 0 {
+				g = j
+			}
+		}
+		next := int64(math.MaxInt64)
+		if j < len(notes) {
+			next = notes[j].on
+		}
+		i = j
+		if bent {
+			evs, bent = append(evs, bend(on, 4, 0)), false
+		}
+		if g < 0 {
+			continue
+		}
+		n := notes[g]
+		from := on + int64(math.Round(n.bendAt*float64(n.end-on)))
+		if from >= next {
+			continue // the next onset comes before it moves
+		}
+		if from > on {
+			evs = append(evs, bend(from, 2, 0))
+		}
+		for t := from; t < n.end; {
+			if t = min(t+midiBendTicks, n.end); t > next {
+				break
+			}
+			evs = append(evs, bend(t, 2, n.bend*float64(t-from)/float64(n.end-from)))
+		}
+		bent = true
+	}
+	return evs
 }
