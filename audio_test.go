@@ -69,7 +69,7 @@ func testPatterns() []*Pattern {
 		}},
 		{Name: "tune", Steps: 32, Role: RoleMelody, Groups: []string{"g", "h"}, Tiers: 0b1, Motif: "tune", Tracks: []Track{
 			{Instr: InstrBass, FollowChord: true, Events: []Step{{Pos: 1, Vel: 0.8, Dur: 1}}},
-			{Instr: InstrPiano, FollowChord: true, Events: []Step{{Pos: 16, Vel: 0.5, Deg: 4, Oct: 2, Dur: 2}}},
+			{Instr: InstrPiano, FollowChord: true, Events: []Step{{Pos: 16, Vel: 0.5, Deg: 4, Oct: 2, Dur: 2, Bend: -2, BendAt: 0.5}}},
 		}},
 		{Name: "roll", Steps: 16, Role: RoleFill, Tiers: 0b10000, Tracks: []Track{
 			{Instr: InstrSnare, Events: []Step{{Pos: 15, Vel: 0.9}}},
@@ -213,6 +213,10 @@ func TestPatternValidationRejects(t *testing.T) {
 		{"instrument out of range", func(p *Pattern) { p.Tracks[0].Instr = InstrumentCount }},
 		{"octave out of range", func(p *Pattern) { p.Tracks[0].Events[0].Oct = 99 }},
 		{"accidental out of range", func(p *Pattern) { p.Tracks[0].Events[0].Acc = 3 }},
+		{"bend past two octaves", func(p *Pattern) { p.Tracks[0].Events[0].Bend = -MaxStepBend - 0.5 }},
+		{"bend NaN", func(p *Pattern) { p.Tracks[0].Events[0].Bend = math.NaN() }},
+		{"bend_at at the step's end", func(p *Pattern) { p.Tracks[0].Events[0].BendAt = 1 }},
+		{"bend_at negative", func(p *Pattern) { p.Tracks[0].Events[0].BendAt = -0.25 }},
 	}
 	for _, c := range cases {
 		p := base()
@@ -1385,5 +1389,67 @@ func TestPairNeverCancelsAPartial(t *testing.T) {
 	}
 	if pairs < 61 {
 		t.Errorf("found %d paired partials over 61 notes, want one a note at least", pairs)
+	}
+}
+
+// TestABentStepGlides: a step's bend takes every voice kind's pitch from the
+// step's own, resolved through the harmony, to it plus the bend, linear in
+// semitones from bend_at: the spectral peak of the note's first tenth sits at
+// its start pitch and its last tenth's where the glide has taken it by then.
+func TestABentStepGlides(t *testing.T) {
+	t.Cleanup(ResetRegistries)
+	ResetRegistries()
+	const bpm, dur, at = 120, 16, 0.5
+	cfg := DefaultAudioConfig()
+	cfg.Enabled = true
+	cfg.ForceBackend = BackendNameNull
+	cfg.BaseVoices = []*VoiceDef{
+		{Name: "lead", Wave: "sine", Attack: 0.005, Sustain: 1, Release: 0.05},
+		{Name: "pluck", Wave: "string", Ring: 4, Bright: 0.5, Attack: 0.001, Release: 0.05},
+		{Name: "piano", Wave: "modal", DecayTime: 2, Partials: 8, Tilt: 2, Attack: 0.001, Release: 0.05},
+	}
+	for _, bend := range []float64{7, -5} {
+		var tracks []Track
+		for _, in := range []InstrumentType{InstrLead, InstrPluck, InstrPiano} {
+			tracks = append(tracks, Track{Instr: in, Events: []Step{{Pos: 0, Vel: 1, Deg: 3, Oct: 1, Dur: dur, Bend: bend, BendAt: at}}})
+		}
+		cfg.BasePatterns = []*Pattern{{Name: "glide", Steps: dur, Tracks: tracks}}
+		ae, err := NewAudioEngine(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ae.Start(); err != nil {
+			t.Fatal(err)
+		}
+		start := StepPitch(DefaultRootNote, ScalePhrygian, 3, 1, 0)
+		tenth := dur * SamplesPerStep(bpm) / 10
+		// the peak over a window, by its offset from the start pitch in semitones
+		peak := func(x []float64) float64 {
+			best, at := 0.0, 0.0
+			for c := min(0.0, bend) - 1; c <= max(0.0, bend)+1; c += 0.05 {
+				w := 2 * math.Pi * NoteFreq(start) * math.Pow(2, c/12) / AudioSampleRate
+				var s complex128
+				for i, v := range x {
+					s += complex(v*(0.5-0.5*math.Cos(2*math.Pi*float64(i)/float64(len(x)))), 0) * cmplx.Rect(1, -w*float64(i))
+				}
+				if m := cmplx.Abs(s); m > best {
+					best, at = m, c
+				}
+			}
+			return at
+		}
+		for _, in := range []InstrumentType{InstrLead, InstrPluck, InstrPiano} {
+			x, err := ae.RenderLines([][MusicSlots]PatternID{{1: PatternIDByName("glide")}}, bpm, Meter{}, DefaultRootNote, ScalePhrygian, nil, 1, []InstrumentType{in})
+			if err != nil {
+				t.Fatal(err)
+			}
+			first, last := peak(x[:tenth]), peak(x[9*tenth:10*tenth])
+			want := bend * (0.95 - at) / (1 - at)
+			if math.Abs(first) > 0.25 || math.Abs(last-want) > 0.25 {
+				t.Errorf("%s bent %+.0f from bend_at %.2f: first tenth %+.2f semitones, last %+.2f, want 0 and %+.2f", in, bend, at, first, last, want)
+			}
+		}
+		ae.Stop()
+		ResetRegistries()
 	}
 }

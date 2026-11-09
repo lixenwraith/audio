@@ -7,11 +7,8 @@ import (
 
 // pendingTrig is a humanization-delayed event awaiting its fire sample
 type pendingTrig struct {
-	wait  int
-	midi  int
-	vel   float64
-	dur   int
-	instr InstrumentType
+	wait int
+	note VoiceParams
 }
 
 // PatternPlayer plays one Pattern layer; mixer-goroutine confined.
@@ -81,43 +78,37 @@ func (p *PatternPlayer) TriggerStep(step, samplesPerStep int, h *harmony, rng *r
 				}
 			}
 
-			if tr.Instr.IsDrum() {
-				if delay > 0 {
-					p.schedule(0, vel, 0, tr.Instr, delay)
-				} else {
-					p.triggerDrum(tr.Instr, vel)
-				}
-				continue
+			note := VoiceParams{Velocity: vel, Instrument: tr.Instr}
+			if !tr.Instr.IsDrum() {
+				// the start pitch through the harmony, the glide on top of it
+				note.Note = h.resolve(ev.Deg, ev.Oct, ev.Acc, tr.FollowChord)
+				note.Duration = max(ev.Dur, 1) * samplesPerStep
+				note.Bend, note.BendAt = ev.Bend, ev.BendAt
 			}
-			dur := ev.Dur
-			if dur <= 0 {
-				dur = 1
-			}
-			midi := h.resolve(ev.Deg, ev.Oct, ev.Acc, tr.FollowChord)
 			if delay > 0 {
-				p.schedule(midi, vel, dur*samplesPerStep, tr.Instr, delay)
+				p.schedule(note, delay)
 			} else {
-				p.TriggerNoteMIDI(midi, vel, dur*samplesPerStep, tr.Instr)
+				p.fire(note)
 			}
 		}
 	}
 }
 
-func (p *PatternPlayer) schedule(midi int, vel float64, dur int, instr InstrumentType, wait int) {
+func (p *PatternPlayer) schedule(note VoiceParams, wait int) {
 	if p.pendN >= len(p.pend) {
-		p.fire(midi, vel, dur, instr) // ring full: fire on-grid rather than drop
+		p.fire(note) // ring full: fire on-grid rather than drop
 		return
 	}
-	p.pend[p.pendN] = pendingTrig{wait: wait, midi: midi, vel: vel, dur: dur, instr: instr}
+	p.pend[p.pendN] = pendingTrig{wait: wait, note: note}
 	p.pendN++
 }
 
-func (p *PatternPlayer) fire(midi int, vel float64, dur int, instr InstrumentType) {
-	if instr.IsDrum() {
-		p.triggerDrum(instr, vel)
+func (p *PatternPlayer) fire(note VoiceParams) {
+	if note.Instrument.IsDrum() {
+		p.triggerDrum(note.Instrument, note.Velocity)
 		return
 	}
-	p.TriggerNoteMIDI(midi, vel, dur, instr)
+	p.trigger(note)
 }
 
 func (p *PatternPlayer) triggerDrum(instr InstrumentType, vel float64) {
@@ -130,13 +121,17 @@ func (p *PatternPlayer) triggerDrum(instr InstrumentType, vel float64) {
 	p.drumRR[instr] = (idx + 1) & 1
 }
 
-// TriggerNoteMIDI triggers a tonal note directly (pattern steps and external requests)
+// TriggerNoteMIDI triggers a tonal note directly, as an external request does
 func (p *PatternPlayer) TriggerNoteMIDI(midi int, vel float64, durSamples int, instr InstrumentType) {
-	v := p.allocateVoice(midi)
+	p.trigger(VoiceParams{Note: midi, Velocity: vel, Duration: durSamples, Instrument: instr})
+}
+
+func (p *PatternPlayer) trigger(note VoiceParams) {
+	v := p.allocateVoice(note.Note)
 	if v == nil {
 		return
 	}
-	v.Trigger(VoiceParams{Note: midi, Velocity: vel, Duration: durSamples, Instrument: instr})
+	v.Trigger(note)
 	p.serial++
 	v.serial = p.serial // age stamp, survives Trigger
 }
@@ -202,7 +197,7 @@ func (p *PatternPlayer) Sample() float64 {
 			t := p.pend[i]
 			p.pendN--
 			p.pend[i] = p.pend[p.pendN]
-			p.fire(t.midi, t.vel, t.dur, t.instr)
+			p.fire(t.note)
 			continue
 		}
 		i++

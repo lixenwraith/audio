@@ -19,6 +19,9 @@ type VoiceParams struct {
 	Velocity   float64 // 0.0-1.0
 	Duration   int     // Samples, 0 = instrument default
 	Instrument InstrumentType
+	// Bend is the semitones the pitch reaches by the end of Duration, linear in
+	// semitones from BendAt, the share of Duration before it moves
+	Bend, BendAt float64
 }
 
 // --- DrumVoice: One-shot percussion ---
@@ -131,6 +134,9 @@ const (
 	// given and from which they track the key
 	keyRefHz  = 261.63
 	ringCheck = 1024 // samples between checks that a string or a bank has rung out
+	// rejoinLen is the samples a gliding string's filter state is rebuilt over:
+	// its all-pass's pole is about a third, so what is left out is under 1e-7
+	rejoinLen = 16
 	ringFloor = 1e-10
 	// strikeAt is where along the string a pluck or hammer lands when the voice
 	// leaves strike_pos unset
@@ -170,23 +176,31 @@ type TonalVoice struct {
 	depth                  float64
 	serial                 uint64 // Trigger order; StealOldest ranks on this
 
+	// The glide: the pitch's ratio to the note's now, the ratio a sample moves it
+	// by and the one it ends on, and the samples before it moves and while it does
+	bend, bendStep, bendEnd float64
+	bendWait, bendLeft      int
+
 	// vibrato's phase and the note's age, and the vowel's formant bank
 	vibPhase float64
 	age      int
 	formants [3]biquad
 
-	// The plucked string: a delay line of the period's whole samples, the loop's
-	// two-point low-pass (its stretch and last input), the all-pass that tunes
-	// the period's fraction (its coefficient and state) and the loss per period
+	// The plucked string: a ring holding the line, read the period's whole
+	// samples behind where it is written, the loop's two-point low-pass (its
+	// stretch and last input), the all-pass that tunes the period's fraction (its
+	// coefficient and state) and the loss per period
 	str              []float64
 	strLen, strPos   int
 	strS, strLast    float64
 	apC, apIn, apOut float64
 	strLoss          float64
 
-	// The modal bank: a decaying phasor per partial (and per pair string), the
-	// sum's scale, and the contact noise through a one-pole
+	// The modal bank: a decaying phasor per partial (and per pair string), its
+	// decay and angle a sample at the note's pitch, the sum's scale, and the
+	// contact noise through a one-pole
 	mre, mim, mcr, mci []float64
+	mdecay, mangle     []float64
 	mscale             float64
 	knockEnv, knockLP  float64
 	knockSeed          uint32
@@ -216,7 +230,7 @@ type TonalVoice struct {
 
 // NewTonalVoice creates a tonal voice playing k's voices
 func NewTonalVoice(k *kit) *TonalVoice {
-	return &TonalVoice{kit: k, spec: &defaultVoice, level: defaultVoice.Level}
+	return &TonalVoice{kit: k, spec: &defaultVoice, level: defaultVoice.Level, bend: 1, bendEnd: 1}
 }
 
 func (v *TonalVoice) Sample() float64 {
@@ -224,7 +238,10 @@ func (v *TonalVoice) Sample() float64 {
 		return 0
 	}
 	sp := v.spec
-	dt := v.freq / float64(AudioSampleRate)
+	if v.bendLeft > 0 {
+		v.glide()
+	}
+	dt := v.freq * v.bend / float64(AudioSampleRate)
 	if sp.VibratoHz > 0 && sp.VibratoCents > 0 {
 		depth := 1.0
 		if sp.VibratoDelay > 0 {
@@ -302,19 +319,29 @@ func (v *TonalVoice) Sample() float64 {
 // 1983): the delay line's sample through the two-point low-pass, the all-pass
 // and the loss, written back; the note ends once the string has rung out
 func (v *TonalVoice) pluck() float64 {
-	d := v.str[v.strPos]
+	at := v.strPos - v.strLen
+	if at < 0 {
+		at += len(v.str)
+	}
+	d := v.str[at]
 	s := (1-v.strS)*d + v.strS*v.strLast
 	a := v.apC*(s-v.apOut) + v.apIn
 	v.strLast, v.apIn, v.apOut = d, s, a
 	y := v.strLoss * a
 	v.str[v.strPos] = y
-	if v.strPos++; v.strPos == v.strLen {
+	if v.strPos++; v.strPos == len(v.str) {
 		v.strPos = 0
 	}
 	if v.check++; v.check >= ringCheck {
 		v.check = 0
 		var e float64
-		for _, x := range v.str[:v.strLen] {
+		if at = v.strPos - v.strLen; at < 0 {
+			for _, x := range v.str[at+len(v.str):] {
+				e += x * x
+			}
+			at = 0
+		}
+		for _, x := range v.str[at:v.strPos] {
 			e += x * x
 		}
 		if e < ringFloor*float64(v.strLen) {
@@ -328,9 +355,7 @@ func (v *TonalVoice) pluck() float64 {
 // The fundamental's T60 is ring at middle C, shorter above it and longer below
 // by decay_track (none: ring at every pitch). bright sets the low-pass's
 // stretch, lessened where its loss at the fundamental alone would end the note
-// before that T60;
-// the period less the low-pass's phase delay is the delay line's whole
-// samples and the all-pass's fraction, kept in [0.1, 1.1) off its pole.
+// before that T60; a glide moves the period and holds the loss a period.
 func (v *TonalVoice) strike(sp *VoiceDef) {
 	sr := float64(AudioSampleRate)
 	w := 2 * math.Pi * v.freq / sr
@@ -342,12 +367,47 @@ func (v *TonalVoice) strike(sp *VoiceDef) {
 	}
 	v.strS = s
 	v.strLoss = min(g/math.Sqrt(1-2*s*(1-s)*(1-math.Cos(w))), 1)
-	p := sr/v.freq - math.Atan2(s*math.Sin(w), 1-s+s*math.Cos(w))/w
-	n := min(max(int(p-0.1), 1), stringMaxLen)
-	x := min(max(p-float64(n), 0.1), 1.1)
-	v.apC = math.Sin((1-x)*w/2) / math.Sin((1+x)*w/2)
-	v.strLen, v.strPos, v.strLast, v.apIn, v.apOut, v.check = n, 0, 0, 0, 0, 0
+	p := v.period(v.freq)
+	v.strPos, v.strLast, v.apIn, v.apOut, v.check = v.strLen, 0, 0, 0, 0
 	v.pluckBurst(sp, p)
+}
+
+// period tunes the line to f and returns its period in samples: the period less
+// the low-pass's phase delay is the line's whole samples and the all-pass's
+// fraction, kept in [0.1, 1.1) off its pole
+func (v *TonalVoice) period(f float64) float64 {
+	sr, s := float64(AudioSampleRate), v.strS
+	w := 2 * math.Pi * f / sr
+	p := sr/f - math.Atan2(s*math.Sin(w), 1-s+s*math.Cos(w))/w
+	// a gliding line keeps its fraction in [0.5, 1.5), where the all-pass's pole
+	// is small, so its coefficient moves a sample at a time without ringing
+	lo := 0.1
+	if v.bendEnd != 1 {
+		lo = 0.5
+	}
+	n := min(max(int(p-lo), 1), stringMaxLen)
+	x := min(max(p-float64(n), lo), lo+1)
+	v.apC = math.Sin((1-x)*w/2) / math.Sin((1+x)*w/2)
+	v.strLen = n
+	return p
+}
+
+// rejoin rebuilds the loop's low-pass and all-pass state from the line's last
+// rejoinLen samples at its new length, as if it had always been that long, so a
+// glide's step of a whole sample sends no transient round the string
+func (v *TonalVoice) rejoin() {
+	var last, in, out float64
+	for k := rejoinLen; k > 0; k-- {
+		at := v.strPos - v.strLen - k
+		if at < 0 {
+			at += len(v.str)
+		}
+		d := v.str[at]
+		s := (1-v.strS)*d + v.strS*last
+		out = v.apC*(s-out) + in
+		last, in = d, s
+	}
+	v.strLast, v.apIn, v.apOut = last, in, out
 }
 
 // pluckBurst loads the string with the pluck: a noise burst from a small
@@ -397,6 +457,14 @@ func (v *TonalVoice) pluckBurst(sp *VoiceDef, period float64) {
 			str[i] /= peak
 		}
 	}
+	// the ring behind the burst holds its periods, what a glide that lengthens
+	// the line reads before the string has gone round once
+	for i, j := len(v.str)-1, n; i >= n; i-- {
+		if j--; j < 0 {
+			j = n - 1
+		}
+		v.str[i] = str[j]
+	}
 }
 
 // lowpassRound runs a one-pole low-pass of coefficient a over one period of a
@@ -444,6 +512,38 @@ func (v *TonalVoice) modal() float64 {
 	return s
 }
 
+// glide moves the pitch a sample along the note's bend once it is due, linear
+// in semitones, and retunes a string's line to it every sample and a modal
+// bank's partials every filterCoefHold samples and at its end
+func (v *TonalVoice) glide() {
+	if v.bendWait > 0 {
+		v.bendWait--
+		return
+	}
+	v.bend *= v.bendStep
+	if v.bendLeft--; v.bendLeft == 0 {
+		v.bend = v.bendEnd
+	}
+	switch {
+	case v.wave == waveString:
+		// a line retuned only every few samples steps its delay audibly
+		n := v.strLen
+		if v.period(v.freq * v.bend); v.strLen != n {
+			v.rejoin()
+		}
+	case v.wave == waveModal && v.bendLeft%filterCoefHold == 0:
+		for i, a := range v.mangle {
+			w := a * v.bend
+			if w >= 2*math.Pi*0.45 { // past where excite leaves partials out
+				v.mcr[i], v.mci[i] = 0, 0
+				continue
+			}
+			sin, cos := math.Sincos(w)
+			v.mcr[i], v.mci[i] = v.mdecay[i]*cos, v.mdecay[i]*sin
+		}
+	}
+}
+
 // excite builds the modal bank for the note: partial k sits at k·f0 stretched by
 // the inharmonicity, at the amplitude the strike position's comb, the spectral
 // tilt, the body's high-pass and the hammer's velocity-led low-pass leave it,
@@ -454,8 +554,10 @@ func (v *TonalVoice) excite(sp *VoiceDef) {
 	if cap(v.mre) < maxPartials+pairPartials {
 		c := maxPartials + pairPartials
 		v.mre, v.mim, v.mcr, v.mci = make([]float64, 0, c), make([]float64, 0, c), make([]float64, 0, c), make([]float64, 0, c)
+		v.mdecay, v.mangle = make([]float64, 0, c), make([]float64, 0, c)
 	}
 	v.mre, v.mim, v.mcr, v.mci = v.mre[:0], v.mim[:0], v.mcr[:0], v.mci[:0]
+	v.mdecay, v.mangle = v.mdecay[:0], v.mangle[:0]
 	h := sp.StrikePos
 	if h <= 0 {
 		h = strikeAt
@@ -485,6 +587,7 @@ func (v *TonalVoice) excite(sp *VoiceDef) {
 		w := 2 * math.Pi * f / AudioSampleRate
 		v.mre, v.mim = append(v.mre, a), append(v.mim, 0)
 		v.mcr, v.mci = append(v.mcr, d*math.Cos(w)), append(v.mci, d*math.Sin(w))
+		v.mdecay, v.mangle = append(v.mdecay, d), append(v.mangle, w)
 		sum += a
 	}
 	for k := 1; k <= n; k++ {
@@ -541,7 +644,7 @@ func (v *TonalVoice) filter(x float64) float64 {
 	}
 	if v.coefLeft--; v.coefLeft <= 0 {
 		v.coefLeft = filterCoefHold
-		fc := sp.Cutoff + sp.KeyTrack*v.freq + sp.EnvAmount*v.fenv*v.velocity
+		fc := sp.Cutoff + sp.KeyTrack*v.freq*v.bend + sp.EnvAmount*v.fenv*v.velocity
 		fc = min(max(fc, 20), 0.45*AudioSampleRate)
 		g := math.Tan(math.Pi * fc / AudioSampleRate)
 		k := 1 / sp.Q
@@ -625,6 +728,13 @@ func (v *TonalVoice) Trigger(params VoiceParams) {
 	v.note = params.Note
 	v.freq = NoteFreq(params.Note) * v.kit.ratio()
 	v.velocity = params.Velocity
+	v.bend, v.bendEnd, v.bendWait, v.bendLeft = 1, 1, 0, 0
+	if params.Bend != 0 && params.Duration > 0 {
+		v.bendWait = int(params.BendAt * float64(params.Duration))
+		v.bendLeft = max(params.Duration-v.bendWait, 1)
+		v.bendEnd = math.Pow(2, params.Bend/12)
+		v.bendStep = math.Pow(v.bendEnd, 1/float64(v.bendLeft))
+	}
 	// Unison spreads symmetrically about the note; a stack's oscillators start
 	// at their own phases, as free-running ones do, and wander in pitch when
 	// detuned. A lone one starts at 0: its start phase is inaudible, and the

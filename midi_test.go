@@ -116,7 +116,7 @@ func sounding(t *testing.T, d *SongDef, pattern func(string) *PatternDef) []stri
 						if !instr.IsDrum() {
 							pitch, dur = StepPitch(d.Root, d.ScaleID(), e.Deg, e.Oct, e.Acc), max(e.Dur, 1)
 						}
-						out = append(out, fmt.Sprintf("%s %q at %d: pitch %d vel %d for %d", tr.Instr, tr.Desc, at+j, pitch, int(math.Round(e.Vel*127)), dur))
+						out = append(out, fmt.Sprintf("%s %q at %d: pitch %d vel %d for %d bent %+.2f from %.2f", tr.Instr, tr.Desc, at+j, pitch, int(math.Round(e.Vel*127)), dur, e.Bend, e.BendAt))
 					}
 				}
 			}
@@ -204,6 +204,60 @@ func TestSongRoundTripsThroughMIDI(t *testing.T) {
 	}
 	if bars := song.Bars; bars[0][1] != bars[2][1] || bars[0][1] != bars[3][1] || bars[0][0] != bars[2][0] || bars[1][0] != bars[0][0] || bars[3][3] != "" {
 		t.Errorf("bars %q, want the hook's and the beat's patterns again where the song repeats them", bars)
+	}
+	want, got := sounding(t, d, lookup(pats...)), sounding(t, song, lookup(back...))
+	if !slices.Equal(got, want) {
+		t.Errorf("loaded back\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// TestAGlideRoundTripsThroughMIDI: a song's glides written as pitch bend load
+// back with their bend and bend_at, up, down and at full reach, each lane's
+// range the least of 2, 12 and 24 semitones that holds its largest, and each
+// gliding lane on a channel no other plays, as a channel bends all it sounds
+func TestAGlideRoundTripsThroughMIDI(t *testing.T) {
+	pats := []*PatternDef{
+		{Name: "sing", Steps: 16, Role: "melody", Track: []TrackDef{
+			{Instr: "lead", Event: []StepDef{{Pos: 0, Vel: 0.8, Deg: 2, Dur: 4, Bend: 2, BendAt: 0.75}, {Pos: 4, Vel: 0.7, Deg: 4, Dur: 4, Bend: -1.5},
+				{Pos: 8, Vel: 0.6, Deg: 1, Dur: 2}, {Pos: 12, Vel: 0.9, Dur: 4, Bend: 0.5, BendAt: 0.33}}},
+			{Instr: "lead", Desc: "under", Event: []StepDef{{Pos: 0, Vel: 0.5, Deg: -3, Dur: 16}}}}},
+		{Name: "dive", Steps: 16, Role: "bass", Track: []TrackDef{
+			{Instr: "bass", Event: []StepDef{{Pos: 0, Vel: 1, Oct: -1, Dur: 8, Bend: -12, BendAt: 0.5}, {Pos: 8, Vel: 0.9, Oct: -1, Dur: 8, Bend: 7}}}}},
+		{Name: "swoop", Steps: 16, Role: "fill", Track: []TrackDef{
+			{Instr: "pad", Event: []StepDef{{Pos: 0, Vel: 0.6, Dur: 16, Bend: 24, BendAt: 0.1}}}}},
+	}
+	d := &SongDef{Name: "glides", BPM: 100, Root: 45, Scale: "minor", Bars: [][]string{{"", "sing", "swoop", "dive"}, {"", "sing", "", "dive"}}}
+	var b bytes.Buffer
+	if err := WriteSongMIDI(&b, d, lookup(pats...)); err != nil {
+		t.Fatal(err)
+	}
+	// RPN 0's data entry, each channel's range: a bend sensitivity of span semitones
+	var spans []int
+	for f, i := b.Bytes(), 4; i+2 < b.Len(); i++ {
+		if f[i]&0xF0 == 0xB0 && f[i+1] == 6 && f[i-4] == f[i] && f[i-3] == 100 && f[i-2] == 0 {
+			spans = append(spans, int(f[i+2]))
+		}
+	}
+	m, err := ReadMIDI(&b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	slices.Sort(spans)
+	if !slices.Equal(spans, []int{2, 12, 24}) {
+		t.Errorf("bend ranges %v, want 2, 12 and 24", spans)
+	}
+	for _, p := range m.parts {
+		if slices.ContainsFunc(p.notes, func(n midiNote) bool { return n.bend != 0 }) {
+			for _, q := range m.parts {
+				if q.track != p.track && q.notes[0].ch == p.notes[0].ch {
+					t.Errorf("track %d glides on channel %d, which track %d plays too", p.track, p.notes[0].ch, q.track)
+				}
+			}
+		}
+	}
+	back, song, said := m.Song("back")
+	if len(said) > 0 {
+		t.Errorf("said %q", said)
 	}
 	want, got := sounding(t, d, lookup(pats...)), sounding(t, song, lookup(back...))
 	if !slices.Equal(got, want) {

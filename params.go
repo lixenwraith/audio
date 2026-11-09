@@ -80,6 +80,7 @@ const (
 	MaxPatternEvents  = 512 // per track
 	MaxStepDegree     = 64
 	MaxStepAccidental = 2   // semitones an accidental may move a degree
+	MaxStepBend       = 24  // semitones a step's glide may reach either way
 	MaxTuningCents    = 100 // the engine's tuning off A440, a semitone either way
 	MinStepOctave     = -2
 	MaxStepOctave     = 8
