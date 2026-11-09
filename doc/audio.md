@@ -536,6 +536,17 @@ snares and hats are hits (`RipHit`), a ride, tambourine or shaker a hat, and its
 other strikes (a tom, a crash) onsets of no line (`MIDIScore.Struck`).
 `MatchHits` lays the hits on the rip's own (`Rip.Hits`, each step placed on its
 beats) under the stretch and offset that match most, each within half a step.
+`MatchBars` scores the rip's bar lines, which no note's map sees and on whose
+phase every pattern the rip compresses into turns, against a truth's beats and
+downbeats in the recording's seconds (`BarScore`): its median bar over the
+truth's (`Ratio`, `Same` within a tenth), the share of downbeats with a line
+within an eighth of a bar when the bars are the same, the median offset of the
+nearest line in bars (`Phase`), and the share of beats with a rip beat within a
+quarter of a beat. A score gives its beats and bars under its time signatures
+and tempo map, placed on the recording by the agreement's map (`MIDIScore.Beats`,
+downbeats from the first full bar), and a JAMS file its `beat_position`
+annotation in the recording's own clock (`ReadJAMSBeats`, as GuitarSet's,
+position 1 a downbeat).
 `NoteLevels` reads how loud the recording plays each note given, its first
 harmonics' peak around its onset placed by the agreement's map (`Agreement.At`,
 through the notes the register matched), so the notes heard can be counted by

@@ -892,6 +892,74 @@ func TestMatchHitsPlacesARipsDrumsOnTheGivenOnes(t *testing.T) {
 	}
 }
 
+// barGrid is a 4/4 rip of bars bars, beat seconds a beat from 0.3 s, and its
+// beats every step-th from the first
+func barGrid(bars int, beat float64, step int) (*Rip, []float64) {
+	r := &Rip{}
+	var every []float64
+	for i := range BeatsPerBar*bars + 1 {
+		r.Beats = append(r.Beats, 0.3+float64(i)*beat)
+		if i%step == 0 {
+			every = append(every, r.Beats[i])
+		}
+	}
+	return r, every
+}
+
+// TestMatchBarsScoresTheSameDownbeatsOne: a 4/4 rip grid against its own beats
+// and bar lines has every line on a downbeat and every beat on a beat, at phase 0
+func TestMatchBarsScoresTheSameDownbeatsOne(t *testing.T) {
+	r, downbeats := barGrid(8, 0.5, BeatsPerBar)
+	if s := MatchBars(r, r.Beats, downbeats); s != (BarScore{Ratio: 1, Same: true, Downbeats: 1, Beats: 1}) {
+		t.Errorf("%+v", s)
+	}
+}
+
+// TestMatchBarsReadsDownbeatsABeatEarlyAsPhaseAQuarter: against downbeats a beat
+// before its lines, on the same beats, a 4/4 grid has no line on a downbeat and
+// its lines a quarter of a bar late
+func TestMatchBarsReadsDownbeatsABeatEarlyAsPhaseAQuarter(t *testing.T) {
+	r, _ := barGrid(8, 0.5, 1)
+	var downbeats []float64
+	for i := BeatsPerBar - 1; i < len(r.Beats); i += BeatsPerBar {
+		downbeats = append(downbeats, r.Beats[i])
+	}
+	if s := MatchBars(r, r.Beats, downbeats); !s.Same || s.Downbeats != 0 || math.Abs(s.Phase-0.25) > 1e-9 || s.Beats != 1 {
+		t.Errorf("%+v", s)
+	}
+}
+
+// TestMatchBarsCallsAHalfLengthGridNotSame: a 4/4 grid at twice the truth's
+// tempo has a line on every truth downbeat, yet its bar is half the truth's, so
+// no downbeat counts
+func TestMatchBarsCallsAHalfLengthGridNotSame(t *testing.T) {
+	r, _ := barGrid(16, 0.25, 1)
+	_, beats := barGrid(8, 0.5, 1)
+	_, downbeats := barGrid(8, 0.5, BeatsPerBar)
+	if s := MatchBars(r, beats, downbeats); s.Same || math.Abs(s.Ratio-0.5) > 1e-9 || s.Downbeats != 0 {
+		t.Errorf("%+v", s)
+	}
+}
+
+// TestReadJAMSBeatsReadsBeatsAndDownbeats: a JAMS file in GuitarSet's form, its
+// pitch contour's data arrays by field, reads its beat_position times as beats
+// and those at position 1 as downbeats
+func TestReadJAMSBeatsReadsBeatsAndDownbeats(t *testing.T) {
+	const jams = `{"annotations": [
+	{"namespace": "pitch_contour", "data": {"time": [0.1], "duration": [0.0], "value": [{"index": 0, "frequency": 196.0, "voiced": true}], "confidence": [null]}},
+	{"namespace": "beat_position", "data": [
+		{"time": 0.5, "duration": 0.0, "value": {"position": 3, "measure": 0, "num_beats": 3, "beat_units": 4}, "confidence": null},
+		{"time": 1.0, "duration": 0.0, "value": {"position": 1, "measure": 1, "num_beats": 3, "beat_units": 4}, "confidence": null},
+		{"time": 1.5, "duration": 0.0, "value": {"position": 2, "measure": 1, "num_beats": 3, "beat_units": 4}, "confidence": null},
+		{"time": 2.0, "duration": 0.0, "value": {"position": 3, "measure": 1, "num_beats": 3, "beat_units": 4}, "confidence": null},
+		{"time": 2.5, "duration": 0.0, "value": {"position": 1, "measure": 2, "num_beats": 3, "beat_units": 4}, "confidence": null}]}],
+	"file_metadata": {"duration": 3.0, "jams_version": "0.3.1"}, "sandbox": {}}`
+	beats, downbeats, err := ReadJAMSBeats(strings.NewReader(jams))
+	if err != nil || !slices.Equal(beats, []float64{0.5, 1, 1.5, 2, 2.5}) || !slices.Equal(downbeats, []float64{1, 2.5}) {
+		t.Errorf("beats %v, downbeats %v, %v", beats, downbeats, err)
+	}
+}
+
 // TestNoteLevelsReadARecordingsLoudness: of two notes a recording plays 20 dB
 // apart, under a map that places the given seconds on it, the softer reads
 // 20 dB lower, and a note it does not play, two octaves up, reads far under both.
