@@ -531,7 +531,8 @@ that climbs over E3 is not cut and a melody that dips keeps its note.
 Two transcripts of one piece are compared by `MatchNotes`: the pitches in order,
 under the transposition that matches most, find a time map, a local median of the
 offsets that follows a tempo, and each line's notes then match one of their pitch
-within 0.1 s of their place, so a note far from its place does not count. A transcript
+within 0.1 s of their place, so a note far from its place does not count, the
+melody register's also as one line (`Agreement.Register`). A transcript
 against notes given as text a listener corrects by hand (`ParseTranscript`: `at
 N bpm`, then a note a line), or as a rhythm tapped out without pitches
 (`unit eighth`, `start 0.34s`, `melody (1-2-3---4-56---)x3 ...`), matched by when
@@ -542,8 +543,9 @@ it and as the corpus labels the loops it rings on. A track
 named melody, under or bass is that line, and of the other parts (a track's notes
 on one channel) the lowest is the bass when its notes centre under E3, kept whole
 as the bass decoder settles a line that climbs over it, the rest the melody then
-the under in file order, any further part left out of them and kept apart for
-what wants the whole arrangement (`MIDIScore.Further`); the drum channel's kicks,
+the under in file order; a further part's notes are the transcript's too, of no
+line (`RipNote.Further`), matched in the melody register as one line or, under
+E3, in the bass's, and left out of the score's rip; the drum channel's kicks,
 snares and hats are hits (`RipHit`), a ride, tambourine or shaker a hat, and its
 other strikes (a tom, a crash) onsets of no line (`MIDIScore.Struck`).
 `MatchHits` lays the hits on the rip's own (`Rip.Hits`, each step placed on its

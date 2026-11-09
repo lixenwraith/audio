@@ -240,6 +240,9 @@ type RipNote struct {
 	// set it on the note's channel; -1 where the file set none, and for a note
 	// heard or given as text
 	Program int
+	// Further marks a score's note of a part past its three lines, of none: in
+	// the melody register's match as one line, or the bass's under E3
+	Further bool
 }
 
 // RipUnmeasured is a RipNote's Bright where none was measured, never a share

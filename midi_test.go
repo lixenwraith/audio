@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -77,18 +78,57 @@ func TestReadMIDIReadsTheSameTranscript(t *testing.T) {
 	}
 }
 
-// TestMIDIKeepsThePartsPastTheLinesApart: of four parts, the one past melody,
-// under and bass is left out of the lines and kept whole as a further part
-func TestMIDIKeepsThePartsPastTheLinesApart(t *testing.T) {
-	m, err := ReadMIDI(bytes.NewReader(append(smf(1), track(
-		0x00, 0x90, 72, 100, 0x00, 0x91, 64, 90, 0x00, 0x92, 36, 90, 0x00, 0x93, 67, 60, // C5, E4, C2 and G4 on four channels
-		0x83, 0x60, 0x80, 72, 0, 0x00, 0x81, 64, 0, 0x00, 0x82, 36, 0, 0x00, 0x83, 67, 0,
-		0x00, 0xFF, 0x2F, 0)...)))
+// TestMIDITranscriptHoldsEveryPart: of five parts, the two past melody, under
+// and bass are in the transcript with their programs, Further, matched in the
+// melody register as one or the bass under E3; its lines and its rip read as a
+// file of the first three parts alone reads them
+func TestMIDITranscriptHoldsEveryPart(t *testing.T) {
+	file := func(parts int) []byte { // C5, E4, C2, G4 and C3, a part a channel, each its own program
+		keys, programs := []byte{72, 64, 36, 67, 48}, []byte{0, 40, 32, 41, 42}
+		var ev []byte
+		for ch := range byte(parts) {
+			ev = append(ev, 0x00, 0xC0|ch, programs[ch], 0x00, 0x90|ch, keys[ch], 100)
+		}
+		ev = append(ev, 0x83, 0x60) // their ends at 480
+		for ch := range byte(parts) {
+			ev = append(ev, 0x80|ch, keys[ch], 0, 0x00)
+		}
+		return append(smf(1), track(append(ev, 0xFF, 0x2F, 0)...)...)
+	}
+	five, err := ReadMIDI(bytes.NewReader(file(5)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(m.Notes) != 3 || m.Left != 1 || len(m.Further) != 1 || m.Further[0].MIDI != 67 || !m.Further[0].Second || m.Further[0].End != 0.5 {
-		t.Errorf("lines %+v, %d part(s) left out, further %+v; want G4 apart", m.Notes, m.Left, m.Further)
+	three, err := ReadMIDI(bytes.NewReader(file(3)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, n := range five.Notes {
+		got = append(got, fmt.Sprintf("%d program %d bass %t second %t further %t", n.MIDI, n.Program, n.Bass, n.Second, n.Further))
+	}
+	slices.Sort(got)
+	want := []string{
+		"36 program 32 bass true second false further false",
+		"48 program 42 bass true second false further true",
+		"64 program 40 bass false second true further false",
+		"67 program 41 bass false second true further true",
+		"72 program 0 bass false second false further false",
+	}
+	if !slices.Equal(got, want) || five.Left != 2 || three.Left != 0 {
+		t.Errorf("five parts read %q, %d left of the lines; want %q, 2", got, five.Left, want)
+	}
+	if lines := slices.DeleteFunc(slices.Clone(five.Notes), func(n RipNote) bool { return n.Further }); !slices.Equal(lines, three.Notes) {
+		t.Errorf("the five parts' lines %+v, the three parts' %+v", lines, three.Notes)
+	}
+	ag := MatchNotes(five.Notes, five.Notes)
+	if l := ag.Lines; l[0].B != 1 || l[1].B != 1 || l[2].Matched != 2 || ag.Register.Matched != 3 {
+		t.Errorf("matched to itself, lines of %d, %d and %d note(s) and a register of %d, want 1, 1, 2 and 3", l[0].B, l[1].B, l[2].Matched, ag.Register.Matched)
+	}
+	r5, _ := five.Rip()
+	r3, _ := three.Rip()
+	if !reflect.DeepEqual(r5, r3) {
+		t.Errorf("the five parts' rip %+v, the three parts' %+v", r5, r3)
 	}
 }
 
