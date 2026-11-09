@@ -1696,8 +1696,9 @@ func (c *ripLineCues) beats(o []float64, pulses []int, stride int) {
 // bar scores a bar of meter m from frame a, pulse i, d frames long: its comb,
 // the mean onset on its sixteenths; its line's cues, a kick and no snare on
 // it, the snare on the felt backbeats, the root in the bass, the chroma change
-// over span frames (four tracked beats for every reading), its pulse's beat
-// class and the bass accent; and, apart, the onsets on its other felt beats.
+// over span frames (four tracked beats for every reading, the time before the
+// recording silent), its pulse's beat class and the bass accent; and, apart, the
+// onsets on its other felt beats.
 func (c *ripLineCues) bar(o []float64, m Meter, i, a int, d, span float64) (comb, line, other float64) {
 	n := len(o)
 	steps := m.Steps()
@@ -1737,9 +1738,7 @@ func (c *ripLineCues) bar(o []float64, m Meter, i, a int, d, span float64) (comb
 	root := sum(c.bassChroma, a, a+int(math.Round(span/4)))
 	normalize(&root)
 	line += root[c.root]
-	if a-w >= 0 {
-		line += 1 - cosine(sum(c.chroma, a-w, a), sum(c.chroma, a, a+w))
-	}
+	line += 1 - cosine(sum(c.chroma, a-w, a), sum(c.chroma, a, a+w)) // silence before the recording
 	return comb, ripBarLine * line, felts
 }
 

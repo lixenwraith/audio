@@ -348,6 +348,13 @@ that a document now states, and link the document instead.
 
 ## Decoders
 
+- **The wide table never sees a bar line.** Its F1 matches notes through a
+  fitted time map, so a bar path that moves every line by a beat scores the
+  same; read the rip's bar lines against a truth that has them (GuitarSet's
+  `beat_position` annotations, a score's bars) before calling a bar change
+  neutral. A cue that needs context before the line, such as the chroma
+  change over four beats, has none at a recording that starts at once; the
+  time before the recording is silence and counts as such, not as missing.
 - **Fix the cut, not the labels.** A stream assignment over the notes two
   passes had already cut, by pitch, timbre and level, made the two recordings
   of one piece agree less, not more: the first pass had cut the louder pitch
