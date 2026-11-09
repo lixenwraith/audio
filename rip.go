@@ -309,11 +309,17 @@ const (
 	ripBrightSpread   = 0.03
 )
 
+// RipFamilies names the instrument families a model's family head scores, in
+// its order: what plays a frame's highest sounding note, unknown for a sound of
+// none of the others.
+var RipFamilies = [...]string{"piano", "guitar", "voice", "bass", "strings", "winds", "synth", "drums", "unknown"}
+
 // RipFrames is a recording as the rip's decoders read it, a value per frame every
 // Hop seconds: onset strength, each drum's (kick, snare, hihat), each pitch's
 // salience from E1 to C7 (the bass's by its first partials, the melody's with the
 // bass cancelled) and each register's chroma. A front end fills it: this package's
-// analysis, or a model (ripmodel), which may also give each frame's wave and voice.
+// analysis, or a model (ripmodel), which may also give each frame's wave, voice
+// and family.
 type RipFrames struct {
 	Hop                float64
 	Tuning             float64 // cents the recording's pitches sit off A440, as the front end heard them
@@ -326,6 +332,7 @@ type RipFrames struct {
 	Strike             []float32 // frames × RipPitches, how surely each pitch is struck there, or nil
 	Release            []float32 // frames × RipPitches, how surely each pitch is let go there, or nil
 	Velocity           []float32 // frames × RipPitches, how hard a pitch struck there was struck, or nil
+	Family             []float32 // frames × len(RipFamilies), how surely each family plays there, summing to 1, or nil
 }
 
 func (f *RipFrames) frames() int { return len(f.Flux) }
