@@ -92,6 +92,34 @@ func TestMIDIKeepsThePartsPastTheLinesApart(t *testing.T) {
 	}
 }
 
+// TestMIDINotesCarryTheirPrograms: each note read carries the program its
+// channel was set to at its start, whatever line it folds into, so an ensemble's
+// parts stay apart; a note before any is set carries -1
+func TestMIDINotesCarryTheirPrograms(t *testing.T) {
+	file := append(smf(2), track(
+		0x00, 0xC0, 0, 0x00, 0x90, 72, 100, // a grand piano's C5 at 0
+		0x83, 0x60, 0x80, 72, 0,
+		0x00, 0xFF, 0x2F, 0)...)
+	file = append(file, track(
+		0x00, 0x91, 67, 90, // G4 at 0 on channel 2, no program set
+		0x83, 0x60, 0x81, 67, 0,
+		0x00, 0xC1, 40, 0x00, 0x91, 69, 90, // a violin's A4 at 480
+		0x83, 0x60, 0x81, 69, 0,
+		0x00, 0xFF, 0x2F, 0)...)
+	m, err := ReadMIDI(bytes.NewReader(file))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, n := range m.Notes {
+		got = append(got, fmt.Sprintf("%d %d", n.MIDI, n.Program))
+	}
+	slices.Sort(got)
+	if want := []string{"67 -1", "69 40", "72 0"}; !slices.Equal(got, want) {
+		t.Errorf("notes and programs %q, want %q", got, want)
+	}
+}
+
 // sounding is what a song plays, a line a note or hit: its instrument and desc,
 // the step from the song's start, the pitch under the song's key, the velocity
 // as a note-on holds it and the length in steps, sorted

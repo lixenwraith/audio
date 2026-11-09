@@ -236,6 +236,10 @@ type RipNote struct {
 	// Bend and BendAt are its glide, as a pattern step's: the semitones it
 	// reaches by its end from the share of its length before it moves
 	Bend, BendAt float64
+	// Program is the General MIDI program a score's note plays on, as its file
+	// set it on the note's channel; -1 where the file set none, and for a note
+	// heard or given as text
+	Program int
 }
 
 // RipUnmeasured is a RipNote's Bright where none was measured, never a share
@@ -534,7 +538,7 @@ func (rp Ripper) Samples(x []float64, rate int) (*Rip, error) {
 			if i == 1 {
 				n.bright = RipUnmeasured
 			}
-			r.Notes = append(r.Notes, RipNote{Start: float64(n.start) * f.Hop, End: float64(n.end) * f.Hop, MIDI: n.midi, Vel: n.vel, Bass: i == 1, Second: n.second, Bright: n.bright, Bend: n.bend, BendAt: n.bendAt})
+			r.Notes = append(r.Notes, RipNote{Start: float64(n.start) * f.Hop, End: float64(n.end) * f.Hop, MIDI: n.midi, Vel: n.vel, Bass: i == 1, Second: n.second, Bright: n.bright, Bend: n.bend, BendAt: n.bendAt, Program: -1})
 		}
 	}
 	slices.SortFunc(r.Notes, func(a, b RipNote) int { return cmp.Compare(a.Start, b.Start) })
