@@ -2001,3 +2001,24 @@ func TestRipFollowsABarThatSlows(t *testing.T) {
 		t.Errorf("the song read on its own beats: %s, score %+v", back.Meter, sc)
 	}
 }
+
+// A bar line in a recording's first beats hears the change from the silence
+// before it, as a line later hears the change from the four beats before.
+func TestABarLineAtTheStartHearsTheSilenceBeforeIt(t *testing.T) {
+	const n, span = 400, 100
+	c := &ripLineCues{kick: make([]float64, n), snare: make([]float64, n), bass: make([]float64, n), bassChroma: make([][12]float64, n+1), chroma: make([][12]float64, n+1), beat: make([]float64, n)}
+	for f := range n { // one chord from the first frame
+		for pc := range c.chroma[f] {
+			c.bassChroma[f+1][pc] = c.bassChroma[f][pc]
+			c.chroma[f+1][pc] = c.chroma[f][pc]
+		}
+		c.chroma[f+1][0] += 1
+		c.chroma[f+1][4] += 1
+	}
+	o := make([]float64, n)
+	_, start, _ := c.bar(o, Meter{}, 0, 0, span, span)
+	_, later, _ := c.bar(o, Meter{}, span, span, span, span)
+	if math.Abs(start-later-1) > 1e-9 {
+		t.Fatalf("a line at the start scores %.3f and one after four beats of the same chord %.3f, want the start a whole chroma change over the other", start, later)
+	}
+}
