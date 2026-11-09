@@ -401,7 +401,9 @@ the program of the shipped voice nearest it, its wave first, then its genes
   merged, cut or left out.
 - `ReadMIDI`'s transcript (§9) is the same with or without the programs, keys
   and signatures the reader takes for a song
-  (`TestReadMIDIReadsTheSameTranscript`).
+  (`TestReadMIDIReadsTheSameTranscript`), but that each note carries the program
+  its channel was set to at its start (`RipNote.Program`, -1 where the file sets
+  none), so an ensemble's parts stay apart after the lines fold them.
 
 ## 9. Ripping a recording
 

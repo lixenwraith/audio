@@ -103,12 +103,17 @@ func midiProgram(instr InstrumentType) byte {
 }
 
 // midiNote is a note of a track in ticks, before the tempo map, with the program
-// its channel plays at its start and its glide as a step's (Step.Bend)
+// its channel was set to at its start, -1 where none was, and its glide as a
+// step's (Step.Bend)
 type midiNote struct {
-	on, off            int64
-	ch, key, vel, prog byte
-	bend, bendAt       float64
+	on, off      int64
+	ch, key, vel byte
+	prog         int
+	bend, bendAt float64
 }
+
+// plays is the program n sounds on: the one set, General MIDI's first before any is
+func (n midiNote) plays() byte { return byte(max(n.prog, 0)) }
 
 // midiPart is one track's notes on one channel: what ReadMIDI maps to a line
 type midiPart struct {
@@ -261,8 +266,7 @@ func ReadMIDI(r io.Reader) (*MIDIScore, error) {
 		k := slices.MinFunc(all.keys, func(a, b midiKey) int { return cmp.Compare(a.tick, b.tick) })
 		m.key = &k
 	}
-	// a channel plays the program last set on it in any track, General MIDI's
-	// first before any is
+	// a channel plays the program last set on it in any track
 	var programs [16][]midiChange
 	slices.SortStableFunc(all.programs, func(a, b midiChange) int { return cmp.Compare(a.tick, b.tick) })
 	for _, c := range all.programs {
@@ -271,8 +275,9 @@ func ReadMIDI(r io.Reader) (*MIDIScore, error) {
 	for _, p := range m.parts {
 		for i, n := range p.notes {
 			cs := programs[n.ch]
+			p.notes[i].prog = -1
 			if k := sort.Search(len(cs), func(k int) bool { return cs[k].tick > n.on }); k > 0 {
-				p.notes[i].prog = cs[k-1].program
+				p.notes[i].prog = int(cs[k-1].program)
 			}
 		}
 	}
@@ -300,13 +305,13 @@ func ReadMIDI(r io.Reader) (*MIDIScore, error) {
 		if line < 0 {
 			m.Left++
 			for _, n := range tonal[i].notes {
-				m.Further = append(m.Further, RipNote{Start: seconds(n.on), End: seconds(n.off), MIDI: int(n.key), Vel: float64(n.vel) / 127, Second: true, Bright: RipUnmeasured, Bend: n.bend, BendAt: n.bendAt})
+				m.Further = append(m.Further, RipNote{Start: seconds(n.on), End: seconds(n.off), MIDI: int(n.key), Vel: float64(n.vel) / 127, Second: true, Bright: RipUnmeasured, Bend: n.bend, BendAt: n.bendAt, Program: n.prog})
 			}
 			continue
 		}
-		m.Voices[line] = midiVoice(tonal[i].notes[0].prog)
+		m.Voices[line] = midiVoice(tonal[i].notes[0].plays())
 		for _, n := range tonal[i].notes {
-			m.Notes = append(m.Notes, RipNote{Start: seconds(n.on), End: seconds(n.off), MIDI: int(n.key), Vel: float64(n.vel) / 127, Bass: line == 2, Second: line == 1, Bright: RipUnmeasured, Bend: n.bend, BendAt: n.bendAt})
+			m.Notes = append(m.Notes, RipNote{Start: seconds(n.on), End: seconds(n.off), MIDI: int(n.key), Vel: float64(n.vel) / 127, Bass: line == 2, Second: line == 1, Bright: RipUnmeasured, Bend: n.bend, BendAt: n.bendAt, Program: n.prog})
 		}
 	}
 	if len(m.Notes) == 0 && len(m.Hits) == 0 {
@@ -513,10 +518,11 @@ func (m *MIDIScore) Song(name string) ([]*PatternDef, *SongDef, []string) {
 		}
 		of := map[byte]int{}
 		for _, n := range p.notes {
-			i, ok := of[n.prog]
+			prog := n.plays()
+			i, ok := of[prog]
 			if !ok {
-				v := midiVoice(n.prog)
-				if word := strconv.Itoa(int(n.prog)); n.prog != midiInstruments[v].program && !slices.Contains(nearest[v], word) {
+				v := midiVoice(prog)
+				if word := strconv.Itoa(int(prog)); prog != midiInstruments[v].program && !slices.Contains(nearest[v], word) {
 					nearest[v] = append(nearest[v], word)
 				}
 				part, desc := RipMelody, strings.TrimSpace(p.name)
@@ -526,7 +532,7 @@ func (m *MIDIScore) Song(name string) ([]*PatternDef, *SongDef, []string) {
 				if desc == v.String() {
 					desc = ""
 				}
-				i, of[n.prog] = len(lines), len(lines)
+				i, of[prog] = len(lines), len(lines)
 				lines = append(lines, line{part: part, instr: v.String(), desc: desc})
 			}
 			lines[i].notes = append(lines[i].notes, n)
