@@ -1,8 +1,8 @@
 // Package ripmodel is the rip's learned front end: a transformer over log-mel
 // frames whose heads say, per frame, whether anything and which drum struck,
-// which pitches sound, are struck or let go and how hard, and the note's wave and
-// genes, and a notes model beside it that may give the notes. stapes' rip-train
-// trains both; Spec and NotesSpec are their shapes, loaded into a FrontEnd.
+// which pitches sound, are struck or let go and how hard, the note's wave and
+// genes and the family playing it, and a notes model beside it that may give the
+// notes. stapes' rip-train trains both; Spec and NotesSpec are their shapes.
 package ripmodel
 
 import (
@@ -28,6 +28,7 @@ const (
 	HeadStrike   = "strike"   // each of the rip's pitches struck at this frame
 	HeadRelease  = "release"  // each of the rip's pitches let go at this frame
 	HeadVelocity = "velocity" // how hard each pitch struck at this frame was struck
+	HeadFamily   = "family"   // what plays the highest note sounding, one score per RipFamilies entry
 )
 
 // Spec is the model the trainer builds and a weight file must match in its
@@ -40,6 +41,7 @@ func Spec() transformer.Config {
 			{Name: HeadOnset, Size: 1}, {Name: HeadDrums, Size: int(audio.InstrClap)}, {Name: HeadPitch, Size: audio.RipPitches},
 			{Name: HeadVoicing, Size: 1}, {Name: HeadWave, Size: len(audio.VoiceWaves)}, {Name: HeadVoice, Size: audio.VoiceGeneCount},
 			{Name: HeadStrike, Size: audio.RipPitches}, {Name: HeadRelease, Size: audio.RipPitches}, {Name: HeadVelocity, Size: audio.RipPitches},
+			{Name: HeadFamily, Size: len(audio.RipFamilies)},
 		},
 	}
 }
@@ -85,9 +87,9 @@ func Load(r, notes io.Reader) (*FrontEnd, error) {
 }
 
 // optionalHeads is how many of Spec's last heads a model may lack: one trained
-// before the strike, release or velocity head loads without them, its notes read
-// from what it has
-const optionalHeads = 3
+// before the strike, release, velocity or family head loads without them, its
+// notes read from what it has
+const optionalHeads = 4
 
 // New wraps a model and a notes model, nil for none, refusing a model whose
 // inputs or heads are not a prefix of Spec's or that reads more than two
@@ -124,8 +126,8 @@ func New(m, notes *transformer.Model) (*FrontEnd, error) {
 // Hear runs the recording's log-mel frames through the model, and the notes
 // model when there is one, and reads their heads into frames: the onset and drum
 // scores as strengths, the pitch scores as salience, the chroma folded from them,
-// the wave scores and voice genes as they are, and the strike, release and
-// velocity scores when a model has them; the notes model gives notesHeads.
+// the wave scores and voice genes as they are, the strike, release and velocity
+// scores when a model has them, and the family's softmax when the model has it.
 func (fe *FrontEnd) Hear(x []float64, rate int, _ audio.RipParams) (*audio.RipFrames, error) {
 	cfg := fe.Model.Config()
 	in := features(audio.MelFrames(x, rate), cfg.Channels == 2 || fe.Notes != nil)
@@ -168,6 +170,9 @@ func (fe *FrontEnd) Hear(x []float64, rate int, _ audio.RipParams) (*audio.RipFr
 			per = append(per, h)
 		}
 	}
+	if n > 0 && head(HeadFamily, 0) != nil {
+		f.Family = make([]float32, 0, n*len(audio.RipFamilies))
+	}
 	for t := range out {
 		f.Flux[t] = sigmoid(head(HeadOnset, t)[0])
 		for d, v := range head(HeadDrums, t) {
@@ -192,6 +197,9 @@ func (fe *FrontEnd) Hear(x []float64, rate int, _ audio.RipParams) (*audio.RipFr
 			for _, v := range head(h.head, t) {
 				*h.into = append(*h.into, float32(sigmoid(v)))
 			}
+		}
+		if f.Family != nil {
+			f.Family = appendSoftmax(f.Family, head(HeadFamily, t))
 		}
 	}
 	return f, nil
@@ -319,3 +327,16 @@ func stacked(in [][]float32) [][]float32 {
 }
 
 func sigmoid(v float32) float64 { return 1 / (1 + math.Exp(-float64(v))) }
+
+// appendSoftmax appends a head's scores as shares that sum to one
+func appendSoftmax(to, v []float32) []float32 {
+	top := slices.Max(v)
+	var sum float64
+	for _, x := range v {
+		sum += math.Exp(float64(x - top))
+	}
+	for _, x := range v {
+		to = append(to, float32(math.Exp(float64(x-top))/sum))
+	}
+	return to
+}

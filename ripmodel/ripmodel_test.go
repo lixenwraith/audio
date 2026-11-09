@@ -11,11 +11,10 @@ import (
 )
 
 // TestAnUntrainedModelHearsFramesTheRipReads is the contract between the model
-// and the decoders: a model of Spec's shape, however weighted, yields frames on
-// the rip's grid with every field the rip reads, and the rip runs on them; one
-// from before the strike, release or velocity head loads without them, one of
-// two channels hears too, one of three is refused, and a notes model beside
-// it gives the notes, the model the rest.
+// and the decoders: a model of Spec's shape yields frames the rip runs on, with
+// every field it reads and a frame's family shares summing to one; one without
+// its strike, release, velocity or family head hears without them, one of two
+// channels hears, one of three is refused, and a notes model gives the notes.
 func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 	cfg := Spec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window = 16, 2, 1, 32, 8 // a small one for the test's sake
@@ -42,9 +41,19 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 	n := len(f.Flux)
 	per := n * audio.RipPitches
 	if n < 400 || len(f.Salience) != per || len(f.Strike) != per || len(f.Release) != per || len(f.Velocity) != per ||
-		len(f.Voice) != n*audio.VoiceGeneCount || len(f.Wave) != n*len(audio.VoiceWaves) || len(f.Onset[2]) != n {
-		t.Fatalf("frames %d, salience %d, strikes %d, releases %d, velocities %d, voice %d, wave %d",
-			n, len(f.Salience), len(f.Strike), len(f.Release), len(f.Velocity), len(f.Voice), len(f.Wave))
+		len(f.Voice) != n*audio.VoiceGeneCount || len(f.Wave) != n*len(audio.VoiceWaves) || len(f.Onset[2]) != n ||
+		len(f.Family) != n*len(audio.RipFamilies) {
+		t.Fatalf("frames %d, salience %d, strikes %d, releases %d, velocities %d, voice %d, wave %d, family %d",
+			n, len(f.Salience), len(f.Strike), len(f.Release), len(f.Velocity), len(f.Voice), len(f.Wave), len(f.Family))
+	}
+	for at := 0; at < len(f.Family); at += len(audio.RipFamilies) {
+		var sum float64
+		for _, v := range f.Family[at : at+len(audio.RipFamilies)] {
+			sum += float64(v)
+		}
+		if math.Abs(sum-1) > 1e-5 {
+			t.Fatalf("frame %d's family shares sum to %g", at/len(audio.RipFamilies), sum)
+		}
 	}
 	if _, err := (audio.Ripper{Params: audio.DefaultRipParams(), FrontEnd: fe}).Samples(x, audio.AudioSampleRate); err != nil {
 		t.Errorf("the rip refused the model's frames: %v", err)
@@ -59,8 +68,9 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 			continue
 		}
 		of, err := ofe.Hear(x, audio.AudioSampleRate, audio.DefaultRipParams())
-		if err != nil || of.Velocity != nil || (of.Release != nil) != (lack < 2) || (of.Strike != nil) != (lack < 3) {
-			t.Errorf("a model without its last %d heads heard strikes %v, releases %v, velocities %v: %v", lack, of.Strike != nil, of.Release != nil, of.Velocity != nil, err)
+		if err != nil || of.Family != nil || (of.Velocity != nil) != (lack < 2) || (of.Release != nil) != (lack < 3) || (of.Strike != nil) != (lack < 4) {
+			t.Errorf("a model without its last %d heads heard strikes %v, releases %v, velocities %v, families %v: %v",
+				lack, of.Strike != nil, of.Release != nil, of.Velocity != nil, of.Family != nil, err)
 		}
 	}
 	planes := cfg
@@ -107,8 +117,8 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 			t.Fatalf("pitch %d struck at %g, the notes model says %g", i, nf.Strike[n/2*audio.RipPitches+i], s)
 		}
 	}
-	if !slices.Equal(nf.Voice, f.Voice) || !slices.Equal(nf.Onset[0], f.Onset[0]) {
-		t.Error("the notes model moved the voice or the kicks")
+	if !slices.Equal(nf.Voice, f.Voice) || !slices.Equal(nf.Onset[0], f.Onset[0]) || !slices.Equal(nf.Family, f.Family) {
+		t.Error("the notes model moved the voice, the kicks or the family")
 	}
 	older := cfg
 	older.Outputs = older.Outputs[:len(older.Outputs)-optionalHeads]

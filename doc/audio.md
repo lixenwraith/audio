@@ -597,10 +597,13 @@ The front end is a seam (`RipFrontEnd`): whatever hears the recording into
 feeds the same decoders. The analysis above is one front end; `ripmodel` is the
 other, a transformer over the log-mel frames `MelFrames` makes, whose heads say
 per frame what struck, what sounds, which pitch is struck or let go and how hard
-(`RipFrames.Strike`, `Release`, `Velocity`), and the wave and voice genes
+(`RipFrames.Strike`, `Release`, `Velocity`), the wave and voice genes
 (`VoiceDef.Genes`) the note is played with, so a rip through it also names the
-voices its registers were played with (`Rip.Voices`). From strikes both registers'
-notes start where a pitch is struck, as hard as it was, and last while
+voices its registers were played with (`Rip.Voices`), and the family playing the
+highest note (`RipFrames.Family`, shares over `RipFamilies`: piano, guitar,
+voice, bass, strings, winds, synth, drums or unknown), which no decoder reads
+yet. From strikes both registers' notes start where a pitch is struck, as hard
+as it was, and last while
 it sounds or until it is let go (`Release`, the pitch ringing on as far as a new
 strike goes), any number at once, in place of the two-line path, which stays on
 the notes a pedal leaves ringing; a low note's strike must clear the surer
@@ -672,12 +675,12 @@ the engine renders.
 A second file may give the notes: a notes model (`ripmodel.NotesSpec`, the
 trainer's PitchNet), a transformer module cell net of convolutions alone with
 the same weights at every pitch, gives the pitch, voicing, strike, release and
-velocity heads, and the model the onsets, drums, wave and voice. It reads the
-harmonic stack (`stacked`): both planes interpolated onto a log-frequency axis
-of three bins a semitone from MIDI 27, each a channel for each harmonic of a half
-and one to seven, shifted so a pitch's harmonics lie at its own bin, 16 channels
-of 213 bins, each ending in its plane's scalar. Without it the model gives every
-head, as before.
+velocity heads, and the model the onsets, drums, wave, voice and family. It
+reads the harmonic stack (`stacked`): both planes interpolated onto a
+log-frequency axis of three bins a semitone from MIDI 27, each a channel for
+each harmonic of a half and one to seven, shifted so a pitch's harmonics lie at
+its own bin, 16 channels of 213 bins, each ending in its plane's scalar. Without
+it the model gives every head, as before.
 
 The model's input (`features`) is each band in dB less the frame's mean, over
 80, and the mean, so the bands are level-free and loudness is one input. A model
