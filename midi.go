@@ -162,14 +162,13 @@ type midiTrack struct {
 // MIDIScore is a Standard MIDI File as ReadMIDI reads it: the transcript in
 // seconds under its tempo map, and what of its grid a rip needs.
 type MIDIScore struct {
-	Notes   []RipNote
+	Notes   []RipNote // every part's, a part's past the three lines Further
 	Hits    []RipHit
-	BPM     float64   // quarter notes a minute at the start, 120 when the file names none
-	Changes int       // tempo changes after the start
-	Meter   Meter     // the time signature the music starts in, 4/4 when the file names none
-	Meters  int       // time signatures changed to after the first bar
-	Left    int       // parts past the three lines, left out of them
-	Further []RipNote // those parts' notes, as an under line's, for what wants the whole arrangement
+	BPM     float64 // quarter notes a minute at the start, 120 when the file names none
+	Changes int     // tempo changes after the start
+	Meter   Meter   // the time signature the music starts in, 4/4 when the file names none
+	Meters  int     // time signatures changed to after the first bar
+	Left    int     // parts past the three lines, of none
 	// Voices are the shipped voices the melody, under and bass parts' programs
 	// play on (midiVoice), General MIDI's piano where a file sets none
 	Voices [3]InstrumentType
@@ -206,7 +205,7 @@ var ErrMIDIUnlined = errors.New("midi: no notes, and no kick, snare or hihat")
 // under its tempo map, the drum channel's kicks, snares and hats as hits. A
 // track named melody, under or bass is that line; of the other parts (a track's
 // notes on one channel), the lowest is the bass, whole, when its median is under
-// E3, and the rest the melody, then the under; parts past those are left out.
+// E3, and the rest the melody, then the under; parts past those are of none.
 func ReadMIDI(r io.Reader) (*MIDIScore, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
@@ -300,20 +299,31 @@ func ReadMIDI(r io.Reader) (*MIDIScore, error) {
 			}
 		}
 	}
+	note := func(n midiNote, line int) RipNote {
+		return RipNote{Start: seconds(n.on), End: seconds(n.off), MIDI: int(n.key), Vel: float64(n.vel) / 127, Bass: line == 2, Second: line == 1, Bright: RipUnmeasured, Bend: n.bend, BendAt: n.bendAt, Program: n.prog}
+	}
 	m.Voices = [3]InstrumentType{midiVoice(0), midiVoice(0), midiVoice(0)}
+	var further []RipNote
 	for i, line := range midiLinesOf(tonal) {
 		if line < 0 {
 			m.Left++
 			for _, n := range tonal[i].notes {
-				m.Further = append(m.Further, RipNote{Start: seconds(n.on), End: seconds(n.off), MIDI: int(n.key), Vel: float64(n.vel) / 127, Second: true, Bright: RipUnmeasured, Bend: n.bend, BendAt: n.bendAt, Program: n.prog})
+				reg := 1 // a further part's note sits in its register
+				if int(n.key) < RipBassTop {
+					reg = 2
+				}
+				r := note(n, reg)
+				r.Further = true
+				further = append(further, r)
 			}
 			continue
 		}
 		m.Voices[line] = midiVoice(tonal[i].notes[0].plays())
 		for _, n := range tonal[i].notes {
-			m.Notes = append(m.Notes, RipNote{Start: seconds(n.on), End: seconds(n.off), MIDI: int(n.key), Vel: float64(n.vel) / 127, Bass: line == 2, Second: line == 1, Bright: RipUnmeasured, Bend: n.bend, BendAt: n.bendAt, Program: n.prog})
+			m.Notes = append(m.Notes, note(n, line))
 		}
 	}
+	m.Notes = append(m.Notes, further...)
 	if len(m.Notes) == 0 && len(m.Hits) == 0 {
 		return nil, ErrMIDIUnlined
 	}
@@ -362,7 +372,7 @@ func foldMeter(num, den int, fold float64) (Meter, bool) {
 // folded by octaves into the sequencer's range with its first meter read at that
 // tempo (foldMeter; 4/4 when the grid plays none), bars from where that signature
 // starts with a pickup bar for notes before it, and the key keyOf its pitch classes.
-// A note outside the rip's range is dropped, and counted.
+// A note outside the rip's range is dropped, and counted; a Further one left out.
 func (m *MIDIScore) Rip() (*Rip, int) {
 	const fine = 64 // the grid's units a tick, so a folded beat is whole
 	at := func(sec float64) int { return int(math.Round(m.ticks(sec) * fine)) }
@@ -380,6 +390,9 @@ func (m *MIDIScore) Rip() (*Rip, int) {
 	var notes []ripNote
 	dropped := 0
 	for _, n := range m.Notes {
+		if n.Further {
+			continue
+		}
 		if n.MIDI < RipMinMIDI || n.MIDI >= RipMaxMIDI {
 			dropped++
 			continue

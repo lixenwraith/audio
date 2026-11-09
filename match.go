@@ -22,7 +22,7 @@ import (
 type Agreement struct {
 	Shift           int // semitones added to b's pitches to match a's
 	Lines           [3]LineAgreement
-	Register        LineAgreement // the melody register, both lines as one
+	Register        LineAgreement // the melody register as one: both lines, a score's further parts
 	Stretch, Offset float64       // a's time of a matched note ≈ Stretch*b's + Offset
 	// paired are seconds of b and where each falls on a, in order, the map At follows
 	paired [][2]float64
@@ -134,7 +134,10 @@ func align(a, b []RipNote, shift int) Agreement {
 		}
 		return nearPlace(la, lb, shift, ag.At)
 	}
-	inLine := func(line int) func(RipNote) bool { return func(n RipNote) bool { return lineOf(n) == line } }
+	// a further part's note is of no line above the bass, whose line is its register
+	inLine := func(line int) func(RipNote) bool {
+		return func(n RipNote) bool { return lineOf(n) == line && (line == 2 || !n.Further) }
+	}
 	register := func(n RipNote) bool { return !n.Bass }
 	seconds := func(keep func(RipNote) bool, pairs func(la, lb []RipNote) [][2]int) [][2]float64 {
 		la, lb := split(keep)
