@@ -11,6 +11,11 @@ that a document now states, and link the document instead.
 
 - The `gofmt` on a container's `PATH` can be older than the module's Go; run
   `"$(go env GOROOT)/bin/gofmt" -l`.
+- A container whose Go is older than the module's, where none may be fetched,
+  builds and tests with `-modfile` (a copy of `go.mod` at its Go, `toml` and
+  `transformer` replaced by local copies whose `go.mod` say the same) and
+  `-overlay` for the few lines that use newer library calls
+  (`reflect.Type.Fields`, `errors.AsType`); CI's toolchain is the authority.
 
 ## Tests
 
@@ -57,6 +62,13 @@ that a document now states, and link the document instead.
 - Audacity's Pluck is Nyquist's `snd-pluck` (`tran/pluck.alg`, after M4C's
   Pluck.t). GitHub outside the session's repositories is refused; the
   SourceForge Nyquist tree and `sources.debian.org` serve it.
+- A string's glide retuned every 16 samples buzzed (14 dB more energy above
+  10 kHz than one retuned every sample), and its all-pass's state carried over
+  a whole-sample step of the line rang near Nyquist (a bend down an octave read
+  15 dB brighter than the unbent note). The line retunes every sample and
+  `rejoin` rebuilds its filters' state at each step, which reads the same as
+  rebuilding it every sample. Read a glide's artifacts as each 5 ms frame's third
+  difference over its energy, beside the unbent note's.
 - **A voice-like trait that is not a gene rides beside the genes, not in them.**
   Vibrato and a vowel's formants went on `VoiceDef` as plain fields, kept by
   the augmentation after `VoiceFromGenes`, rather than as new genes: a gene
@@ -110,6 +122,9 @@ that a document now states, and link the document instead.
   note: a long pattern note under a short one of its pitch would read back with
   the lengths exchanged. Changing the reader to pair the latest instead would
   move every transcript read so far (stapes' `truth` and `corpus <dir> from`).
+- `readMIDITrack` keeps a channel's bend per track, so the reader cannot hear two
+  tracks that share a channel's bend, as a player does: a test of the writers'
+  channels reads them from `MIDIScore.parts`.
 - `ReadMIDI`'s hits are the kick, snare and hihat only (`midiDrum(key,
   InstrClap)`), the drum channel's other keys `Struck`; `MIDIScore.Song` reads
   the clap too (`InstrClap+1`). A clap in a test file is a hit for a song, not

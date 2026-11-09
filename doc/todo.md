@@ -118,6 +118,17 @@ than the accounting. The smallest close: the ends from the fitted activation
 on a Für Elise sheet, and the under voice's soft notes judged as a population
 of their own. A sheet's Note length row goes where extra sounds take over.
 
+### Hear a note's glide
+
+- Priority: P2
+- Affected files: `rip.go`, `midi.go`
+
+A step, a rip's notes and bars and a MIDI file carry a glide ([Audio
+§7](audio.md#7-music-sequencer)); nothing in the rip sets one yet. What is
+left: the decoder merging cells into one note where the notes model's cents
+head runs on (stapes' todo and rip design §7), and `WriteMIDI` writing a
+transcript's glides as `WriteSongMIDI` does.
+
 ## Meters
 
 ### Read more meters
