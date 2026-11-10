@@ -1,15 +1,8 @@
-# Built-in music patterns. A step is a sixteenth, sixteen to a bar; a 64-step
-# pattern is four, the length of the chord progression (i i VI VII in E Phrygian).
-# vel, prob and humanize are 0..1; deg is a scale degree and oct an octave above the
-# harmony root; a chord-following track reads deg from the bar's chord root, so 0 2 4
-# are its chord tones and 7 its octave. role, groups and tiers place a pattern in the
-# drawn music: a group's bass is its anchor and holds through every tier it covers,
-# while its rhythms and melodies change with the tier; patterns sharing a motif are
-# one idea at different weights, and a tier change climbs or descends that ladder
-# while a phrase variation moves to another. A pattern without tiers plays only when
-# placed. Macros (doc/toml-macros.md) write a lane once: Drum is a hit
-# lane, Line a note line, Arp8 and Arp16 pluck bars, Chord a stack of
-# notes at one step, the Themes the four-bar leads each group develops.
+# Built-in music patterns. A step is a sixteenth, sixteen to a bar, and a 64-step
+# pattern the four bars of the chord progression. vel, prob and humanize are 0..1;
+# deg is a scale degree, from the bar's chord root on a chord-following track, and
+# oct an octave above the harmony root. role, groups, tiers and motif place a
+# pattern in the drawn music (doc/audio.md §7). Macros: lixenwraith/toml's README.
 
 [macros.Hit]
 doc = "One drum hit at pos; prob under 1 makes it a chance hit"
