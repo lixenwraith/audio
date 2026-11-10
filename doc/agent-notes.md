@@ -25,9 +25,10 @@ that a document now states, and link the document instead.
 - The mixer drops ticks under load, so audio time lags the wall clock and one tick
   can take 200 ms under `-race`: a test waiting on mixer state gives it seconds,
   not periods. Force it with a sleep at the top of `Mixer.renderTick`.
-- CI's `go test -race` ran the root package in 377 s of `go test`'s 600 s
-  default timeout at v0.13.0, about fifteen times its 25 s here: a test that
-  rips whole recordings costs CI that factor. Keep one to the fewest bars that
+- CI's `go test -race` runs the root package at eight to sixteen times its time
+  here, by the runner: 377 s for its 25 s at v0.13.0, and 257 s and 515 s for
+  its 32 s at v0.14.0, so the race step runs with `-timeout 20m`. A test that
+  rips whole recordings costs CI that factor: keep one to the fewest bars that
   still fail when its rule breaks, and read the package's time in the PR's run.
 - A labelled corpus for the rip renders offline with no device: register a bank and
   voices, `freezeSounds`, `newSoundCache().preloadAll(nil)`, `buildKit`,
