@@ -129,6 +129,41 @@ left: the decoder merging cells into one note where the notes model's cents
 head runs on (stapes' todo and rip design §7), and `WriteMIDI` writing a
 transcript's glides as `WriteSongMIDI` does.
 
+## The bank's music
+
+### Write the bank's macros in the forms the expander is to take
+
+- Priority: P2
+- Affected files: `bank/music.toml`, `patternfile.go`
+
+`bank/music.toml` writes its 132 patterns as 343 invocations of 19 macros
+([toml's Macros](https://github.com/lixenwraith/toml#macros)), and two shapes
+repeat in it that the expander has no form for. Each waits on
+`lixenwraith/toml/macro` to take the form, and on the bank being still: other
+work is moving it.
+
+- **A macro that is another with arguments fixed.** Nine of the nineteen are:
+  `Kick4` over `Drum`, `Arp8` and `Arp16` over `LineV`, `Lead` over `Line`, and
+  `ThemeA` to `ThemeE` over `Lead`. Each declares again the parameters it passes
+  through, forwards them one by one (28 arguments written `x = "${x}"`) and
+  restates 17 of its base's defaults, so `Lead`'s `vel`, `instr` and `oct` are
+  written in six places. A definition that names its base and the arguments it
+  fixes, the base's other parameters staying parameters with their types and
+  defaults, rewrites those nine definitions and no pattern.
+- **A list that repeats one value.** `each` takes lists of one length, so 26 of
+  the 430 array arguments spell a constant out (`dur = [1, 1, 1, ...]`), and
+  `Drum` and `Drums`, `Line` and `LineV` differ only in `vel` being a number or
+  a list. A one-element list standing for every element shrinks the pads and
+  makes each pair one macro, which rewrites the 134 drum and 30 line
+  invocations through the whole file: it goes last, when nothing else edits a
+  pattern.
+
+Neither may move what plays: `LoadPatternFile` reads the same patterns before
+and after, and the renders stay bit-identical. Until then a new pattern invokes
+the macros as they are and a new macro goes below the last, so the rewrite of
+the block stays one local edit. The bank's opening comment and `patternfile.go`
+cite `doc/toml-macros.md`, a document of vif's: cite toml's README with it.
+
 ## Meters
 
 ### Read more meters
