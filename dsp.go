@@ -125,55 +125,122 @@ func lowerBound(s []float64, v float64) int {
 	return lo
 }
 
-// resample converts x from one rate to another by linear interpolation, through
-// a windowed-sinc low-pass first when the rate falls, so the top of the band does
-// not fold into it.
 // Resample is x at rate to from rate from, as the rip reads a recording
 func Resample(x []float64, from, to int) []float64 { return resample(x, from, to) }
 
+// resample converts x from one rate to another by linear interpolation, through
+// a windowed-sinc low-pass first when the rate falls, so the top of the band does
+// not fold into it: a resampler given the whole recording.
 func resample(x []float64, from, to int) []float64 {
 	if from == to {
 		return x
 	}
+	r := newResampler(from, to)
+	return r.close(r.write(make([]float64, 0, int(float64(len(x))*float64(to)/float64(from))+1), x))
+}
+
+// resampleTaps is the low-pass's length when the rate falls
+const resampleTaps = 31
+
+// resampler converts a recording from one rate to another as it arrives: each
+// sample out once the samples it reads have arrived and the recording, however it
+// ends, holds it, so the samples out are resample's of the whole recording.
+type resampler struct {
+	ratio float64   // input samples an output sample steps
+	h     []float64 // the low-pass when the rate falls, nil when it rises
+	sum   float64
+	in    []float64 // input from sample in0 on: what the low-pass still reads
+	in0   int
+	y     []float64 // the low-passed input from sample y0 on: what the interpolation still reads
+	y0    int
+	n     int // input samples written
+	out   int // samples out so far
+}
+
+func newResampler(from, to int) *resampler {
+	r := &resampler{ratio: float64(from) / float64(to)}
 	if to < from {
-		const taps = 31
 		cutoff := 0.45 * float64(to) / float64(from) // of the source rate; 0.5 is its Nyquist
-		h := make([]float64, taps)
-		var sum float64
-		for i := range h {
-			t := float64(i - taps/2)
-			w := 0.5 - 0.5*math.Cos(2*math.Pi*float64(i)/float64(taps-1))
+		r.h = make([]float64, resampleTaps)
+		for i := range r.h {
+			t := float64(i - resampleTaps/2)
+			w := 0.5 - 0.5*math.Cos(2*math.Pi*float64(i)/float64(resampleTaps-1))
 			if t == 0 {
-				h[i] = 2 * cutoff * w
+				r.h[i] = 2 * cutoff * w
 			} else {
-				h[i] = math.Sin(2*math.Pi*cutoff*t) / (math.Pi * t) * w
+				r.h[i] = math.Sin(2*math.Pi*cutoff*t) / (math.Pi * t) * w
 			}
-			sum += h[i]
+			r.sum += r.h[i]
 		}
-		y := make([]float64, len(x))
-		for i := range x {
-			var acc float64
-			for k, c := range h {
-				if j := i + k - taps/2; j >= 0 && j < len(x) {
-					acc += c * x[j]
-				}
-			}
-			y[i] = acc / sum
-		}
-		x = y
 	}
-	ratio := float64(from) / float64(to)
-	n := int(float64(len(x)) / ratio)
-	out := make([]float64, n)
-	for i := range out {
-		pos := float64(i) * ratio
+	return r
+}
+
+// write takes the next samples in and appends the samples out they finish to out
+func (r *resampler) write(out, x []float64) []float64 {
+	if r.ratio == 1 { // the same rate: the samples as they are
+		return append(out, x...)
+	}
+	r.in = append(r.in, x...)
+	r.n += len(x)
+	r.filter(r.n - resampleTaps/2)
+	return r.interpolate(out, false)
+}
+
+// close appends the samples out the end of the recording finishes
+func (r *resampler) close(out []float64) []float64 {
+	if r.ratio == 1 {
+		return out
+	}
+	r.filter(r.n)
+	return r.interpolate(out, true)
+}
+
+// filter low-passes the input up to sample end, each output reading the taps
+// within the recording, then drops the input no later output reads
+func (r *resampler) filter(end int) {
+	if r.h == nil {
+		r.y = append(r.y, r.in...)
+		r.in, r.in0 = r.in[:0], r.n
+		return
+	}
+	for i := r.y0 + len(r.y); i < end; i++ {
+		var acc float64
+		for k, c := range r.h {
+			if j := i + k - resampleTaps/2; j >= 0 && j < r.n {
+				acc += c * r.in[j-r.in0]
+			}
+		}
+		r.y = append(r.y, acc/r.sum)
+	}
+	if drop := r.y0 + len(r.y) - resampleTaps/2 - r.in0; drop > 0 {
+		r.in, r.in0 = r.in[:copy(r.in, r.in[drop:])], r.in0+drop
+	}
+}
+
+// interpolate appends each sample out whose filtered samples are in and that the
+// recording, at its length so far, holds; at the end, the last reads its sample
+// alone
+func (r *resampler) interpolate(out []float64, end bool) []float64 {
+	have := r.y0 + len(r.y)
+	for n := int(float64(r.n) / r.ratio); r.out < n; r.out++ {
+		pos := float64(r.out) * r.ratio
 		j := int(pos)
 		frac := pos - float64(j)
-		if j+1 < len(x) {
-			out[i] = x[j]*(1-frac) + x[j+1]*frac
-		} else if j < len(x) {
-			out[i] = x[j]
+		var v float64
+		switch {
+		case j+1 < have:
+			v = r.y[j-r.y0]*(1-frac) + r.y[j+1-r.y0]*frac
+		case !end:
+			return out
+		case j < have:
+			v = r.y[j-r.y0]
 		}
+		out = append(out, v)
+	}
+	if drop := int(float64(r.out)*r.ratio) - r.y0; drop > 0 {
+		drop = min(drop, len(r.y))
+		r.y, r.y0 = r.y[:copy(r.y, r.y[drop:])], r.y0+drop
 	}
 	return out
 }
@@ -181,34 +248,56 @@ func resample(x []float64, from, to int) []float64 {
 // aWeight is x at rate through the A-weighting curve (IEC 61672), its analog
 // poles taken to the rate by the bilinear transform: three biquads, 0 dB at 1 kHz
 func aWeight(x []float64, rate int) []float64 {
+	y := slices.Clone(x)
+	newAWeighting(rate).filter(y)
+	return y
+}
+
+// aWeighting is aWeight as a recording arrives, its sections' states kept from
+// block to block
+type aWeighting struct {
+	sec  [3][5]float64 // each biquad's b0, b1, b2, a1 and a2
+	s    [3][2]float64
+	gain float64 // at 1 kHz, divided out
+}
+
+func newAWeighting(rate int) *aWeighting {
 	w := func(hz float64) float64 { return 2 * math.Pi * hz }
 	p1, p2, p3, p4 := w(20.598997), w(107.65265), w(737.86223), w(12194.217)
 	k := 2 * float64(rate)
 	z := cmplx.Exp(complex(0, -w(1000)/float64(rate))) // z⁻¹ at 1 kHz
-	y := slices.Clone(x)
-	gain := 1.0
+	a := &aWeighting{gain: 1}
 	// each section's numerator and denominator, s² s¹ s⁰
-	for _, sec := range [3][2][3]float64{
+	for i, sec := range [3][2][3]float64{
 		{{1, 0, 0}, {1, 2 * p1, p1 * p1}},
 		{{1, 0, 0}, {1, p2 + p3, p2 * p3}},
 		{{0, 0, 1}, {1, 2 * p4, p4 * p4}},
 	} {
 		var c [2][3]float64
-		for i, q := range sec {
-			c[i] = [3]float64{q[0]*k*k + q[1]*k + q[2], 2 * (q[2] - q[0]*k*k), q[0]*k*k - q[1]*k + q[2]}
+		for j, q := range sec {
+			c[j] = [3]float64{q[0]*k*k + q[1]*k + q[2], 2 * (q[2] - q[0]*k*k), q[0]*k*k - q[1]*k + q[2]}
 		}
 		b0, b1, b2 := c[0][0]/c[1][0], c[0][1]/c[1][0], c[0][2]/c[1][0]
 		a1, a2 := c[1][1]/c[1][0], c[1][2]/c[1][0]
-		gain *= cmplx.Abs((complex(b0, 0) + complex(b1, 0)*z + complex(b2, 0)*z*z) / (1 + complex(a1, 0)*z + complex(a2, 0)*z*z))
-		var s1, s2 float64
-		for i, v := range y {
+		a.gain *= cmplx.Abs((complex(b0, 0) + complex(b1, 0)*z + complex(b2, 0)*z*z) / (1 + complex(a1, 0)*z + complex(a2, 0)*z*z))
+		a.sec[i] = [5]float64{b0, b1, b2, a1, a2}
+	}
+	return a
+}
+
+// filter takes the next samples y through the curve, in place
+func (a *aWeighting) filter(y []float64) {
+	for i, c := range a.sec {
+		b0, b1, b2, a1, a2 := c[0], c[1], c[2], c[3], c[4]
+		s1, s2 := a.s[i][0], a.s[i][1]
+		for j, v := range y {
 			o := b0*v + s1
 			s1, s2 = b1*v-a1*o+s2, b2*v-a2*o
-			y[i] = o
+			y[j] = o
 		}
+		a.s[i] = [2]float64{s1, s2}
 	}
-	for i := range y {
-		y[i] /= gain
+	for j := range y {
+		y[j] /= a.gain
 	}
-	return y
 }

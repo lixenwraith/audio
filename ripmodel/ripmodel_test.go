@@ -3,6 +3,7 @@ package ripmodel
 import (
 	"bytes"
 	"math"
+	"math/rand/v2"
 	"slices"
 	"testing"
 
@@ -234,5 +235,80 @@ func TestPCENHoldsWhatIsSteadyAndLiftsAStrike(t *testing.T) {
 	}
 	if s := step(0, 1e-2); s < 10*held {
 		t.Errorf("a strike 20 dB under full scale from silence reads %.3f, a full-scale band held %.3f", s, held)
+	}
+}
+
+// TestTheEarHearsAsTheWholeRecording: the ear gives a recording's frames alike in
+// 50 ms blocks and in blocks of any size, and once its loudest sample is heard,
+// every frame it holds has the whole's features, PCEN included, and the notes
+// model's heads as heard whole, to float32's rounding.
+func TestTheEarHearsAsTheWholeRecording(t *testing.T) {
+	cfg := Spec()
+	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window, cfg.Channels = 16, 2, 1, 32, 8, 2
+	m, _ := transformer.NewRandom(cfg, 1)
+	notes := NotesSpec()
+	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
+	notes.Cells.Long = []int{3, 9, 27} // the trainer's, reaching past the half second the ear waits otherwise
+	nm, _ := transformer.NewRandom(notes, 2)
+	fe := &FrontEnd{Model: m, Notes: nm}
+	x := make([]float64, 10*audio.RipRate)
+	loudest := 0
+	for i := range x { // a struck tone each half second, its level rising for four
+		s := float64(i) / audio.RipRate
+		f0 := 220 * math.Pow(2, float64(int(2*s)%5)/12)
+		x[i] = 0.5 * math.Sin(2*math.Pi*f0*s) * math.Exp(-6*math.Mod(s, 0.5)) * min(0.1+0.225*s, 1)
+		if math.Abs(x[i]) > math.Abs(x[loudest]) {
+			loudest = i
+		}
+	}
+	want := features(audio.MelFrames(x, audio.RipRate), true)
+	whole, _ := fe.Hear(x, audio.RipRate, audio.DefaultRipParams())
+	rng := rand.New(rand.NewPCG(1, 2))
+	var first [7][]float32
+	var firstFlux []float64
+	for _, block := range []func() int{func() int { return audio.RipRate / 20 }, func() int { return rng.IntN(audio.RipRate) + 1 }} {
+		ea, _ := fe.Ear(audio.DefaultRipParams())
+		e := ea.(*ear)
+		var flux []float64
+		var heard [7][]float32 // the strikes, then each other field of every frame heard
+		take := func(f *audio.RipFrames) {
+			flux = append(flux, f.Flux...)
+			for i, v := range [...][]float32{f.Strike, f.Salience, f.Release, f.Velocity, f.Wave, f.Voice, f.Family} {
+				heard[i] = append(heard[i], v...)
+			}
+		}
+		var worst float64
+		for i := 0; i < len(x); {
+			k := min(block(), len(x)-i)
+			f, _ := e.Hear(x[i : i+k])
+			take(f)
+			if i += k; i <= loudest {
+				continue
+			}
+			for k, row := range e.window() {
+				for b, v := range row {
+					worst = max(worst, math.Abs(float64(v-want[e.e0+k][b]))/max(math.Abs(float64(want[e.e0+k][b])), 1e-3))
+				}
+			}
+		}
+		f, _ := e.Close()
+		take(f)
+		from := 0 // the first frame of the first step heard once the loudest sample is in
+		for (from+e.step+e.ahead-1)*audio.RipHop+audio.RipN/2 <= loudest {
+			from += e.step
+		}
+		var off float64
+		strikes := heard[0]
+		for i := from * audio.RipPitches; i < len(whole.Strike) && i < len(strikes); i++ {
+			off = max(off, math.Abs(float64(strikes[i]-whole.Strike[i])))
+		}
+		if worst > 1e-6 || off > 1e-5 || len(strikes) != len(whole.Strike) {
+			t.Errorf("once the loudest is heard, features off by %.3g and strikes by %.3g; %d strikes heard of %d", worst, off, len(strikes), len(whole.Strike))
+		}
+		if firstFlux == nil {
+			firstFlux, first = flux, heard
+		} else if !slices.Equal(firstFlux, flux) || !slices.EqualFunc(first[:], heard[:], slices.Equal) {
+			t.Error("the frames heard depend on the blocks")
+		}
 	}
 }

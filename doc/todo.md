@@ -161,3 +161,27 @@ strength, so the comb cannot tell a sixteenth from the gap beside it and the
 tracker lays a pulse or two too many through a ritardando. A sharper onset
 head, trained on the phone channel (`rip-train --channel`), is the lever; the
 decoders need no change to use it.
+
+## The live rip
+
+### Follow a recording on the phone
+
+- Priority: P2
+- Affected files: `ripstream.go`, `ripmodel/ripmodel.go`
+
+`RipStream` ([Audio §9](audio.md#9-ripping-a-recording)) costs a desktop core
+0.08 s a second of audio through the analysis and 0.34 s through a model of the
+trainer's shapes (`Spec`, and PitchNet with dilations 3, 9 and 27), 0.30 s of it
+the model's ear, which runs the frames the attention window and the notes
+model's reach read around each half second again. What is left: the cost on the
+phone; the model's onset, drums, wave, voice and family heads, whose attention
+reaches across the recording through its four layers offline but 64 frames back
+and half a second ahead in the stream, so a trained model's stream may track
+other beats and hits than its `RipSamples` (unmeasured: no trained model here);
+the tempo, meter and key held from the first six bars, so a recording that
+changes meter or key reads on in the first until `Final`; and the notes' lag, a
+median taken as they come, which moved one note a bar a step in five early bars
+of the loop at 175 bpm. The smallest close: measure on the phone and score a
+trained model's stream against its offline rip (`MatchBars`, `BarDistance`),
+then a longer `earStep` (a second runs a third fewer frames) or a forward in
+`transformer` that runs each new frame through the notes model's layers once.

@@ -25,6 +25,10 @@ that a document now states, and link the document instead.
 - The mixer drops ticks under load, so audio time lags the wall clock and one tick
   can take 200 ms under `-race`: a test waiting on mixer state gives it seconds,
   not periods. Force it with a sleep at the top of `Mixer.renderTick`.
+- CI's `go test -race` ran the root package in 377 s of `go test`'s 600 s
+  default timeout at v0.13.0, about fifteen times its 25 s here: a test that
+  rips whole recordings costs CI that factor. Keep one to the fewest bars that
+  still fail when its rule breaks, and read the package's time in the PR's run.
 - A labelled corpus for the rip renders offline with no device: register a bank and
   voices, `freezeSounds`, `newSoundCache().preloadAll(nil)`, `buildKit`,
   `NewSequencer(bpm, kit)` with patterns placed in its slots, then `Generate` over
@@ -425,3 +429,25 @@ that a document now states, and link the document instead.
   any set is regraded: the first
   implementation let 6/8 challenge 4/4 where the fit had only consulted it as
   a name, and lost 22 of 40 GuitarSet labels the fit had kept.
+
+## A live rip
+
+- **A statistic over the whole recording is a window's in a live rip unless it
+  is carried.** The register reference (the ninetieth percentile of a
+  register's loudest row a frame), each drum's loudest onset and the onset
+  bands' loudest are read over every frame offline; over the stream's window
+  the reference moved enough to flip a marginal note in bar 8 of the 140 bpm
+  loop. `RipStream.count` carries each over every frame heard: check a new
+  decoder statistic the same way, the stream against `RipSamples` bar by bar.
+- **What an ear reads over "what has arrived" makes the rip depend on the
+  blocks.** The analysis's tuning, read over the samples in by the first block
+  past eight seconds, moved with the block size; it reads exactly the first
+  eight seconds now, and the model's ear hears on a fixed frame grid against the
+  loudest sample up to it. `TestRipStreamBarsAreTheSameWhateverTheBlocks` and
+  `ripmodel`'s ear test compare the rips and the frames in 50 ms and in random
+  blocks; a new ear goes through both.
+- **A median taken as the notes come rounds at an edge the whole's does not.**
+  The loop at 175 bpm reads at 88, where the notes' lag sat at 3.50 frames: in
+  five early bars the stream placed one note a step later than `RipSamples`.
+  Before calling such a bar a stream bug, compare the shift the stream froze it
+  with (`RipStream.lag` × `stepFrames`) with the offline grid's.
