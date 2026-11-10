@@ -197,99 +197,123 @@ func toneCentre(b int) float64 { return math.Sqrt(toneEdges[b] * toneEdges[b+1])
 // the same sound, its hits starting at their seconds
 func drumTones(x, y []float64, rate int, at [InstrClap][]float64) [InstrClap]RipTone {
 	var out [InstrClap]RipTone
+	tr, last := newToneReader(), toneLast(len(x))
 	for d, times := range at {
-		frames := make([]int, len(times))
-		for i, t := range times {
-			frames[i] = int(math.Round(t / RipFrameSec))
+		var reads []toneRead
+		for _, t := range times {
+			if f := int(math.Round(t / RipFrameSec)); toneFits(f, last) {
+				reads = append(reads, tr.read(x, 0, f))
+			}
 		}
-		out[d].Bands, out[d].Hits = tone(x, frames)
+		out[d].Bands, out[d].Hits = toneOf(reads)
 	}
 	drumLevels(aWeight(y, rate), rate, at, &out)
 	return out
 }
 
-// hitStarts moves each hit, in seconds, to the start of the frame within four of it
-// whose RipHop samples of x at RipRate hold the most more energy than the frame's
-// before: where the hit starts, which a front end places a frame or two early
+// hitStarts moves each hit, in seconds, to where it starts in x at RipRate
 func hitStarts(x []float64, at [InstrClap][]float64) (out [InstrClap][]float64) {
-	energy := func(u int) (e float64) {
-		for _, v := range x[min(u*RipHop, len(x)):min((u+1)*RipHop, len(x))] {
-			e += v * v
-		}
-		return e
-	}
 	for d, times := range at {
 		for _, t := range times {
-			f := int(math.Round(t / RipFrameSec))
-			best, rise := f, math.Inf(-1)
-			for u := max(f-4, 1); u <= f+4; u++ {
-				if r := energy(u) - energy(u-1); r > rise {
-					best, rise = u, r
-				}
-			}
-			out[d] = append(out[d], float64(best)*RipFrameSec)
+			out[d] = append(out[d], hitStart(x, 0, t))
 		}
 	}
 	return out
 }
 
-// tone is the median over the quietest quarter of hits of the band power each
-// adds, its frames from its own less the five ending four before it, in dB
-func tone(x []float64, hits []int) (bands [ToneBands]float64, n int) {
-	last := (len(x) - toneN + RipHop - 1) / RipHop
-	s := newSTFT(toneN)
-	bin := make([]int, toneN/2+1)
-	for k := range bin {
+// hitStart moves a hit at t seconds to the start of the frame within four of it
+// whose RipHop samples hold the most more energy than the frame's before: where
+// the hit starts, which a front end places a frame or two early. x is the
+// recording at RipRate from sample x0, as far as it was heard.
+func hitStart(x []float64, x0 int, t float64) float64 {
+	energy := func(u int) (e float64) {
+		a, b := min(max(u*RipHop-x0, 0), len(x)), min(max((u+1)*RipHop-x0, 0), len(x))
+		for _, v := range x[a:b] {
+			e += v * v
+		}
+		return e
+	}
+	f := int(math.Round(t / RipFrameSec))
+	best, rise := f, math.Inf(-1)
+	for u := max(f-4, 1); u <= f+4; u++ {
+		if r := energy(u) - energy(u-1); r > rise {
+			best, rise = u, r
+		}
+	}
+	return float64(best) * RipFrameSec
+}
+
+// toneRead is a hit's read of its drum's tone: the mean power in each band over
+// the five frames ending four before it, their sum, and over the toneReach
+// frames from it
+type toneRead struct {
+	before, after [ToneBands]float64
+	sum           float64
+}
+
+// toneReader reads hits' tones, its transform and each bin's band kept from
+// hit to hit
+type toneReader struct {
+	s   *stft
+	bin []int
+}
+
+func newToneReader() *toneReader {
+	r := &toneReader{s: newSTFT(toneN), bin: make([]int, toneN/2+1)}
+	for k := range r.bin {
 		f := float64(k) * RipRate / toneN
-		bin[k] = -1
+		r.bin[k] = -1
 		for b := range ToneBands {
 			if toneEdges[b] <= f && f < toneEdges[b+1] {
-				bin[k] = b
+				r.bin[k] = b
 			}
 		}
 	}
+	return r
+}
+
+// read is the tone of a hit on frame t of x at RipRate, x the recording from
+// sample x0 holding the samples the read's frames span
+func (r *toneReader) read(x []float64, x0, t int) toneRead {
 	mean := func(from, to int) (p [ToneBands]float64) {
-		for t := from; t < to; t++ {
-			for k, m := range s.at(x, t*RipHop+toneN/2) {
-				if bin[k] >= 0 {
-					p[bin[k]] += m * m / float64(to-from)
+		for u := from; u < to; u++ {
+			for k, m := range r.s.at(x, u*RipHop+toneN/2-x0) {
+				if r.bin[k] >= 0 {
+					p[r.bin[k]] += m * m / float64(to-from)
 				}
 			}
 		}
 		return p
 	}
-	type read struct {
-		t      int
-		before [ToneBands]float64
-		sum    float64
+	tr := toneRead{before: mean(t-9, t-4), after: mean(t, t+toneReach)}
+	for _, p := range tr.before {
+		tr.sum += p
 	}
-	var reads []read
-	for _, t := range hits {
-		if t < 10 || t+toneReach >= last {
-			continue
-		}
-		r := read{t: t, before: mean(t-9, t-4)}
-		for _, p := range r.before {
-			r.sum += p
-		}
-		reads = append(reads, r)
-	}
+	return tr
+}
+
+// toneLast is the first frame whose tone frames run past a recording of n
+// samples at RipRate
+func toneLast(n int) int { return (n - toneN + RipHop - 1) / RipHop }
+
+// toneFits reports whether a hit on frame t has a tone read before and after it
+// within a recording whose tone frames end at last
+func toneFits(t, last int) bool { return t >= 10 && t+toneReach < last }
+
+// toneOf is the median over the quietest quarter of the reads, in order of the
+// hits, of the band power each adds, its frames from its own less the five
+// ending four before it, in dB, and how many were read; none under toneFewest
+func toneOf(reads []toneRead) (bands [ToneBands]float64, n int) {
 	if len(reads) < toneFewest {
 		return bands, 0
 	}
-	slices.SortStableFunc(reads, func(a, b read) int { return cmp.Compare(a.sum, b.sum) })
+	reads = slices.Clone(reads)
+	slices.SortStableFunc(reads, func(a, b toneRead) int { return cmp.Compare(a.sum, b.sum) })
 	reads = reads[:max(len(reads)/4, toneFewest)]
-	added := make([][ToneBands]float64, len(reads))
-	for i, r := range reads {
-		after := mean(r.t, r.t+toneReach)
-		for b := range after {
-			added[i][b] = max(after[b]-r.before[b], 1e-9)
-		}
-	}
+	v := make([]float64, len(reads))
 	for b := range bands {
-		v := make([]float64, len(added))
-		for i := range added {
-			v[i] = added[i][b]
+		for i, r := range reads {
+			v[i] = max(r.after[b]-r.before[b], 1e-9)
 		}
 		bands[b] = 10 * math.Log10(median(v))
 	}
@@ -301,38 +325,60 @@ func tone(x []float64, hits []int) (bands [ToneBands]float64, n int) {
 // hits quietest over the 70 ms ending 10 ms before them, a hihat's alone
 func drumLevels(y []float64, rate int, at [InstrClap][]float64, out *[InstrClap]RipTone) {
 	dur := float64(len(y)) / float64(rate)
+	for d, times := range at {
+		var reads []levelRead
+		for _, t := range times {
+			if levelFits(InstrumentType(d), t, dur, at) {
+				reads = append(reads, readLevel(y, 0, rate, t))
+			}
+		}
+		out[d].Level, out[d].Levels = levelOf(reads)
+	}
+}
+
+// levelRead is a hit's read of its drum's level, in dB: the power over the 70 ms
+// ending 10 ms before it and over toneLevel from it
+type levelRead struct{ before, level float64 }
+
+// readLevel is the level of a hit at t seconds in y at rate, A-weighted, y the
+// recording from sample y0 as far as it was heard
+func readLevel(y []float64, y0, rate int, t float64) levelRead {
 	power := func(from, to float64) float64 {
-		a, b := max(int(from*float64(rate)), 0), min(max(int(to*float64(rate)), 1), len(y))
+		a, b := max(int(from*float64(rate)), 0), min(max(int(to*float64(rate)), 1), y0+len(y))
 		var e float64
-		for _, v := range y[min(a, b):b] {
+		for _, v := range y[max(min(a, b)-y0, 0):max(b-y0, 0)] {
 			e += v * v
 		}
 		return 10 * math.Log10(e/float64(max(b-a, 1))+1e-12)
 	}
-	near := func(t float64, others []float64) bool {
+	return levelRead{power(t-0.08, t-0.01), power(t, t+toneLevel)}
+}
+
+// levelFits reports whether a hit of drum d at t seconds, in a recording dur
+// seconds long whose hits are at, has its level read: one at least 0.1 s from
+// either end, a hihat only where no kick or snare lands within toneLevel
+func levelFits(d InstrumentType, t, dur float64, at [InstrClap][]float64) bool {
+	near := func(others []float64) bool {
 		i, _ := slices.BinarySearch(others, t)
 		return i < len(others) && others[i]-t <= toneLevel || i > 0 && t-others[i-1] <= toneLevel
 	}
-	type read struct{ t, before float64 }
-	for d, times := range at {
-		var reads []read
-		for _, t := range times {
-			if t > 0.1 && t < dur-0.1 && (d != int(InstrHihat) || !near(t, at[InstrKick]) && !near(t, at[InstrSnare])) {
-				reads = append(reads, read{t, power(t-0.08, t-0.01)})
-			}
-		}
-		if len(reads) < toneFewest {
-			out[d].Level, out[d].Levels = 0, 0
-			continue
-		}
-		slices.SortStableFunc(reads, func(a, b read) int { return cmp.Compare(a.before, b.before) })
-		reads = reads[:max(len(reads)/4, toneFewest)]
-		lv := make([]float64, len(reads))
-		for i, r := range reads {
-			lv[i] = power(r.t, r.t+toneLevel)
-		}
-		out[d].Level, out[d].Levels = median(lv), len(reads)
+	return t > 0.1 && t < dur-0.1 && (d != InstrHihat || !near(at[InstrKick]) && !near(at[InstrSnare]))
+}
+
+// levelOf is the median level of the quarter of the reads, in order of the
+// hits, quietest before them, and how many were read; none under toneFewest
+func levelOf(reads []levelRead) (float64, int) {
+	if len(reads) < toneFewest {
+		return 0, 0
 	}
+	reads = slices.Clone(reads)
+	slices.SortStableFunc(reads, func(a, b levelRead) int { return cmp.Compare(a.before, b.before) })
+	reads = reads[:max(len(reads)/4, toneFewest)]
+	lv := make([]float64, len(reads))
+	for i, r := range reads {
+		lv[i] = r.level
+	}
+	return median(lv), len(reads)
 }
 
 // median is the middle of v, the mean of the two middles of an even count,

@@ -129,17 +129,31 @@ func New(m, notes *transformer.Model) (*FrontEnd, error) {
 // the wave scores and voice genes as they are, the strike, release and velocity
 // scores when a model has them, and the family's softmax when the model has it.
 func (fe *FrontEnd) Hear(x []float64, rate int, _ audio.RipParams) (*audio.RipFrames, error) {
-	cfg := fe.Model.Config()
-	in := features(audio.MelFrames(x, rate), cfg.Channels == 2 || fe.Notes != nil)
-	planes := make([][]float32, len(in))
-	for t, f := range in {
-		planes[t] = f[:cfg.Inputs*max(cfg.Channels, 1)]
-	}
-	out := fe.Model.Forward(planes)
+	in := features(audio.MelFrames(x, rate), fe.pcen())
+	out := fe.Model.Forward(fe.planes(in))
 	var notes [][]float32
 	if fe.Notes != nil {
 		notes = fe.Notes.Forward(stacked(in))
 	}
+	return fe.read(out, notes), nil
+}
+
+// pcen says whether the models hear the PCEN channel
+func (fe *FrontEnd) pcen() bool { return fe.Model.Config().Channels == 2 || fe.Notes != nil }
+
+// planes is each frame of features as the model reads it, in its channels
+func (fe *FrontEnd) planes(in [][]float32) [][]float32 {
+	cfg := fe.Model.Config()
+	planes := make([][]float32, len(in))
+	for t, f := range in {
+		planes[t] = f[:cfg.Inputs*max(cfg.Channels, 1)]
+	}
+	return planes
+}
+
+// read reads the heads of the model's outputs, and the notes model's for the same
+// frames when it has one, into frames
+func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 	// head is a head's scores at frame t, from the model that gives it; nil for none
 	head := func(name string, t int) []float32 {
 		if fe.Notes != nil && slices.Contains(notesHeads, name) {
@@ -202,7 +216,151 @@ func (fe *FrontEnd) Hear(x []float64, rate int, _ audio.RipParams) (*audio.RipFr
 			f.Family = appendSoftmax(f.Family, head(HeadFamily, t))
 		}
 	}
-	return f, nil
+	return f
+}
+
+// earAhead is the seconds a frame waits for the frames after it before the
+// models hear it, earStep the seconds of frames they hear at a time
+const (
+	earAhead = 0.5
+	earStep  = 0.5
+)
+
+// Ear hears a recording as it plays: each earStep of frames once earAhead, or the
+// notes model's reach, follows them, with the frames before them that reach or the
+// model's attention window reads, all against the loudest sample heard by then. Its
+// frames are the same whatever the blocks, and once the recording's loudest is
+// heard the notes model hears each frame as in the whole, to rounding.
+func (fe *FrontEnd) Ear(audio.RipParams) (audio.RipEar, error) {
+	e := &ear{fe: fe, mel: audio.NewMelStream(), ahead: int(math.Round(earAhead / audio.RipFrameSec)),
+		step: int(math.Round(earStep / audio.RipFrameSec)), left: fe.Model.Config().Window}
+	if fe.Notes != nil {
+		r := reach(fe.Notes.Config().Cells)
+		e.ahead, e.notesLeft = max(e.ahead, r), r
+	}
+	return e, nil
+}
+
+// reach is how many frames either side of its own a cell net's output reads, as
+// transformer's Cells lays out its layers: the convolutions over the cells, a
+// long one's three frames its distance apart, then the cell convolution's or the
+// frame path's, whichever is longer, and the wide convolution's
+func reach(c *transformer.Cells) int {
+	cells := c.Depth * (c.NearTime / 2)
+	for _, d := range c.Long {
+		cells += d
+	}
+	pooled := c.Dilation*(c.AgainTime/2) + c.FrameTime/2
+	return max(cells+c.CellTime/2, pooled) + c.WideTime/2
+}
+
+// ear is a FrontEnd hearing as a recording plays
+type ear struct {
+	fe   *FrontEnd
+	mel  *audio.MelStream
+	n    int         // samples heard
+	peak float64     // the loudest of them
+	e    [][]float64 // each band's energy per frame, the samples as they are, from frame e0 on
+	e0   int
+	avg  []float64 // the bands' PCEN average before frame e0, against avgPeak; nil at the start
+	// the loudest sample avg is against, and the next frame to hear
+	avgPeak float64
+	next    int
+	// frames a frame waits for before it is heard, frames heard at once, and the
+	// frames before them the model and the notes model read
+	ahead, step, left, notesLeft int
+}
+
+// Hear takes the next samples at RipRate and returns the frames heard, each step
+// as soon as the samples that finish the frames it waits for are in
+func (e *ear) Hear(x []float64) (*audio.RipFrames, error) {
+	var out, notes [][]float32
+	for {
+		k := min(max(e.ready()-e.n, 0), len(x))
+		e.write(x[:k])
+		if x = x[k:]; e.n < e.ready() {
+			return e.fe.read(out, notes), nil
+		}
+		o, n := e.hear(e.next + e.step)
+		out, notes = append(out, o...), append(notes, n...)
+	}
+}
+
+// Close hears the frames left, the recording's end after them
+func (e *ear) Close() (*audio.RipFrames, error) {
+	e.e = append(e.e, e.mel.Close()...)
+	return e.fe.read(e.hear(e.e0 + len(e.e))), nil
+}
+
+// ready is the samples heard once the frames the next step waits for are in
+func (e *ear) ready() int { return (e.next+e.step+e.ahead-1)*audio.RipHop + audio.RipN/2 }
+
+// write takes samples into the mel frames and the loudest sample
+func (e *ear) write(x []float64) {
+	for _, v := range x {
+		e.peak = max(e.peak, math.Abs(v))
+	}
+	e.n += len(x)
+	e.e = append(e.e, e.mel.Write(x)...)
+}
+
+// mel is energies as MelFrames gives them, their samples against peak
+func mel(e [][]float64, peak float64) [][]float32 {
+	p2 := peak * peak
+	if p2 == 0 {
+		p2 = 1
+	}
+	out := make([][]float32, len(e))
+	for t, row := range e {
+		out[t] = make([]float32, len(row))
+		for b, v := range row {
+			out[t][b] = float32(math.Log1p(100 * v / p2))
+		}
+	}
+	return out
+}
+
+// window is the features of the frames held, from frame e0, against the loudest
+// sample heard
+func (e *ear) window() [][]float32 {
+	avg := slices.Clone(e.avg)
+	if c := e.avgPeak / e.peak; c < 1 {
+		for b := range avg {
+			avg[b] *= c * c
+		}
+	}
+	in, _ := featuresFrom(mel(e.e, e.peak), e.fe.pcen(), avg)
+	return in
+}
+
+// hear runs the models over the frames held, against the loudest sample heard,
+// and gives their outputs for frames next to upto; it then lets go of the frames
+// no later run reads
+func (e *ear) hear(upto int) (out, notes [][]float32) {
+	if upto <= e.next {
+		return nil, nil
+	}
+	if c := e.avgPeak / e.peak; c < 1 { // the average against the loudest sample now
+		for b := range e.avg {
+			e.avg[b] *= c * c
+		}
+	}
+	e.avgPeak = e.peak
+	in := e.window()
+	a := max(e.next-e.left, e.e0)
+	out = e.fe.Model.Forward(e.fe.planes(in[a-e.e0:]))[e.next-a : upto-a]
+	if e.fe.Notes != nil {
+		b := max(e.next-e.notesLeft, e.e0)
+		notes = e.fe.Notes.Forward(stacked(in[b-e.e0:]))[e.next-b : upto-b]
+	}
+	e.next = upto
+	if drop := e.next - max(e.left, e.notesLeft) - e.e0; drop > 0 {
+		if e.fe.pcen() {
+			_, e.avg = featuresFrom(mel(e.e[:drop], e.peak), true, e.avg)
+		}
+		e.e, e.e0 = e.e[:copy(e.e, e.e[drop:])], e.e0+drop
+	}
+	return out, notes
 }
 
 // melFloor is the energy 80 dB under a full-scale sine's, where the logarithm floors
@@ -223,14 +381,21 @@ const (
 // melFloor less the frame's mean, and the mean itself, both over 80 dB, so a
 // frame's loudness is one input and the bands are level-free: a soft phrase
 // reaches the model as clearly as a loud one. With pcen, a second channel: each
-// band's PCEN and their mean; it only looks back, so a live rip can compute it.
+// band's PCEN and their mean; it only looks back, so a live rip computes it.
 func features(mel [][]float32, pcen bool) [][]float32 {
+	out, _ := featuresFrom(mel, pcen, nil)
+	return out
+}
+
+// featuresFrom is the features of frames whose bands' PCEN average before the
+// first is avg, nil at a recording's start, and that average after the last;
+// avg is updated in place
+func featuresFrom(mel [][]float32, pcen bool, avg []float64) ([][]float32, []float64) {
 	out := make([][]float32, len(mel))
 	smooth, channels := 1-math.Exp(-audio.RipFrameSec/pcenTime), 1
 	if pcen {
 		channels = 2
 	}
-	var avg []float64
 	for t, row := range mel {
 		n := len(row)
 		e, db := make([]float64, n), make([]float64, n)
@@ -261,7 +426,7 @@ func features(mel [][]float32, pcen bool) [][]float32 {
 		}
 		out[t] = f
 	}
-	return out
+	return out, avg
 }
 
 // The harmonic stack a notes model reads: both planes on a log-frequency axis of

@@ -700,7 +700,7 @@ or a room's hum holds near 0.3 and a note over it still stands out. It is a
 second plane, not a replacement, because a note still ringing fades towards zero
 in it (a band falling 60 dB over 5 s reads 0.08 after a second), so PCEN alone
 cannot say what is sounding; the first convolution reads both planes at once. M
-only looks back, from the first frame's energy, so a live rip can compute it as
+only looks back, from the first frame's energy, so a live rip computes it as
 the sound arrives. [Stapes' rip design](https://github.com/lixenwraith/stapes/blob/main/doc/rip-design.md#8-measured-on-the-sample-recording)
 has what it gained on the recordings.
 
@@ -748,6 +748,37 @@ tails, the loudest at a norm of one at most. `Rip.Song` names them in the song's
 `kit`, so the song document and the sound document holding them play it again;
 a rip of a score reads no tone and its song plays the kit as it is.
 
+A rip can also follow a recording as it plays (`RipStream`). Blocks of mono
+samples at any rate go in (`Write`), resampled as `Resample` would and heard
+through the front end's ear (`RipLiveFrontEnd`, a `RipEar`), each frame once and
+the same frames whatever the blocks. The analysis's ear gives the whole's frames
+but for the tuning, read over the first eight seconds and held, and the onset
+strength, against the loudest onsets heard so far. `ripmodel`'s runs the models
+over each half second of frames once half a second, or the notes model's reach,
+follows it, with the frames before it that the attention window or that reach
+reads, its mel frames (`MelStream`) and their PCEN average against the loudest
+sample heard by then: once the recording's loudest is heard, the notes model
+hears each frame as in the whole, to rounding; the model's attention, which
+offline reaches across the recording through its layers, reads that window
+alone. Every half second of frames the decoders read what is held. Once six bars
+of 4/4 are tracked, as the other meters need, the grid is decoded as offline and
+its beat, reading, tempo, meter and key hold; each later bar is decoded on from
+the last frozen one's line at that beat and reading, the notes' lag the median
+of the frozen notes' and the open bars'. A bar freezes once two follow it, laid
+out as `RipSamples` lays it out (`Bars`), under a second past those two through
+the analysis and up to a second more through a model. The decoders read the open
+bars and the two before them, against each drum's loudest onset and each
+register's reference loudness over all the recording heard, and the frames
+before go, half a minute at most staying until the first bars freeze: a stream
+holds five bars of frames, its rip and, for `Final`, the recording as float32 at
+its own rate (10.6 MB a minute at 44.1 kHz). `Close` freezes the bars left and
+adds the voices and the drums' tone, read off each hit as it froze; `Final` rips
+the whole recording offline, as a whole decodes better. The engine's loops at
+100 and 140 bpm, a waltz and a jig, fed in 50 ms blocks, freeze `RipSamples`'s
+bars from the third on, note for note; a lag taken as the notes come can round a
+note to the next step where the whole's does not (one note a bar in the third to
+seventh bars of a loop at 175 bpm, read at 88).
+
 What it does not yet tell apart: a bass note's attack from a kick, a plucked
 chord's attack from a snare, two voices in one register, a note off the key
 from a change of key, and one meter from another within a recording. What it
@@ -777,8 +808,8 @@ unaware of what drives it: tempo, tier and harmony arrive as commands.
 - Sequencer and patterns: `sequencer.go`, `pattern*.go`, `harmony.go`,
   `motif.go`, `track.go`, `voice.go`
 - Ripping a recording: `rip.go`, `dsp.go`, `streams.go`, `fidelity.go`,
-  `song.go`, `wav.go`; its transcripts compared and read or written, and patterns
-  and songs as MIDI files: `match.go`, `midi.go`; its learned front end
-  `ripmodel`, over `lixenwraith/transformer`
+  `song.go`, `wav.go`, and as it plays `ripstream.go`; its transcripts compared
+  and read or written, and patterns and songs as MIDI files: `match.go`,
+  `midi.go`; its learned front end `ripmodel`, over `lixenwraith/transformer`
 - Shared protocol identifiers: `model`
 - The shipped banks: `bank`
