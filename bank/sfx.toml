@@ -2,6 +2,14 @@
 # Table headers are flush-left deliberately; chains use inline tables, but the
 # block form ([[sound.layer.chain]]) parses to the same array.
 
+[macros.Tone]
+doc = "A Simon tone at freq: a sine under a low-passed square, one take at concert pitch"
+params = { name = "string", freq = "float" }
+body = { name = "${name}", duration = 0.42, fixed_length = true, variants = 1, pitch_walk = 0.0001, norm = 0.85, chain = [{ kind = "ar", attack = 0.008, release = 0.14 }], layer = [
+  { source = { kind = "osc", wave = "sine", freq = "${freq}" } },
+  { gain = 0.35, source = { kind = "osc", wave = "square", freq = "${freq}" }, chain = [{ kind = "lp", freq = 1400, q = 0.707 }] },
+] }
+
 [[sound]]
 name = "error"
 duration = 0.08
@@ -217,64 +225,24 @@ chain = [{ kind = "am", rate = 2.5, depth = 0.55, phase = 0.5 }]
 # Simon tones: one take at concert pitch. A zero pitch_walk means the 10% default,
 # which leaves a lone take 5% flat, so a negligible walk pins the pitch.
 [[sound]]
+macro = "Tone"
 name = "tone_cs4"
-duration = 0.42
-fixed_length = true
-variants = 1
-pitch_walk = 0.0001
-norm = 0.85
-chain = [{ kind = "ar", attack = 0.008, release = 0.14 }]
-[[sound.layer]]
-source = { kind = "osc", wave = "sine", freq = 277.18 }
-[[sound.layer]]
-gain = 0.35
-source = { kind = "osc", wave = "square", freq = 277.18 }
-chain = [{ kind = "lp", freq = 1400, q = 0.707 }]
+freq = 277.18
 
 [[sound]]
+macro = "Tone"
 name = "tone_e4"
-duration = 0.42
-fixed_length = true
-variants = 1
-pitch_walk = 0.0001
-norm = 0.85
-chain = [{ kind = "ar", attack = 0.008, release = 0.14 }]
-[[sound.layer]]
-source = { kind = "osc", wave = "sine", freq = 329.63 }
-[[sound.layer]]
-gain = 0.35
-source = { kind = "osc", wave = "square", freq = 329.63 }
-chain = [{ kind = "lp", freq = 1400, q = 0.707 }]
+freq = 329.63
 
 [[sound]]
+macro = "Tone"
 name = "tone_a4"
-duration = 0.42
-fixed_length = true
-variants = 1
-pitch_walk = 0.0001
-norm = 0.85
-chain = [{ kind = "ar", attack = 0.008, release = 0.14 }]
-[[sound.layer]]
-source = { kind = "osc", wave = "sine", freq = 440 }
-[[sound.layer]]
-gain = 0.35
-source = { kind = "osc", wave = "square", freq = 440 }
-chain = [{ kind = "lp", freq = 1400, q = 0.707 }]
+freq = 440
 
 [[sound]]
+macro = "Tone"
 name = "tone_e5"
-duration = 0.42
-fixed_length = true
-variants = 1
-pitch_walk = 0.0001
-norm = 0.85
-chain = [{ kind = "ar", attack = 0.008, release = 0.14 }]
-[[sound.layer]]
-source = { kind = "osc", wave = "sine", freq = 659.26 }
-[[sound.layer]]
-gain = 0.35
-source = { kind = "osc", wave = "square", freq = 659.26 }
-chain = [{ kind = "lp", freq = 1400, q = 0.707 }]
+freq = 659.26
 
 # Level cleared: the tones' A major triad rising to the octave.
 [[sound]]

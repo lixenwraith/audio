@@ -42,6 +42,44 @@ that a document now states, and link the document instead.
   whole and in `part`s must match byte for byte; that comparison found it, 43
   loops in 9468.
 
+## The snapshot
+
+- `go run ./bank/snapshot [-wav] <dir> [document.toml ...]` writes down what a
+  build plays, 13 s for the bank. `patterns.txt` and `sounds.txt` list what the
+  engine holds once started: every pattern in the order registered, a line an
+  event, and every sound and voice, a line a table, a field left unset left
+  out. `index.txt` is a line a render, with its samples, its peak and first half
+  second's RMS in dB and the sha256 of its samples: each sound
+  (`RenderPreview`), each voice at C2 to C5 at 0.4 and 0.8 (`RenderNote`), each
+  pattern alone for four bars in its role's slot, the free layer for one of no
+  role, and one song of them all by name, four at a time for four bars, at 140
+  in E Phrygian under seed 1. The line it prints is the counts and one sha256
+  over the three files.
+- So `diff -r` of two holds a change that must not move what plays, a diff of
+  `index.txt` reads a render's or a voice's levels before and after, and a
+  document says what it plays: one music and one sound document are laid over
+  the bank as vif lays a player's (`PatternTOML`, `SoundFS` and `SoundFile`), a
+  name the bank has replaced in place, so a diff against the bank's own
+  snapshot is what the document changes, note by note. One argument moved in
+  `Kick4` moves 27 lines of `patterns.txt`, a line a pattern that invokes it,
+  those 27 renders and the song.
+- It does not cover a sound's variants and a drum's velocity layers except as
+  the patterns' hits play them; what only the live engine makes (the drawn
+  arrangement, fills, reveals and crossfades, the mixer's levels, ducking and
+  limiter), though the pools follow from the role, groups, tiers, motif and
+  order `patterns.txt` lists; any tempo, meter, key or seed but the one; a
+  document's `[[song]]`; MIDI and the rip.
+- `melody_gen` is listed as registered, before any render: its own render
+  rewrites its lead (Tests, above), and the song starts it on what that left.
+- The listings are the same on amd64 and 386; 168 of the bank's 195 renders
+  hash differently there, their levels the same to the hundredth of a dB.
+  Compare snapshots taken on one platform.
+- A rewrite of a bank's macros is checked below the engine too: both files
+  parsed and expanded (`macro.Set.Define`, `Expand`) to trees
+  `reflect.DeepEqual` holds equal. What an expansion spends of the budget is
+  not exported: it is the least `Set.MaxValues` the document expands under, by
+  bisection, 14,333 for the bank's music and 116 for its sfx.
+
 ## Voices and strings
 
 - A string or modal voice ignores the ADSR's decay and sustain, yet the shipped

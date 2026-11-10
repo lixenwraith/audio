@@ -11,8 +11,8 @@ import (
 
 // LoadPatternDefs parses a music document into the authoring form without
 // converting. A document may define [macros] and invoke them, so a bank writes a
-// drum lane or a note line once (doc/toml-macros.md). Unknown keys are rejected:
-// the decoder ignores them, which would turn "follow_chords" into a silent false.
+// drum lane or a note line once (toml's README). Unknown keys are rejected: the
+// decoder ignores them, which would turn "follow_chords" into a silent false.
 // checkKeys reflects over the struct tags, so there is no schema to keep in sync.
 func LoadPatternDefs(data []byte) ([]*PatternDef, error) {
 	f, err := loadPatternSpecFile(data)
