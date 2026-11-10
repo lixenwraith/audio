@@ -129,8 +129,8 @@ GOARCH=amd64`, `GOOS=android GOARCH=arm64` and `GOARCH=386` `go build ./...`.
   literal tab); a search that matches nothing proves nothing, and the PR body
   states the count.
 - A change that must not move what plays (a refactor, a speed-up) leaves the
-  renders bit-identical before and after, on one platform: every bank sound
-  (`RenderPreview`) and a song of the bank's patterns (`RenderTimeline`), written
-  with `WriteWAV` and compared with `cmp`; the PR body says what it rendered.
+  snapshot the same before and after, on one platform: `go run ./bank/snapshot
+  <dir>` on each, the two compared with `diff -r`; the PR body states the line
+  each printed.
 - Do not run `-race` tests unless investigating a known/suspected race issue; CI
   runs them, with the cross builds.
