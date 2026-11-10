@@ -55,12 +55,14 @@ that a document now states, and link the document instead.
   role, and one song of them all by name, four at a time for four bars, at 140
   in E Phrygian under seed 1. The line it prints is the counts and one sha256
   over the three files.
-- So it holds a change that must not move what plays (`diff -r` of two), a
-  render's or a voice's levels read off a diff of `index.txt`, and it says what
-  a document plays: one music and one sound document are laid over the bank as
-  vif lays a player's (`PatternTOML`, `SoundFS` and `SoundFile`), a name the
-  bank has replaced in place, so a diff against the bank's own snapshot is what
-  the document changes, note by note.
+- So `diff -r` of two holds a change that must not move what plays, a diff of
+  `index.txt` reads a render's or a voice's levels before and after, and a
+  document says what it plays: one music and one sound document are laid over
+  the bank as vif lays a player's (`PatternTOML`, `SoundFS` and `SoundFile`), a
+  name the bank has replaced in place, so a diff against the bank's own
+  snapshot is what the document changes, note by note. One argument moved in
+  `Kick4` moves 27 lines of `patterns.txt`, a line a pattern that invokes it,
+  those 27 renders and the song.
 - It does not cover a sound's variants and a drum's velocity layers except as
   the patterns' hits play them; what only the live engine makes (the drawn
   arrangement, fills, reveals and crossfades, the mixer's levels, ducking and
@@ -72,6 +74,11 @@ that a document now states, and link the document instead.
 - The listings are the same on amd64 and 386; 168 of the bank's 195 renders
   hash differently there, their levels the same to the hundredth of a dB.
   Compare snapshots taken on one platform.
+- A rewrite of a bank's macros is checked below the engine too: both files
+  parsed and expanded (`macro.Set.Define`, `Expand`) to trees
+  `reflect.DeepEqual` holds equal. What an expansion spends of the budget is
+  not exported: it is the least `Set.MaxValues` the document expands under, by
+  bisection, 14,333 for the bank's music and 116 for its sfx.
 
 ## Voices and strings
 
