@@ -91,7 +91,8 @@ func TestANoteTheOthersAccountForGoes(t *testing.T) {
 
 // TestAStrikeWhoseSoundIsItsOwnComesBack: a pitch the recording plays whose
 // strike the decoder dropped is a candidate, and comes back when the kept
-// notes leave its sound unexplained, while a strike on a silent pitch does not.
+// notes leave its sound unexplained, while a strike on a silent pitch does not,
+// nor one in a cell a kept note's glide passes through, the decoder's to judge.
 func TestAStrikeWhoseSoundIsItsOwnComesBack(t *testing.T) {
 	const frames = 400
 	x := make([]float64, frames*RipHop)
@@ -105,6 +106,11 @@ func TestAStrikeWhoseSoundIsItsOwnComesBack(t *testing.T) {
 	bass, melody := f.account(x, DefaultRipParams(), nil, reported)
 	if got := accPitches(slices.Concat(bass, melody)); !slices.Equal(got, []int{57, 62}) {
 		t.Errorf("notes kept %v, want the A3 reported and the D4 struck in the recording, not the B4 struck on silence", got)
+	}
+	reported[0].cells = []ripVisit{{midi: 57, start: 50, end: 150}, {midi: 62, start: 150, end: 350}}
+	bass, melody = f.account(x, DefaultRipParams(), nil, reported)
+	if got := accPitches(slices.Concat(bass, melody)); !slices.Equal(got, []int{57}) {
+		t.Errorf("notes kept %v, want the A3 alone when its sound passes through the D4's cell", got)
 	}
 }
 

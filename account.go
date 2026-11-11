@@ -751,7 +751,7 @@ var (
 type accInput struct {
 	accEvidence
 	strike, support float64 // the strike head's sureness, the pitch head's salience over the register's reference
-	low, ringing    bool    // the bass register; another note of its pitch sounding at its start
+	low, ringing    bool    // the bass register; another note sounding in its pitch's cell at its start
 }
 
 func (s accScore) odds(in accInput, ref float64) float64 {
@@ -916,8 +916,17 @@ func (f *RipFrames) accInput(n *accNote, ev accEvidence, notes []*accNote, refs 
 		}
 	}
 	for _, o := range notes {
-		if o != n && o.midi == n.midi && o.start < n.start-accDup && o.end > n.start-accDup {
+		if o == n {
+			continue
+		}
+		if o.midi == n.midi && o.start < n.start-accDup && o.end > n.start-accDup {
 			in.ringing = true
+		}
+		// a note's glide through the pitch's cell is that note sounding there
+		for _, v := range o.cells {
+			if v.midi == n.midi && v.start-accDup <= n.start && n.start < v.end {
+				in.ringing = true
+			}
 		}
 	}
 	return in

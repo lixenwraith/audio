@@ -621,6 +621,157 @@ func TestStrikesStartNotesWhileOthersRing(t *testing.T) {
 	}
 }
 
+// glideFrames is the frames a front end that hears each pitch's cents gives of one
+// sound at at[t] cents from MIDI 0, none where it is 0: the nearest pitch's cell
+// sounding, each cell within a semitone naming it, every reading to err cents
+func glideFrames(at []float64, err float32) *RipFrames {
+	f := &RipFrames{Hop: RipFrameSec, Flux: make([]float64, len(at))}
+	for _, h := range [...]*[]float32{&f.Salience, &f.Strike, &f.Cents, &f.CentsError} {
+		*h = make([]float32, len(at)*RipPitches)
+	}
+	for t, c := range at {
+		row := t*RipPitches - RipMinMIDI
+		for m := RipMinMIDI; m < RipMaxMIDI; m++ {
+			f.CentsError[row+m] = err
+		}
+		if c == 0 {
+			continue
+		}
+		near := int(math.Round(c / 100))
+		f.Salience[row+near] = 0.9
+		for m := near - 1; m <= near+1; m++ {
+			if off := c - 100*float64(m); math.Abs(off) <= 100 {
+				f.Cents[row+m] = float32(off)
+			}
+		}
+	}
+	return f
+}
+
+// sung is a sound's frequency a frame over n frames: level cents from frame from to
+// frame to, then each further (level, to) reached in a straight line from the last
+func sung(n, from int, level float64, to int, then ...float64) []float64 {
+	at := make([]float64, n)
+	for t := from; t < to; t++ {
+		at[t] = level
+	}
+	for i := 0; i+1 < len(then); i += 2 {
+		for t := to; t < int(then[i+1]); t++ {
+			at[t] = level + (then[i]-level)*float64(t-to)/(then[i+1]-float64(to))
+		}
+		level, to = then[i], int(then[i+1])
+	}
+	return at
+}
+
+// heardNotes is the melody register's notes as strikes reads them: pitch, start, end
+func heardNotes(f *RipFrames) (got [][3]int, notes []ripNote) {
+	notes = f.strikes(RipBassTop, RipMaxMIDI, DefaultRipParams())
+	for _, n := range notes {
+		got = append(got, [3]int{n.midi, n.start, n.end})
+	}
+	return got, notes
+}
+
+// TestAGlideAcrossABoundaryIsOneBentNote: a note that glides a semitone up at its
+// end is one note at the pitch it rested on, bent by what it moved from where it
+// left, the cell it passed into struck or not, and the note surely struck where
+// it lands is its own. Readings the front end is unsure of join nothing.
+func TestAGlideAcrossABoundaryIsOneBentNote(t *testing.T) {
+	at := sung(120, 10, 6000, 60, 6100, 80, 6100, 110)
+	for _, struck := range []float32{0, 0.85} {
+		f := glideFrames(at, 5)
+		f.Strike[10*RipPitches+60-RipMinMIDI], f.Strike[70*RipPitches+61-RipMinMIDI], f.Strike[80*RipPitches+61-RipMinMIDI] = 0.99, struck, 0.99
+		got, notes := heardNotes(f)
+		if want := [][3]int{{60, 10, 80}, {61, 80, 110}}; !slices.Equal(got, want) {
+			t.Fatalf("the cell passed into struck at %v: notes (midi, start, end) %v, want %v", struck, got, want)
+		}
+		if n := notes[0]; math.Abs(n.bend-0.95) > 0.05 || math.Abs(n.bendAt-50.0/70) > 0.05 || notes[1].bend != 0 {
+			t.Errorf("the cell passed into struck at %v: bent %v from %v of its length, want a semitone from 0.71; the next bent %v", struck, n.bend, n.bendAt, notes[1].bend)
+		}
+		f = glideFrames(at, 60)
+		f.Strike[10*RipPitches+60-RipMinMIDI], f.Strike[70*RipPitches+61-RipMinMIDI], f.Strike[80*RipPitches+61-RipMinMIDI] = 0.99, struck, 0.99
+		got, notes = heardNotes(f)
+		want := [][3]int{{60, 10, 70}, {61, 70, 80}, {61, 80, 110}}
+		if struck == 0 {
+			want = slices.Delete(want, 1, 2)
+		}
+		if !slices.Equal(got, want) || notes[0].bend != 0 {
+			t.Errorf("readings unsure, the cell passed into struck at %v: notes %v, the first bent %v, want %v unbent", struck, got, notes[0].bend, want)
+		}
+	}
+}
+
+// TestAStepThatLandsAndStaysIsTwoNotes: a note struck softly a semitone over the
+// last as it ends is its own, the last ending there though its cell sounds on,
+// naming the new one; and a sound that slides a tone up with no strike and stays
+// is two notes, the first bent by its slide.
+func TestAStepThatLandsAndStaysIsTwoNotes(t *testing.T) {
+	f := glideFrames(sung(120, 10, 6000, 50, 6100, 50, 6100, 100), 5)
+	f.Strike[10*RipPitches+60-RipMinMIDI], f.Strike[50*RipPitches+61-RipMinMIDI] = 0.99, 0.9
+	for u := 50; u < 59; u++ {
+		f.Salience[u*RipPitches+60-RipMinMIDI] = 0.5
+	}
+	if got, _ := heardNotes(f); !slices.Equal(got, [][3]int{{60, 10, 50}, {61, 50, 100}}) {
+		t.Errorf("a struck step: notes (midi, start, end) %v, want 60 to frame 50 and 61 from it", got)
+	}
+	f = glideFrames(sung(120, 10, 6000, 50, 6200, 56, 6200, 100), 5)
+	f.Strike[10*RipPitches+60-RipMinMIDI] = 0.99
+	got, notes := heardNotes(f)
+	if !slices.Equal(got, [][3]int{{60, 10, 55}, {62, 55, 100}}) || notes[0].bend < 1 || notes[0].bendAt < 0.85 || notes[1].bend != 0 {
+		t.Errorf("a slide that lands: notes %v, the first bent %v from %v, want 60 bent over a semitone late and 62 from frame 55", got, notes[0].bend, notes[0].bendAt)
+	}
+}
+
+// TestAScoopTakesThePitchItSettlesOn: a note struck two semitones under the pitch
+// it slides up to and rests on is one note of that pitch from its strike, unbent.
+func TestAScoopTakesThePitchItSettlesOn(t *testing.T) {
+	f := glideFrames(sung(120, 10, 5810, 10, 6000, 22, 6000, 80), 5)
+	f.Strike[10*RipPitches+58-RipMinMIDI], f.Velocity = 0.99, make([]float32, 120*RipPitches)
+	f.Velocity[10*RipPitches+58-RipMinMIDI] = 0.7
+	got, notes := heardNotes(f)
+	if !slices.Equal(got, [][3]int{{60, 10, 80}}) || notes[0].bend != 0 || notes[0].vel != float64(float32(0.7)) {
+		t.Errorf("notes (midi, start, end) %v bent %v at velocity %v, want one of 60 from its strike, unbent, as hard as struck", got, notes[0].bend, notes[0].vel)
+	}
+}
+
+// TestANoteStruckAgainWithItsFrequencyUnbrokenIsOne: a note that sways into the
+// next cell and back, each cell struck as the sound enters it, is one note; a
+// sure strike as it comes back starts another.
+func TestANoteStruckAgainWithItsFrequencyUnbrokenIsOne(t *testing.T) {
+	for _, again := range []float32{0.9, 0.99} {
+		f := glideFrames(sung(120, 10, 6045, 30, 6062, 30, 6062, 40, 6045, 40, 6045, 80), 5)
+		f.Strike[10*RipPitches+60-RipMinMIDI], f.Strike[30*RipPitches+61-RipMinMIDI], f.Strike[40*RipPitches+60-RipMinMIDI] = 0.99, 0.85, again
+		want := [][3]int{{60, 10, 80}}
+		if again > 0.95 {
+			want = [][3]int{{60, 10, 40}, {60, 40, 80}}
+		}
+		if got, notes := heardNotes(f); !slices.Equal(got, want) || notes[0].bend != 0 {
+			t.Errorf("struck again at %v: notes (midi, start, end) %v, the first bent %v, want %v unbent", again, got, notes[0].bend, want)
+		}
+	}
+}
+
+// TestACellNamingTheSoundBesideItIsNoNote: a sound near the edge of its cell
+// lights the next one too, and a note struck softly there, naming the frequency
+// the sound's own cell names, is no note.
+func TestACellNamingTheSoundBesideItIsNoNote(t *testing.T) {
+	f := glideFrames(sung(120, 10, 6048, 80), 5)
+	f.Strike[10*RipPitches+60-RipMinMIDI], f.Strike[30*RipPitches+61-RipMinMIDI] = 0.99, 0.85
+	for u := 30; u < 50; u++ {
+		f.Salience[u*RipPitches+61-RipMinMIDI] = 0.85
+	}
+	if got, _ := heardNotes(f); !slices.Equal(got, [][3]int{{60, 10, 80}}) {
+		t.Errorf("notes (midi, start, end) %v, want the one of 60", got)
+	}
+	for u := 30; u < 50; u++ { // its own frequency through its length
+		f.Cents[u*RipPitches+61-RipMinMIDI] = 0
+	}
+	if got, _ := heardNotes(f); !slices.Equal(got, [][3]int{{60, 10, 80}, {61, 30, 50}}) {
+		t.Errorf("a note of its own beside it: notes %v, want both", got)
+	}
+}
+
 // TestAFrontEndsDoubtsAreNoDrums: a drum a front end is never sure of plays nothing,
 // though its loudest doubt would clear a bar set against itself, and one it is sure
 // of too rarely for the recording's length is no part; the analysis's strengths have
