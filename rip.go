@@ -461,6 +461,10 @@ type Ripper struct {
 	// Spectrum has a stream's frames keep the spectrum they were read from
 	// (RipFrames.Spectrum), for a view of the rip at work
 	Spectrum bool
+	// Judge rules which strikes of a front end that hears them are notes, in the
+	// installed scores' place, when it is not nil: one fitted on that front end's
+	// notes weights (LoadRipJudge)
+	Judge *RipJudge
 }
 
 // RipGrid pins the grid a recording is read on, as a render's is known, so a
@@ -594,7 +598,7 @@ func (rp Ripper) events(f *RipFrames, x []float64, p RipParams) ripEvents {
 	if f.Velocity != nil {
 		dynamics(x, f.Hop, ev.melody, ev.bass)
 	}
-	ev.bass, ev.melody = f.account(x, p, ev.bass, ev.melody)
+	ev.bass, ev.melody = f.account(x, p, accAsk{judge: rp.Judge}, ev.bass, ev.melody)
 	ev.melody = streams(ev.melody, f.Hop, rp.Lead)
 	return ev
 }

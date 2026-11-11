@@ -55,6 +55,58 @@ func accFrames(frames int, notes []ripNote, strikes map[int]float32) *RipFrames 
 	return f
 }
 
+// struck is the analysis with the planes a notes model adds read off its
+// salience, so a test reaches the stages only a strike plane starts, offline and
+// live: a pitch is struck where its salience rises, as surely as its share of
+// the rise and its level against its register's loudest heard, and let go
+// where it falls
+type struck struct{}
+
+func (struck) Hear(x []float64, rate int, p RipParams) (*RipFrames, error) {
+	return new(struckEar).strike(analysis{}.Hear(x, rate, p))
+}
+
+func (struck) Ear(p RipParams, spectrum bool) (RipEar, error) {
+	ear, err := analysis{}.Ear(p, spectrum)
+	return &struckEar{ear: ear}, err
+}
+
+type struckEar struct {
+	ear  RipEar
+	was  [2][]float32 // the salience two frames and one before the next
+	loud [2]float32   // each register's loudest salience heard
+}
+
+func (e *struckEar) Hear(x []float64) (*RipFrames, error) { return e.strike(e.ear.Hear(x)) }
+func (e *struckEar) Close() (*RipFrames, error)           { return e.strike(e.ear.Close()) }
+
+func (e *struckEar) strike(f *RipFrames, err error) (*RipFrames, error) {
+	if err != nil {
+		return nil, err
+	}
+	n := f.frames() * RipPitches
+	f.Strike, f.Release, f.Velocity = make([]float32, n), make([]float32, n), make([]float32, n)
+	for t := range f.frames() {
+		row := f.Salience[t*RipPitches:][:RipPitches]
+		for i, v := range row {
+			reg := min(i/(RipBassTop-RipMinMIDI), 1)
+			e.loud[reg] = max(e.loud[reg], v)
+			if e.was[0] == nil || e.loud[reg] <= 0 {
+				continue
+			}
+			level := min(2*v/e.loud[reg], 1)
+			switch was := e.was[0][i]; {
+			case v > was:
+				f.Strike[t*RipPitches+i], f.Velocity[t*RipPitches+i] = (v-was)/v*level, level
+			case was > 0:
+				f.Release[t*RipPitches+i] = (was - v) / was
+			}
+		}
+		e.was[0], e.was[1] = e.was[1], slices.Clone(row)
+	}
+	return f, nil
+}
+
 func accPitches(notes []ripNote) []int {
 	var out []int
 	for _, n := range notes {
@@ -83,7 +135,7 @@ func TestANoteTheOthersAccountForGoes(t *testing.T) {
 	for t := 700; t < 760; t++ {
 		f.Salience[t*RipPitches+69-RipMinMIDI] = 0.75
 	}
-	bass, melody := f.account(x, DefaultRipParams(), nil, reported)
+	bass, melody := f.account(x, DefaultRipParams(), accAsk{}, nil, reported)
 	if got := accPitches(slices.Concat(bass, melody)); !slices.Equal(got, []int{57, 57, 57, 64}) {
 		t.Errorf("notes kept %v, want the three A3s and the E4 and not the A4 their sound accounts for", got)
 	}
@@ -103,12 +155,12 @@ func TestAStrikeWhoseSoundIsItsOwnComesBack(t *testing.T) {
 	for t := 150; t < 350; t++ { // the pitch head's doubt of a pitch that never sounds
 		f.Salience[t*RipPitches+71-RipMinMIDI] = 0.4
 	}
-	bass, melody := f.account(x, DefaultRipParams(), nil, reported)
+	bass, melody := f.account(x, DefaultRipParams(), accAsk{}, nil, reported)
 	if got := accPitches(slices.Concat(bass, melody)); !slices.Equal(got, []int{57, 62}) {
 		t.Errorf("notes kept %v, want the A3 reported and the D4 struck in the recording, not the B4 struck on silence", got)
 	}
 	reported[0].cells = []ripVisit{{midi: 57, start: 50, end: 150}, {midi: 62, start: 150, end: 350}}
-	bass, melody = f.account(x, DefaultRipParams(), nil, reported)
+	bass, melody = f.account(x, DefaultRipParams(), accAsk{}, nil, reported)
 	if got := accPitches(slices.Concat(bass, melody)); !slices.Equal(got, []int{57}) {
 		t.Errorf("notes kept %v, want the A3 alone when its sound passes through the D4's cell", got)
 	}
@@ -122,7 +174,7 @@ func TestTwoNotesOfOnePitchAtOneStartAreOne(t *testing.T) {
 	accTone(x, 40, 50, 350, 0.3, 8)
 	reported := []ripNote{{start: 50, end: 120, midi: 40, vel: 0.6}, {start: 51, end: 300, midi: 40, vel: 0.4}}
 	f := accFrames(frames, reported, nil)
-	bass, melody := f.account(x, DefaultRipParams(), reported, nil)
+	bass, melody := f.account(x, DefaultRipParams(), accAsk{}, reported, nil)
 	if len(bass) != 1 || len(melody) != 0 || bass[0].start != 50 || bass[0].end != 300 || bass[0].vel != 0.6 {
 		t.Errorf("bass %+v and %d melody notes, want one E2 from 50 to 300 at the strike's velocity", bass, len(melody))
 	}
@@ -158,7 +210,7 @@ func TestAHeldNoteTheFitCannotSeeStaysOnTheHeadsWord(t *testing.T) {
 			f.Salience[u*RipPitches+69-RipMinMIDI] = 0.6
 		}
 	}
-	bass, melody := f.account(x, DefaultRipParams(), nil, reported)
+	bass, melody := f.account(x, DefaultRipParams(), accAsk{}, nil, reported)
 	if got := accPitches(slices.Concat(bass, melody)); !slices.Equal(got, []int{57, 69}) || melody[1].end != 400 {
 		t.Errorf("notes kept %v, want the A3 and the held A4 alone, not the short A4", got)
 	}
@@ -228,12 +280,12 @@ func accScoop(frames, from, end int) (x []float64, f *RipFrames, followed ripNot
 func TestAFollowedSoundIsJudgedWhereItWasStruck(t *testing.T) {
 	const frames, from, end = 400, 50, 140
 	scoop, f, followed := accScoop(frames, from, end)
-	if _, melody := f.account(scoop, DefaultRipParams(), nil, []ripNote{followed}); len(melody) != 1 || melody[0].midi != 67 || melody[0].end != end || len(melody[0].cells) != 3 {
+	if _, melody := f.account(scoop, DefaultRipParams(), accAsk{}, nil, []ripNote{followed}); len(melody) != 1 || melody[0].midi != 67 || melody[0].end != end || len(melody[0].cells) != 3 {
 		t.Errorf("a scoop from F4 kept as %v, want the one note of G4 to its end with its cells", melody)
 	}
 	held := make([]float64, frames*RipHop)
 	accTone(held, 67, from+35, end, 0.3, 8)
-	if bass, melody := f.account(held, DefaultRipParams(), nil, []ripNote{followed}); len(bass)+len(melody) != 0 {
+	if bass, melody := f.account(held, DefaultRipParams(), accAsk{}, nil, []ripNote{followed}); len(bass)+len(melody) != 0 {
 		t.Errorf("a followed sound whose first cell the recording never plays kept as %v", melody)
 	}
 }
@@ -249,12 +301,65 @@ func TestAFollowedSoundAccountsForTheCellsItMovedOnTo(t *testing.T) {
 		f.Salience[t*RipPitches+over.midi-RipMinMIDI] = 0.9
 	}
 	f.Strike[over.start*RipPitches+over.midi-RipMinMIDI] = 0.95
-	if _, melody := f.account(scoop, DefaultRipParams(), nil, []ripNote{followed, over}); len(melody) != 1 || melody[0].midi != 67 {
+	if _, melody := f.account(scoop, DefaultRipParams(), accAsk{}, nil, []ripNote{followed, over}); len(melody) != 1 || melody[0].midi != 67 {
 		t.Errorf("a ghost an octave over a scoop's landing kept: %v", accPitches(melody))
 	}
 	accTone(scoop, over.midi, over.start, over.end, 0.3, 8)
-	if _, melody := f.account(scoop, DefaultRipParams(), nil, []ripNote{followed, over}); len(melody) != 2 {
+	if _, melody := f.account(scoop, DefaultRipParams(), accAsk{}, nil, []ripNote{followed, over}); len(melody) != 2 {
 		t.Errorf("a note played an octave over a scoop's landing read as %v", accPitches(melody))
+	}
+}
+
+// TestAJudgeRulesEveryStrike: under a judge whose networks say yes every
+// reported note stays and every strike over a half comes back, in both
+// registers, under the decoder's bars and on a pitch still sounding, where it
+// ends the kept note before it; under one that says no only the held note stays.
+func TestAJudgeRulesEveryStrike(t *testing.T) {
+	const frames = 800
+	x := make([]float64, frames*RipHop)
+	accDrone(x, 57, 50, 750, 0.5, 16)
+	accDrone(x, 69, 100, 400, 0.02, 8)
+	accNoise(x, 1e-3)
+	reported := []ripNote{{start: 50, end: 750, midi: 57, vel: 0.5}, {start: 100, end: 400, midi: 69, vel: 0.3}, {start: 500, end: 520, midi: 69, vel: 0.3}}
+	// a strike on a silent pitch, one on the A3 still sounding and one under E3
+	f := accFrames(frames, reported, map[int]float32{200*1000 + 62: 0.6, 300*1000 + 57: 0.7, 400*1000 + 40: 0.55})
+	for u := 100; u < 780; u++ {
+		f.Salience[u*RipPitches+40-RipMinMIDI] = 0.9
+	}
+	for _, n := range reported[1:] {
+		f.Strike[n.start*RipPitches+69-RipMinMIDI] = 0.8
+		for u := n.start; u < n.end; u++ {
+			f.Salience[u*RipPitches+69-RipMinMIDI] = 0.6
+		}
+	}
+	yes := accAsk{judge: judgeSaying([judgeStages]float64{0.9, 0.9})}
+	bass, melody := f.account(x, DefaultRipParams(), yes, nil, slices.Clone(reported))
+	if got := accPitches(slices.Concat(bass, melody)); !slices.Equal(got, []int{40, 57, 57, 62, 69, 69}) {
+		t.Fatalf("a judge that says yes kept %v, want the three reported and the three strikes dropped", got)
+	}
+	if melody[0].midi != 57 || melody[0].end != 300 {
+		t.Errorf("the A3 ends at %d, want 300, where the strike that came back on it starts", melody[0].end)
+	}
+	no := accAsk{judge: judgeSaying([judgeStages]float64{0.1, 0.1})}
+	bass, melody = f.account(x, DefaultRipParams(), no, nil, slices.Clone(reported))
+	if len(bass) != 0 || len(melody) != 1 || melody[0].midi != 69 || melody[0].end != 400 {
+		t.Errorf("a judge that says no kept %v and %v, want the held A4 alone", bass, melody)
+	}
+}
+
+// TestTheStrikesAFollowedSoundTookInAreNoCandidates: a judge is asked once of a
+// note the decoder followed across cells, and not of the strikes in the cells
+// it moved on to, while a strike beside them is a candidate as any.
+func TestTheStrikesAFollowedSoundTookInAreNoCandidates(t *testing.T) {
+	const frames, from, end = 400, 50, 140
+	scoop, f, followed := accScoop(frames, from, end)
+	for at, midi := range map[int]int{from + 22: 66, from + 60: 67, from + 61: 72} {
+		f.Strike[at*RipPitches+midi-RipMinMIDI] = 0.7
+	}
+	yes := accAsk{judge: judgeSaying([judgeStages]float64{0.9, 0.9})}
+	_, melody := f.account(scoop, DefaultRipParams(), yes, nil, []ripNote{followed})
+	if len(melody) != 2 || melody[0].midi != 67 || len(melody[0].cells) != 3 || melody[1].midi != 72 {
+		t.Errorf("a scoop with strikes in its cells kept as %v, want its one note of G4 and the C5 struck beside it", melody)
 	}
 }
 

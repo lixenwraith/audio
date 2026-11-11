@@ -258,6 +258,42 @@ func TestRipStreamFreezesItsOpenBarsAsRead(t *testing.T) {
 	}
 }
 
+// TestRipStreamFinalUnderAJudgeIsTheOfflineRip: a stream whose Ripper carries a
+// judge rips what it heard, at the end, as the offline rip does under that judge,
+// which is not the rip the installed scores make.
+func TestRipStreamFinalUnderAJudgeIsTheOfflineRip(t *testing.T) {
+	ae, slots := startLoopEngine(t)
+	buf, err := ae.RenderMusic(slots, 140, Meter{}, 8, DefaultRootNote, ScalePhrygian, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, v := range buf { // as a stream keeps them
+		buf[i] = float64(float32(v))
+	}
+	rp := Ripper{Params: DefaultRipParams(), FrontEnd: struck{}, Judge: judgeSaying([judgeStages]float64{0.9, 0.9})}
+	off, err := rp.Samples(buf, AudioSampleRate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewRipStream(rp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, block := 0, AudioSampleRate/2; i < len(buf); i += block {
+		if err := s.Write(buf[i:min(i+block, len(buf))], AudioSampleRate); err != nil {
+			t.Fatal(err)
+		}
+	}
+	final, err := s.Final()
+	if err != nil || !reflect.DeepEqual(final, off) {
+		t.Errorf("the stream's final rip is not the offline rip under the judge: %v", err)
+	}
+	rp.Judge = nil
+	if plain, err := rp.Samples(buf, AudioSampleRate); err != nil || len(plain.Notes) >= len(off.Notes) {
+		t.Errorf("the judge that says yes left %d notes of the installed scores' %d: %v", len(off.Notes), len(plain.Notes), err)
+	}
+}
+
 // BenchmarkRipStream is a live rip of the loop, twelve bars in 50 ms blocks
 // through the analysis: unread, and read after every block as a view reads it,
 // the frames since the last with their spectrum and the open bars.

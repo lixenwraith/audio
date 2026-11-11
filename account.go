@@ -892,17 +892,29 @@ func (f *RipFrames) fluxLevel() float64 {
 	return flux[len(flux)*accRowFlux/100]
 }
 
+// accAsk is what a rip asks of the accounting beside its notes: a judge to
+// rule in the installed scores' place
+type accAsk struct {
+	judge *RipJudge
+}
+
+// accStrike is how sure a strike is for a judge to be asked of it, and
+// accJudgeBar the odds its note stays or comes back at
+const accStrike, accJudgeBar = 0.5, 0.5
+
 // account holds the registers' notes to the recording x: two notes of one pitch
 // at one start are one; the notes are fitted together and one whose sound the
 // others account for goes; then every strike over the bar the decoder dropped is
-// judged against the notes kept, and comes back where its sound is its own.
-func (f *RipFrames) account(x []float64, p RipParams, bass, melody []ripNote) ([]ripNote, []ripNote) {
+// judged against the notes kept, and comes back where its sound is its own. A
+// judge rules both in the scores' place, over every strike surer than accStrike.
+func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody []ripNote) ([]ripNote, []ripNote) {
 	if f.Strike == nil {
 		return bass, melody
 	}
+	judge := ask.judge
 	refs := f.accRefs()
 	notes := accNotes(accDedup(slices.Concat(bass, melody)), false, f.Tuning, f.frames())
-	cands := accNotes(f.accCandidates(p, notes, refs), true, f.Tuning, f.frames())
+	cands := accNotes(f.accCandidates(p, notes, refs, judge != nil), true, f.Tuning, f.frames())
 	all := slices.Concat(notes, cands)
 	accMeasure(x, all)
 	accTerms(notes)
@@ -918,15 +930,31 @@ func (f *RipFrames) account(x []float64, p RipParams, bass, melody []ripNote) ([
 		}
 	}
 	ref := accRef(judged)
+	var flux float64
+	if judge != nil {
+		flux = f.fluxLevel()
+	}
+	var row []float32
 	var kept, dropped []*accNote
 	for i, n := range notes {
+		if n.of != nil {
+			continue
+		}
 		// a held note whose harmonics all sit under louder pitches' is one the fit
 		// cannot see, a soft line under a chord: it stays on the heads' word
-		switch {
-		case n.of != nil:
-		case ev[i].covered > accCovered && n.end-n.start >= accHeld || accReported.odds(f.accInput(n, ev[i], notes, refs), ref) >= accBar:
+		keep := ev[i].covered > accCovered && n.end-n.start >= accHeld
+		if !keep {
+			in := f.accInput(n, ev[i], notes, refs)
+			if judge != nil {
+				row = f.row(row[:0], n, in, ref, refs, flux)
+				keep = judge.odds(judgeReported, row) >= accJudgeBar
+			} else {
+				keep = accReported.odds(in, ref) >= accBar
+			}
+		}
+		if keep {
 			kept = append(kept, n)
-		default:
+		} else {
 			dropped = append(dropped, n)
 		}
 	}
@@ -937,24 +965,31 @@ func (f *RipFrames) account(x []float64, p RipParams, bass, melody []ripNote) ([
 		}
 	}
 	accRingOn(kept, dropped)
-	if len(cands) > 0 {
-		all = slices.Concat(kept, cands)
-		slices.SortFunc(all, byFrame)
-		accTerms(all)
-		fit2 := &accFit{notes: all, w: fit.w, b: fit.b, local: make([]int, len(all))}
-		for i := range fit2.local {
-			fit2.local[i] = -1
-		}
-		frozen := func(n *accNote) bool { return !n.cand }
-		for range accSweeps - 2 {
-			fit2.sweep(frozen, false)
-		}
-		// a strike on a pitch still sounding is the decoder's StrikeAgain to judge: the
-		// fit cannot tell a held note's swell from a new strike, and one admitted cuts it
-		ev2 := fit2.evidences()
+	if reported := kept; len(cands) > 0 {
+		all, ev := fit.against(reported, cands)
 		for i, n := range all {
-			if in := f.accInput(n, ev2[i], all, refs); n.cand && !in.ringing && accCandidate.odds(in, ref) >= accCandBar {
+			switch {
+			case !n.cand:
+			case judge != nil:
+				// its pitch rings where a kept note of it sounds, never another candidate
+				row = f.row(row[:0], n, f.accInput(n, ev[i], reported, refs), ref, refs, flux)
+				if judge.odds(judgeDropped, row) < accJudgeBar {
+					continue
+				}
 				kept = append(kept, n)
+				// on a pitch still sounding it ends the kept note before it, but for a
+				// followed sound, whose cells it is not the accounting's to part
+				for _, k := range reported {
+					if k.midi == n.midi && k.of == nil && k.whole == nil && k.start < n.start && k.end > n.start {
+						k.end = n.start
+					}
+				}
+			default:
+				// a strike on a pitch still sounding is the decoder's StrikeAgain to judge: the
+				// fit cannot tell a held note's swell from a new strike, and one admitted cuts it
+				if in := f.accInput(n, ev[i], all, refs); !in.ringing && accCandidate.odds(in, ref) >= accCandBar {
+					kept = append(kept, n)
+				}
 			}
 		}
 	}
@@ -977,6 +1012,24 @@ func (f *RipFrames) account(x []float64, p RipParams, bass, melody []ripNote) ([
 	slices.SortFunc(bass, byStart)
 	slices.SortFunc(melody, byStart)
 	return bass, melody
+}
+
+// against fits the candidates against the notes kept, whose activations hold,
+// on the fit's templates and floor, and returns them together in the order
+// fitted and each one's evidence
+func (f *accFit) against(kept, cands []*accNote) ([]*accNote, []accEvidence) {
+	all := slices.Concat(kept, cands)
+	slices.SortFunc(all, byFrame)
+	accTerms(all)
+	fit := &accFit{notes: all, w: f.w, b: f.b, local: make([]int, len(all))}
+	for i := range fit.local {
+		fit.local[i] = -1
+	}
+	frozen := func(n *accNote) bool { return !n.cand }
+	for range accSweeps - 2 {
+		fit.sweep(frozen, false)
+	}
+	return all, fit.evidences()
 }
 
 // byFrame orders notes by their first measured frame, as the fits sweep them
@@ -1078,8 +1131,10 @@ func (f *RipFrames) accInput(n *accNote, ev accEvidence, notes []*accNote, refs 
 
 // accCandidates is every strike over the bar that starts no note, read as the
 // decoder reads one, its pitch sounding over Voicing of its register's reference
-// until another strike, outside StrikeGap of a reported note of its pitch
-func (f *RipFrames) accCandidates(p RipParams, reported []*accNote, refs [2]float64) []ripNote {
+// until another strike, outside StrikeGap of a reported note of its pitch. With
+// every the bar is accStrike in both registers, the strongest within StrikeGap
+// stands, and a strike in a cell a followed sound moved on to is none.
+func (f *RipFrames) accCandidates(p RipParams, reported []*accNote, refs [2]float64, every bool) []ripNote {
 	T, gap := f.frames(), int(p.StrikeGap/f.Hop)
 	at := func(h []float32, t, midi int) float32 {
 		if t < 0 || t >= T {
@@ -1094,29 +1149,54 @@ func (f *RipFrames) accCandidates(p RipParams, reported []*accNote, refs [2]floa
 			continue
 		}
 		bar := p.Strike
-		if reg == 0 {
+		switch {
+		case every:
+			bar = accStrike
+		case reg == 0:
 			bar = p.StrikeLow
 		}
 		for s := range r.states {
 			midi := lo + s
-			var starts []int
+			peak := func(t int) bool {
+				v := at(f.Strike, t, midi)
+				return float64(v) >= bar && v >= at(f.Strike, t-1, midi) && v > at(f.Strike, t+1, midi)
+			}
+			var starts, stand []int
+			var passed []*accNote
 			for _, k := range reported {
 				if k.midi == midi {
 					starts = append(starts, k.start)
+					if every && k.of != nil {
+						passed = append(passed, k)
+					}
 				}
 			}
 			last := -gap
 			for t := 0; t < T; t++ {
-				v := at(f.Strike, t, midi)
-				if float64(v) < bar || v < at(f.Strike, t-1, midi) || v <= at(f.Strike, t+1, midi) || t-last < gap {
+				if !peak(t) || !every && t-last < gap {
 					continue
 				}
 				last = t
-				if slices.ContainsFunc(starts, func(a int) bool { return a-gap < t && t < a+gap }) {
+				stand = append(stand, t)
+			}
+			if every {
+				peaks := stand
+				slices.SortStableFunc(peaks, func(a, b int) int { return cmp.Compare(at(f.Strike, b, midi), at(f.Strike, a, midi)) })
+				stand = nil
+				for _, t := range peaks {
+					if !slices.ContainsFunc(stand, func(u int) bool { return u-gap < t && t < u+gap }) {
+						stand = append(stand, t)
+					}
+				}
+				slices.Sort(stand)
+			}
+			for _, t := range stand {
+				if slices.ContainsFunc(starts, func(a int) bool { return a-gap < t && t < a+gap }) ||
+					slices.ContainsFunc(passed, func(k *accNote) bool { return k.start-accDup <= t && t < k.end }) {
 					continue
 				}
 				end := t + 1
-				for end < T && r.sal(end, s) >= p.Voicing*r.ref && !(float64(at(f.Strike, end, midi)) >= bar && at(f.Strike, end, midi) >= at(f.Strike, end-1, midi) && at(f.Strike, end, midi) > at(f.Strike, end+1, midi)) {
+				for end < T && r.sal(end, s) >= p.Voicing*r.ref && !peak(end) {
 					end++
 				}
 				out = append(out, r.note(t, min(max(end, t+5), T), s))
