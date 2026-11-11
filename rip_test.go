@@ -2285,3 +2285,17 @@ func TestABarLineAtTheStartHearsTheSilenceBeforeIt(t *testing.T) {
 		t.Fatalf("a line at the start scores %.3f and one after four beats of the same chord %.3f, want the start a whole chroma change over the other", start, later)
 	}
 }
+
+// TestTempoReadsNoLagFasterThan240BPM: three notes twenty frames apart on every
+// beat of a slow pulse repeat most at their own spacing, 258 bpm, which folds to
+// 129; the search starts at 240, and reads the pulse's half, 70, as 140
+func TestTempoReadsNoLagFasterThan240BPM(t *testing.T) {
+	const figure, pulse = 20, 148
+	f := &RipFrames{Hop: RipFrameSec, Flux: make([]float64, 30*pulse)}
+	for at := 0; at+2*figure < f.frames(); at += pulse {
+		f.Flux[at], f.Flux[at+figure], f.Flux[at+2*figure] = 1, 1, 1
+	}
+	if bpm, _ := f.tempo(DefaultRipParams()); math.Abs(bpm-140) > 2 {
+		t.Errorf("tempo %.1f, want 140, the pulse's half doubled", bpm)
+	}
+}

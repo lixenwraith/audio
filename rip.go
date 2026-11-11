@@ -1473,12 +1473,12 @@ func tuning(x []float64) float64 {
 	return math.Atan2(im, re) / (2 * math.Pi) * 100
 }
 
-// tempo is the lag the onset strength repeats at, under a log-Gaussian prior on
-// the tempo and a comb that credits a lag with its double, folded into the
-// sequencer's range; the period is in frames.
+// tempo is the lag the onset strength repeats at, from 240 bpm to 60, under a
+// log-Gaussian prior on the tempo and a comb that credits a lag with its double,
+// folded into the sequencer's range; the period is in frames.
 func (f *RipFrames) tempo(p RipParams) (bpm, period float64) {
 	o := f.onsets()
-	minLag, maxLag := int(60/240/f.Hop), int(60/60/f.Hop)
+	minLag, maxLag := int(60/(240*f.Hop)), int(60/(60*f.Hop))
 	acf := func(lag int) float64 {
 		var s float64
 		for t := lag; t < len(o); t++ {
