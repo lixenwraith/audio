@@ -137,3 +137,54 @@ func TestRipStreamBarsAreTheSameWhateverTheBlocks(t *testing.T) {
 		t.Errorf("%d bars and %d notes in 50 ms blocks, %d and %d in others", len(rips[0].Bars), len(rips[0].Notes), len(rips[1].Bars), len(rips[1].Notes))
 	}
 }
+
+// TestRipStreamGivesEachFrameOnce: asked after every Write for the frames since
+// the last given, a caller gets every frame the stream heard, once and in order,
+// the same in 50 ms blocks and in blocks of six seconds, whose frames the window
+// lets go of within the Write that hears them.
+func TestRipStreamGivesEachFrameOnce(t *testing.T) {
+	const bpm, bars = 140, 8
+	ae, slots := startLoopEngine(t)
+	buf, err := ae.RenderMusic(slots, bpm, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range buf { // louder to its end, so the loudest onset heard keeps moving
+		buf[i] *= 0.5 + 0.5*float64(i)/float64(len(buf))
+	}
+	var given []*RipFrames
+	for _, block := range []int{AudioSampleRate / 20, 6 * AudioSampleRate} {
+		s, err := NewRipStream(Ripper{Params: DefaultRipParams()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		all, next, late := &RipFrames{}, 0, false
+		take := func() {
+			f, from := s.Frames(next)
+			if from != next {
+				t.Fatalf("asked from frame %d, given from %d", next, from)
+			}
+			all.extend(f)
+			next, late = next+f.frames(), late || s.late != nil
+		}
+		for i := 0; i < len(buf); i += block {
+			if err := s.Write(buf[i:min(i+block, len(buf))], AudioSampleRate); err != nil {
+				t.Fatal(err)
+			}
+			take()
+		}
+		if _, err := s.Close(); err != nil {
+			t.Fatal(err)
+		}
+		take()
+		if next != s.heard() || next < len(buf)/AudioSampleRate*RipRate/RipHop {
+			t.Fatalf("%d frames given of %d heard, in %.1fs", next, s.heard(), float64(len(buf))/AudioSampleRate)
+		}
+		if given = append(given, all); late != (block > AudioSampleRate) {
+			t.Errorf("in blocks of %d samples, frames let go within a Write: %v", block, late)
+		}
+	}
+	if !reflect.DeepEqual(given[0], given[1]) {
+		t.Errorf("the %d frames given depend on the blocks", given[0].frames())
+	}
+}
