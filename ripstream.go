@@ -76,7 +76,19 @@ type RipStream struct {
 	tail     []ripNote
 	tailHits [InstrClap][]int
 	hits     [InstrClap][]ripStreamHit
-	closed   bool
+	// the bars after the frozen ones as last laid out, and the frame of each
+	// one's line through the last one's end
+	open   []RipBar
+	openAt []int
+	closed bool
+}
+
+// RipOpenBar is a bar after a stream's frozen ones as its decoders last laid it
+// out, on the frames its line and the next bar's fall on, as Frames counts
+// them: provisional, as it may change until it freezes among Bars
+type RipOpenBar struct {
+	RipBar
+	Start, End int
 }
 
 // ripStreamHit is a frozen hit as the drums' tone reads it: where it starts, in
@@ -182,6 +194,21 @@ func (s *RipStream) Frames(since int) (*RipFrames, int) {
 	late.cut(from-s.late0, late.frames())
 	late.extend(&f)
 	return &late, from
+}
+
+// Open is the bars after the frozen ones as the decoders laid them out when the
+// last bar froze, the read that freezes a bar laying out those after it too:
+// provisional, and none before the first bars freeze or once the stream is
+// closed. It shares the stream's bars, so it is read, not changed.
+func (s *RipStream) Open() []RipOpenBar {
+	if len(s.open) == 0 {
+		return nil
+	}
+	out := make([]RipOpenBar, len(s.open))
+	for i, b := range s.open {
+		out[i] = RipOpenBar{RipBar: b, Start: s.openAt[i], End: s.openAt[i+1]}
+	}
+	return out
 }
 
 // Close hears the end of the recording, freezes every bar left and returns the
@@ -428,6 +455,10 @@ func (s *RipStream) freeze(f *RipFrames, x []float64, g ripGrid, ev ripEvents, f
 		}
 	}
 	r := g.lay(f, x, ev, s.tempo, shift, loud, s.p)
+	s.open, s.openAt = r.Bars[first+n:], s.openAt[:0]
+	for _, l := range g.lines[first+n:] {
+		s.openAt = append(s.openAt, s.w0+l)
+	}
 	frozen := func(frame int) bool {
 		bar, _, ok := g.at(frame)
 		switch {

@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"math"
 	"math/rand/v2"
 	"reflect"
 	"slices"
@@ -197,5 +198,62 @@ func TestRipStreamGivesEachFrameOnce(t *testing.T) {
 	}
 	if !slices.Equal(given[0].Spectrum, bands) {
 		t.Errorf("the spectrum given, %d bands, is not MelStream's %d", len(given[0].Spectrum), len(bands))
+	}
+}
+
+// TestRipStreamFreezesItsOpenBarsAsRead: no bar is open before the first freeze
+// and none once the stream is closed; between, the open bars follow the frozen
+// ones frame for frame, and each bar the loop then freezes, at the next freeze
+// or at Close, is the bar read open in its place, on its frames, note for note.
+func TestRipStreamFreezesItsOpenBarsAsRead(t *testing.T) {
+	const bpm, bars = 140, 8
+	ae, slots := startLoopEngine(t)
+	buf, err := ae.RenderMusic(slots, bpm, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewRipStream(Ripper{Params: DefaultRipParams()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame := func(sec float64) int { return int(math.Round(sec / RipFrameSec)) }
+	var open []RipOpenBar
+	frozen, read := 0, 0
+	// froze holds the bars frozen since the last read to the bars open at it
+	froze := func(r *Rip) {
+		for i, o := range open[:min(len(open), len(r.Bars)-frozen)] {
+			k := frozen + i
+			if at := frame(r.Beats[k*r.Meter.Beats()]); o.Start != at || BarDistance(&o.RipBar, &r.Bars[k]) != 0 {
+				t.Errorf("bar %d froze at frame %d as %v, read open at %d as %v", k, at, r.Bars[k], o.Start, o.RipBar)
+			}
+			read++
+		}
+		frozen = len(r.Bars)
+	}
+	for i, block := 0, AudioSampleRate/20; i < len(buf); i += block {
+		if err := s.Write(buf[i:min(i+block, len(buf))], AudioSampleRate); err != nil {
+			t.Fatal(err)
+		}
+		r := s.Bars()
+		if r == nil {
+			if s.Open() != nil {
+				t.Fatalf("at %.2fs a bar is open before any froze", float64(i+block)/AudioSampleRate)
+			}
+			continue
+		}
+		froze(r)
+		open = s.Open()
+		for j, o := range open {
+			if from := frame(r.Beats[len(r.Beats)-1]); j == 0 && o.Start != from || j > 0 && o.Start != open[j-1].End || o.End <= o.Start {
+				t.Fatalf("at %.2fs open bar %d spans frames %d to %d, the frozen bars ending at %d", float64(i+block)/AudioSampleRate, j, o.Start, o.End, from)
+			}
+		}
+	}
+	r, err := s.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if froze(r); read < 3 || s.Open() != nil {
+		t.Errorf("%d bars froze that were read open, of %d; %d open once closed", read, len(r.Bars), len(s.Open()))
 	}
 }
