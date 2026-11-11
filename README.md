@@ -91,8 +91,17 @@ once. A later definition of a name replaces the earlier in place, keeping its
 runtime ID; a new voice name adds an instrument patterns name as they name any.
 `LoadSoundsTOML`, `LoadSoundsFS`, `LoadPatternDefs` and `LoadPatternsTOML` read
 them, rejecting unknown keys; `MarshalSoundsFile`, `MarshalSounds`,
-`MarshalVoices`, `MarshalPatternDefs` and `MarshalPatterns` write them back, and
-a reload plays identically.
+`MarshalVoices`, `MarshalPatternDefs` and `MarshalPatterns` write them back
+with every invocation expanded, `SaveSoundsFile` and `SavePatternFile` over the
+bytes a document was loaded from, and a reload plays identically.
+
+A save keeps its source's `[macros]`, the file's own comments and the comment
+above each entry, which follows the entry's name, and writes every entry anew:
+an invocation of those macros where one expands to it, written out where none
+does, the result loaded to check it means the same. It loses a comment inside
+an entry; `include` is the session's; a source with nothing of its own is saved
+as `MarshalSoundsFile` and `MarshalPatternFile` write it; and a saved document
+saved again is the same bytes, so a save moves only what was edited.
 
 ## Live editing
 

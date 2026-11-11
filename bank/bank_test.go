@@ -1,12 +1,17 @@
 package bank
 
 import (
+	"bytes"
+	"flag"
 	"math"
+	"os"
 	"slices"
 	"testing"
 
 	"github.com/lixenwraith/audio"
 )
+
+var resave = flag.Bool("resave", false, "write music.toml and sfx.toml as a save writes them")
 
 func loadSounds(t *testing.T) []*audio.SoundDef {
 	t.Helper()
@@ -110,6 +115,45 @@ func TestSoundsRoundTrip(t *testing.T) {
 		}
 		if !slices.Equal(a, b) {
 			t.Errorf("%s: audio differs after round trip", defs[i].Name)
+		}
+	}
+}
+
+// TestBankIsAsASaveWritesIt holds the two documents that define macros to the
+// save's own spelling, so that a save of one moves only what was edited. After
+// a hand edit, go test ./bank -resave writes them so.
+func TestBankIsAsASaveWritesIt(t *testing.T) {
+	saves := map[string]func([]byte) ([]byte, error){
+		"music.toml": func(src []byte) ([]byte, error) {
+			f, err := audio.LoadPatternFile(src)
+			if err != nil {
+				return nil, err
+			}
+			return audio.SavePatternFile(src, f)
+		},
+		"sfx.toml": func(src []byte) ([]byte, error) {
+			f, err := audio.LoadSoundsTOML(src)
+			if err != nil {
+				return nil, err
+			}
+			return audio.SaveSoundsFile(src, f)
+		},
+	}
+	for name, save := range saves {
+		src, err := files.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := save(src)
+		switch {
+		case err != nil:
+			t.Errorf("%s: %v", name, err)
+		case *resave:
+			if err := os.WriteFile(name, out, 0o644); err != nil {
+				t.Error(err)
+			}
+		case !bytes.Equal(out, src):
+			t.Errorf("%s is not as a save writes it: go test ./bank -resave", name)
 		}
 	}
 }

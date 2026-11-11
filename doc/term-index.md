@@ -139,6 +139,8 @@ in a definition are entries of their own. Links point to the section of the
 
 ## S
 
+**save** (also: `SavePatternFile`, `SaveSoundsFile`, fold, `-resave`) — A document written over the bytes it was loaded from, so that it stays its author's: the source's `[macros]`, the file's own comments and the comment above each entry kept, every entry written anew as an invocation of those macros where one expands to it (toml's `Fold`), and the result loaded to check it means what `MarshalPatternFile` or `MarshalSoundsFile` writes, an entry that does not written as they write it; a comment inside an entry is lost, and a saved document saved again is the same bytes. The bank's `music.toml` and `sfx.toml` are kept as a save writes them (`go test ./bank -resave`). See also **pattern**, **sound**, **snapshot**. [README](../README.md#documents) · [Agent notes](agent-notes.md#the-save) · `audio` `SavePatternFile`, `SaveSoundsFile`
+
 **scale** (also: `ScaleID`) — The musical scale the harmony resolves pattern degrees through (minor, harmonic minor, Phrygian, Dorian, minor pentatonic, major), Phrygian by default. [Audio §7](audio.md#7-music-sequencer) · `audio` `ScaleID`
 
 **sequencer** (also: music sequencer) — The music pattern player: a 16th-note grid in bars of its **meter**, 4/4 unless set, with four crossfading slots (rhythm, melody, free or phrase fill, bass), tempo clamped to 80–200 BPM, pattern transitions immediate or quantized to the bar, and drawn music chosen by group and tier. [Audio §7](audio.md#7-music-sequencer) · `audio` `Sequencer`

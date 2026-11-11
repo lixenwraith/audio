@@ -80,6 +80,41 @@ that a document now states, and link the document instead.
   not exported: it is the least `Set.MaxValues` the document expands under, by
   bisection, 14,333 for the bank's music and 116 for its sfx.
 
+## The save
+
+- `bank/music.toml` and `bank/sfx.toml` are committed as a save writes them
+  (`TestBankIsAsASaveWritesIt`), so a save of either moves only what was
+  edited. After a hand edit, `go test ./bank -resave` writes both in the save's
+  spelling, then the snapshot gate holds it: a resave must not move what plays.
+  `drums.toml` and `voices.toml` define no macros and stay as written by hand.
+- A save loses a comment inside an entry, the comment of an entry the session
+  renamed or removed, and an entry's layout: keys come back sorted and each
+  layer, filter and source a block (`sfx.toml` went from 304 lines to 645). An
+  invocation that expands to several entries comes back as those entries, each
+  folded alone, and the comment above it goes: a comment follows the one entry
+  its table expands to, by name, and a table of several or none has no such.
+- The check decodes before validation (`loadPatternSpecFile`,
+  `decodeSpecFile`): a session may hold an entry no loader would keep, and it
+  is saved as `Marshal` writes it. `LoadSoundsTOML` would refuse `include` and
+  drop what does not validate.
+- Each entry is folded alone, so its text follows from itself and the macros
+  and an edit moves no other entry. One `Fold` of the whole tree gives the bank
+  the same folds 3 ms sooner (12.3 for 15.4 ms on `music.toml`), but writes a
+  run of entries an array macro expands to as one element, which no longer
+  pairs with the entries.
+- `macro.Set.Define` takes `[macros]` out of the tree it is given, and
+  `Document.Bytes` is the caller's slice until an edit: the save defines from a
+  copy and appends to a clipped frame.
+- A comment group is the side's that fewer blank lines part it from, the one
+  below on a tie (toml's README). A save writes one blank line above each
+  entry, so a comment that closes the source's own text with a blank line above
+  it, the file's closing comment too, is the first entry's from then on, and
+  the blank lines around it settle a save later: `saveOver` saves such a result
+  over itself until it holds (`endsLoose`), so the first save is a fixed point.
+- `PatternSpecFile.Pattern` has no `omitempty`, so songs alone marshal under
+  `pattern = []`: the save sets it as it sets `include`, or a source with
+  nothing of its own would not come back as `MarshalPatternFile` writes it.
+
 ## Voices and strings
 
 - A string or modal voice ignores the ADSR's decay and sustain, yet the shipped

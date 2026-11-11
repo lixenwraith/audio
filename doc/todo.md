@@ -152,6 +152,18 @@ invocation gives it, so the base applies its own default. The second gives up
 the form's definition as a body that could be written by hand. Either is the
 TOML module's to change.
 
+### Keep a comment inside an entry through a save
+
+- Priority: P3
+- Affected files: `sound_load.go`, `lixenwraith/toml`
+
+A save ([README](../README.md#documents)) writes every entry anew, so a comment
+inside one is lost: above a key or a sub-table's header, as the eight above
+`[[sound.layer]]` in `bank/drums.toml`, or at a line's end. The comment above
+an entry's own header stays, and `desc` is data. The smallest close: toml reads
+a table's inner comments by the key each stands above, and the save writes each
+above that key where the entry still holds it.
+
 ## Meters
 
 ### Read more meters

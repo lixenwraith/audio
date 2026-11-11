@@ -726,7 +726,7 @@ each group's medoid standing for it, `Rip.Cluster` does that for one part, and
 over the steps it holds, `Rip.MendPickup`, so its false hits leave the song),
 and a `SongDef`: the patterns each slot plays bar by bar at a tempo and in a
 key, a `[[song]]` in the pattern document (`LoadPatternFile`,
-`MarshalPatternFile`, `ValidateSong`), resolved to a timeline of pattern IDs
+`MarshalPatternFile`, `SavePatternFile`, `ValidateSong`), resolved to a timeline of pattern IDs
 (`Timeline`) that `RenderTimeline` plays offline, the patterns changed at the
 bar lines under the notes still ringing, or one line of it alone (`RenderLines`).
 
