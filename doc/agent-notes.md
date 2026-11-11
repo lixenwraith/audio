@@ -16,6 +16,15 @@ that a document now states, and link the document instead.
   `transformer` replaced by local copies whose `go.mod` say the same) and
   `-overlay` for the few lines that use newer library calls
   (`reflect.Type.Fields`, `errors.AsType`); CI's toolchain is the authority.
+- A `transformer` version not yet tagged builds and tests through a workspace
+  kept outside the checkout: a `go.work` that uses both checkouts and replaces
+  the version to come by transformer's (`replace <module> v0.6.0 => <dir>`),
+  `GOWORK=<file>` on each command, `go.mod` requiring that version.
+  `go.sum` needs its two lines for CI's build once the tag exists: `go mod
+  download` after the tag, or the hashes of the commit to be tagged
+  (`golang.org/x/mod`'s `zip.CreateFromVCS` into `dirhash.HashZip`, and
+  `dirhash.Hash1` over its `go.mod`), which hold while that tree does not
+  change; the same tool gives the lines of a version already in `go.sum`.
 
 ## Tests
 
@@ -529,8 +538,21 @@ that a document now states, and link the document instead.
   past eight seconds, moved with the block size; it reads exactly the first
   eight seconds now, and the model's ear hears on a fixed frame grid against the
   loudest sample up to it. `TestRipStreamBarsAreTheSameWhateverTheBlocks` and
-  `ripmodel`'s ear test compare the rips and the frames in 50 ms and in random
-  blocks; a new ear goes through both.
+  `ripmodel`'s ear test compare the rips and the frames in fixed and in random
+  blocks; a new ear goes through both. The ear test feeds a hop a block and
+  counts the frames given after each: at 50 ms a step given a hop late passed.
+- **A model's ear is the whole's to rounding, never bit for bit, and only from
+  a reach past the loudest sample.** `MelFrames` divides the samples by the
+  peak before the transform and the ear scales the energies after, so the
+  features differ in their last bits (heads within 6e-7 on the test's models,
+  5e-7 at `Spec`'s shapes). A frame is run once, scaled by the loudest sample
+  heard when it came: a test recording whose loudest sample falls near its end
+  compares nothing, so `struck` drops its level after four and a half seconds.
+- **The ear test's model is small, so its distances are not `Spec`'s.** Two
+  blocks of window 32 share a 46-frame wait as 23 and 23 where `Spec`'s four
+  of 64 get 12, 12, 11 and 11. For the distances at the shapes in use, save
+  random weights of `Spec` and `NotesSpec` (`transformer.NewRandom`, `Save`)
+  and pass them to the test's `-model`, `-notes` and `-wav`.
 - **A median taken as the notes come rounds at an edge the whole's does not.**
   The loop at 175 bpm reads at 88, where the notes' lag sat at 3.50 frames: in
   five early bars the stream placed one note a step later than `RipSamples`.
