@@ -74,39 +74,20 @@ type savedEntry struct {
 	text []byte         // as the save writes it
 }
 
-// saveOver writes f's entries over the source they were loaded from, as
-// saveOnce does, then over that result while saveOnce asks, four passes at
-// most: a comment that ends what stays of src under a blank line is the first
-// entry's once entries stand below it, and the blank lines around it would
-// settle only at a later save.
+// saveOver writes f's entries over the source they were loaded from: src
+// without the arrays keys name, then each entry anew, an invocation of src's
+// macros where one expands to it, under the comment its name had, then the
+// comment that closed src. What does not load back to what Marshal writes of f
+// is written as Marshal writes it, an entry and then the whole.
 func saveOver[F any](src []byte, f *F, load func([]byte) (*F, error), keys ...string) ([]byte, error) {
 	flat, err := toml.Marshal(*f)
 	if err != nil {
 		return nil, err
 	}
 	tree, err := toml.NewParser(flat).Parse()
-	if err != nil {
+	doc, derr := toml.ParseDocument(src)
+	if err != nil || derr != nil {
 		return flat, nil
-	}
-	for range 4 {
-		out, again := saveOnce(src, flat, tree, load, keys...)
-		if !again || bytes.Equal(out, src) {
-			return out, nil
-		}
-		src = out
-	}
-	return src, nil
-}
-
-// saveOnce writes tree, the entries flat holds as Marshal wrote them, over src:
-// src without the arrays keys name, then each entry anew, an invocation of
-// src's macros where one expands to it, under the comment its name had. What
-// does not load back to flat is written as flat has it, an entry and then the
-// whole. again reports a comment that ends what stayed, to settle.
-func saveOnce[F any](src, flat []byte, tree map[string]any, load func([]byte) (*F, error), keys ...string) (out []byte, again bool) {
-	doc, err := toml.ParseDocument(src)
-	if err != nil {
-		return flat, false
 	}
 	was, notes := doc.Tree(), make([][][]byte, len(keys))
 	for i, k := range keys {
@@ -121,12 +102,12 @@ func saveOnce[F any](src, flat []byte, tree map[string]any, load func([]byte) (*
 		_, tables := doc.Tree()[k].([]map[string]any)
 		if !ok || entries || tables {
 			if _, err := doc.Delete(toml.Key{k}); err != nil {
-				return flat, false
+				return flat, nil
 			}
 		}
 		if ok && !entries && !reflect.DeepEqual(doc.Tree()[k], v) {
 			if err := doc.Set(toml.Key{k}, v); err != nil {
-				return flat, false
+				return flat, nil
 			}
 		}
 	}
@@ -176,10 +157,23 @@ func saveOnce[F any](src, flat []byte, tree map[string]any, load func([]byte) (*
 			ents = append(ents, e)
 		}
 	}
+	// The comment that closed src stays the file's last, below the entries. A
+	// source of comments alone has a head and no close.
+	closed := src
+	if len(was) == 0 {
+		closed = nil
+	}
+	var foot []byte
+	if len(ents) > 0 {
+		frame, foot = ending(frame, closed)
+	}
 	write := func() []byte {
 		out := slices.Clone(frame)
 		for _, e := range ents {
 			out = append(under(out, e.note), e.text...)
+		}
+		if len(foot) > 0 {
+			out = under(out, foot)
 		}
 		return out
 	}
@@ -188,8 +182,9 @@ func saveOnce[F any](src, flat []byte, tree map[string]any, load func([]byte) (*
 		return err == nil && bytes.Equal(got, flat)
 	}
 	// Nothing of src stayed where the bytes are flat's: there is nothing to load
-	if out = write(); bytes.Equal(out, flat) {
-		return flat, false
+	out := write()
+	if bytes.Equal(out, flat) {
+		return flat, nil
 	}
 	if !same(out) {
 		// Only a document that differs has each entry loaded alone
@@ -201,21 +196,58 @@ func saveOnce[F any](src, flat []byte, tree map[string]any, load func([]byte) (*
 			ents[i].text = plain[i]
 		}
 		if out = write(); !same(out) {
-			return flat, false
+			return flat, nil
 		}
 	}
-	return out, len(ents) > 0 && endsLoose(frame)
+	return out, nil
 }
 
-// endsLoose reports frame ends in comment lines under a blank line, which the
-// first table written below them takes as its own
-func endsLoose(frame []byte) bool {
-	lines := bytes.Split(bytes.TrimSuffix(frame, []byte("\n")), []byte("\n"))
-	i := len(lines)
-	for i > 0 && bytes.HasPrefix(bytes.TrimSpace(lines[i-1]), []byte("#")) {
-		i--
+// ending parts frame, what stays of src, at the comment lines that end it under
+// a blank line. Those that end src too closed the file: they are foot, to go
+// below the entries. The others stay, and each run of blank lines above or
+// among either is cut to one: a table written below a comment takes it on a
+// tie, so with the runs cut once the bytes hold at every save after.
+func ending(frame, src []byte) (rest, foot []byte) {
+	const blank = " \t\r\n"
+	f, s := bytes.TrimRight(frame, blank), bytes.TrimRight(src, blank)
+	alike := 0
+	for alike < len(f) && alike < len(s) && f[len(f)-1-alike] == s[len(s)-1-alike] {
+		alike++
 	}
-	return 0 < i && i < len(lines) && len(bytes.TrimSpace(lines[i-1])) == 0
+	lines := bytes.SplitAfter(f, []byte("\n"))
+	empty := func(i int) bool { return len(bytes.TrimSpace(lines[i])) == 0 }
+	// lines[loose:] are those comments from the blank line above them, and
+	// lines[closed:] the ones that end src too
+	loose, closed, at := len(lines), len(lines), len(f)
+	for i := len(lines) - 1; i >= 0 && (empty(i) || bytes.TrimSpace(lines[i])[0] == '#'); i-- {
+		if at -= len(lines[i]); empty(i) {
+			loose = i
+		} else if (i == 0 || empty(i-1)) && len(f)-at <= alike {
+			closed = i
+		}
+	}
+	if loose = min(loose, closed); loose == len(lines) {
+		return frame, nil
+	}
+	// cut is lines[from:to], one newline ending them as it ends what stays;
+	// without runs, as Comments gives a table's: no blank line around them and
+	// each run of blank lines among them cut to one
+	cut := func(from, to int, runs bool) (out []byte) {
+		for i := from; i < to; i++ {
+			if runs || !empty(i) || len(out) > 0 && !empty(i-1) {
+				out = append(out, lines[i]...)
+			}
+		}
+		if out = bytes.TrimRight(out, blank); len(out) > 0 {
+			out = append(out, '\n')
+		}
+		return out
+	}
+	rest = cut(0, loose, true)
+	if stay := cut(loose, closed, false); len(stay) > 0 {
+		rest = under(rest, stay)
+	}
+	return rest, cut(closed, len(lines), false)
 }
 
 // entryName is the name a table of a document's arrays holds, "" for none
