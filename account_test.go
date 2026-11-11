@@ -257,3 +257,61 @@ func TestAFollowedSoundAccountsForTheCellsItMovedOnTo(t *testing.T) {
 		t.Errorf("a note played an octave over a scoop's landing read as %v", accPitches(melody))
 	}
 }
+
+// TestARowHoldsTheScoresTermsAndTheHeadsAroundTheStrike: a strike's row opens
+// with the terms the installed score weighs, scaled as it scales them, then the
+// planes around the strike, a frame at a time, the salience and the flux over
+// their levels; a cell off the frames or the pitches is 0.
+func TestARowHoldsTheScoresTermsAndTheHeadsAroundTheStrike(t *testing.T) {
+	const frames = 40
+	f := accFrames(frames, nil, nil)
+	code := func(t, midi int) float32 { return float32(1000*t + midi) }
+	for t := range frames {
+		f.Flux[t] = float64(t + 1)
+		for midi := RipMinMIDI; midi < RipMaxMIDI; midi++ {
+			i := t*RipPitches + midi - RipMinMIDI
+			f.Strike[i], f.Salience[i], f.Release[i], f.Velocity[i] = code(t, midi), 2*code(t, midi), -code(t, midi), code(t, midi)+0.5
+		}
+	}
+	in := accInput{accEvidence: accEvidence{share: 0.5, unF0: 0.25, unOdd: 0.75, rise: 20, loo: 3, level: -30, span: 0.5, step: 0.2}, strike: 0.9, support: 2, low: true, ringing: true}
+	const ref, flux = -20.0, 2.0
+	refs := [2]float64{2, 4}
+	low, high := RipMinMIDI+3, RipMaxMIDI-1
+	row := f.row(nil, &accNote{ripNote: ripNote{start: 2, midi: low}}, in, ref, refs, flux)
+	if len(row) != RipRowSize || RipRowSize != 544 {
+		t.Fatalf("a row of %d values and RipRowSize %d, want 544", len(row), RipRowSize)
+	}
+	w := accReported
+	v := w.bias
+	for k, wk := range [...]float64{w.share, w.unF0, w.unOdd, w.rise, w.strike, w.support, w.low, w.level, w.ringing, w.span, w.step} {
+		v += wk * float64(row[k])
+	}
+	if got, want := 1/(1+math.Exp(-v)), w.odds(in, ref); math.Abs(got-want) > 1e-6 {
+		t.Errorf("the score over the row's terms gives %.7f, its own odds %.7f", got, want)
+	}
+	planes := len(accRowPitches)
+	at := func(row []float32, plane, dt, d int) float32 { // a plane's cell dt frames and d semitones from the strike
+		if plane >= 2 {
+			return row[accRowTerms+2*accRowFrames*planes+(plane-2)*accRowFrames+dt+accRowBefore]
+		}
+		return row[accRowTerms+plane*accRowFrames*planes+(dt+accRowBefore)*planes+slices.Index(accRowPitches[:], d)]
+	}
+	check := func(name string, got, want float32) {
+		if got != want {
+			t.Errorf("%s reads %v, want %v", name, got, want)
+		}
+	}
+	check("the strike at its own cell", at(row, 0, 0, 0), code(2, low))
+	check("the strike three frames on an octave up", at(row, 0, 3, 12), code(5, low+12))
+	check("the strike before the first frame", at(row, 0, -4, 0), 0)
+	check("the strike under the lowest pitch", at(row, 0, 0, -24), 0)
+	check("the salience over the bass's reference", at(row, 1, 1, 7), 2*code(3, low+7)/2)
+	check("the release at its pitch", at(row, 2, 8, 0), -code(10, low))
+	check("the velocity at its pitch", at(row, 3, -2, 0), code(0, low)+0.5)
+	check("the flux over its level", at(row, 4, 0, 0), 3.0/2)
+	in.low = false
+	row = f.row(nil, &accNote{ripNote: ripNote{start: frames - 1, midi: high}}, in, ref, refs, flux)
+	check("the salience over the melody's reference", at(row, 1, 0, -12), 2*code(frames-1, high-12)/4)
+	check("the strike over the highest pitch", at(row, 0, 0, 1), 0)
+	check("the flux past the last frame", at(row, 4, 1, 0), 0)
+}

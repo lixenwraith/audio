@@ -348,10 +348,12 @@ type RipFrames struct {
 	// nil from a model
 	bands [3][]float64
 	// loud is each drum's loudest onset strength over the recording heard so
-	// far, past these frames' own, and refs each register's reference loudness
-	// (ripRegisters): what a live rip's frames are read against
-	loud [InstrClap]float64
-	refs map[[2]int]float64
+	// far, past these frames' own, refs each register's reference loudness
+	// (ripRegisters) and fluxRef the flux's level (fluxLevel): what a live rip's
+	// frames are read against
+	loud    [InstrClap]float64
+	refs    map[[2]int]float64
+	fluxRef float64
 }
 
 func (f *RipFrames) frames() int { return len(f.Flux) }

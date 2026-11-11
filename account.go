@@ -785,19 +785,111 @@ type accInput struct {
 	low, ringing    bool    // the bass register; another note sounding in its pitch's cell at its start
 }
 
-func (s accScore) odds(in accInput, ref float64) float64 {
-	logit := func(p float64) float64 { p = min(max(p, 1e-4), 1-1e-4); return math.Log(p / (1 - p)) }
-	flag := func(b bool) float64 {
-		if b {
-			return 1
-		}
-		return 0
+func accLogit(p float64) float64 {
+	p = min(max(p, 1e-4), 1-1e-4)
+	return math.Log(p / (1 - p))
+}
+
+func accFlag(b bool) float64 {
+	if b {
+		return 1
 	}
+	return 0
+}
+
+func (s accScore) odds(in accInput, ref float64) float64 {
 	v := s.bias + s.share*math.Log(math.Max(in.share, 1e-3)) + s.unF0*in.unF0 + s.unOdd*in.unOdd + s.rise*in.rise/10 +
-		s.loo*math.Log(math.Max(in.loo, 1e-3)) + s.strike*logit(in.strike) + s.support*min(in.support, 1.5) + s.low*flag(in.low) +
-		s.level*min(max(in.level-ref, -60), 10)/10 + s.ringing*flag(in.ringing) + s.span*math.Log(math.Max(in.span, 1e-3)) +
+		s.loo*math.Log(math.Max(in.loo, 1e-3)) + s.strike*accLogit(in.strike) + s.support*min(in.support, 1.5) + s.low*accFlag(in.low) +
+		s.level*min(max(in.level-ref, -60), 10)/10 + s.ringing*accFlag(in.ringing) + s.span*math.Log(math.Max(in.span, 1e-3)) +
 		s.step*math.Log(math.Max(in.step, 0.05))
 	return 1 / (1 + math.Exp(-v))
+}
+
+// The row a judge reads of a strike, RipRowSize values: the eleven terms the
+// scores weigh (terms), then over the frames from accRowBefore before the
+// strike's to accRowAfter after it, a frame at a time, the strike plane at
+// accRowPitches from its pitch, the salience there over its register's reference,
+// the release and velocity planes at its pitch, and the flux over its level.
+const (
+	RipRowVersion = 1
+	RipRowSize    = accRowTerms + accRowFrames*(2*len(accRowPitches)+3)
+	accRowTerms   = 11
+	accRowBefore  = 4
+	accRowAfter   = 8
+	accRowFrames  = accRowBefore + accRowAfter + 1
+	accRowFlux    = 95 // the percentile of the recording's flux a row reads it over
+)
+
+// accRowPitches are the semitones from a strike's pitch a row reads the strike
+// and salience planes at: its own, then the partials and neighbours either side
+var accRowPitches = [...]int{0, -24, -19, -12, -7, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 7, 12, 19, 24}
+
+// terms is what a score weighs of a note's input, scaled as odds scales it, in
+// the order it holds them: all but the fit's loss without the note, unweighed
+func (in accInput) terms(ref float64) [accRowTerms]float64 {
+	return [...]float64{math.Log(math.Max(in.share, 1e-3)), in.unF0, in.unOdd, in.rise / 10, accLogit(in.strike), min(in.support, 1.5),
+		accFlag(in.low), min(max(in.level-ref, -60), 10) / 10, accFlag(in.ringing), math.Log(math.Max(in.span, 1e-3)),
+		math.Log(math.Max(in.step, 0.05))}
+}
+
+// row appends to row the row of note n, struck in its pitch's cell where it
+// starts: in its input, ref the level its own is read against, refs the
+// registers' reference loudness, flux the recording's flux level. A cell
+// outside the frames or the pitches, or of a plane the front end lacks, is 0.
+func (f *RipFrames) row(row []float32, n *accNote, in accInput, ref float64, refs [2]float64, flux float64) []float32 {
+	for _, v := range in.terms(ref) {
+		row = append(row, float32(v))
+	}
+	T := f.frames()
+	at := func(h []float32, t, midi int) float32 {
+		if h == nil || t < 0 || t >= T || midi < RipMinMIDI || midi >= RipMaxMIDI {
+			return 0
+		}
+		return h[t*RipPitches+midi-RipMinMIDI]
+	}
+	reg := refs[1]
+	if in.low {
+		reg = refs[0]
+	}
+	from, to := n.start-accRowBefore, n.start+accRowAfter
+	for t := from; t <= to; t++ {
+		for _, d := range accRowPitches {
+			row = append(row, at(f.Strike, t, n.midi+d))
+		}
+	}
+	for t := from; t <= to; t++ {
+		for _, d := range accRowPitches {
+			if reg > 0 {
+				row = append(row, float32(float64(at(f.Salience, t, n.midi+d))/reg))
+			} else {
+				row = append(row, 0)
+			}
+		}
+	}
+	for _, h := range [...][]float32{f.Release, f.Velocity} {
+		for t := from; t <= to; t++ {
+			row = append(row, at(h, t, n.midi))
+		}
+	}
+	for t := from; t <= to; t++ {
+		if flux > 0 && t >= 0 && t < T {
+			row = append(row, float32(f.Flux[t]/flux))
+		} else {
+			row = append(row, 0)
+		}
+	}
+	return row
+}
+
+// fluxLevel is the level a row reads the flux over, its accRowFlux'th percentile
+// over the recording: a live rip's frames carry it over what was heard
+func (f *RipFrames) fluxLevel() float64 {
+	if f.refs != nil || f.frames() == 0 {
+		return f.fluxRef
+	}
+	flux := slices.Clone(f.Flux)
+	slices.Sort(flux)
+	return flux[len(flux)*accRowFlux/100]
 }
 
 // account holds the registers' notes to the recording x: two notes of one pitch
