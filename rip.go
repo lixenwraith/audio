@@ -337,6 +337,8 @@ type RipFrames struct {
 	Strike             []float32 // frames × RipPitches, how surely each pitch is struck there, or nil
 	Release            []float32 // frames × RipPitches, how surely each pitch is let go there, or nil
 	Velocity           []float32 // frames × RipPitches, how hard a pitch struck there was struck, or nil
+	Cents              []float32 // frames × RipPitches, the cents each pitch's sound sits from its cell's centre, or nil
+	CentsError         []float32 // frames × RipPitches, the error in cents the front end states for each, nil as Cents is
 	Family             []float32 // frames × len(RipFamilies), how surely each family plays there, summing to 1, or nil
 	// Spectrum is what the frames were read from, frames × RipMelBands, each
 	// band's energy as MelStream gives it: a stream's whose Ripper asks, else nil
@@ -362,7 +364,7 @@ func (f *RipFrames) fields(visit func(field any, per int)) {
 	for d := range f.Onset {
 		visit(&f.Onset[d], 1)
 	}
-	for _, h := range [...]*[]float32{&f.Salience, &f.Strike, &f.Release, &f.Velocity} {
+	for _, h := range [...]*[]float32{&f.Salience, &f.Strike, &f.Release, &f.Velocity, &f.Cents, &f.CentsError} {
 		visit(h, RipPitches)
 	}
 	visit(&f.Chroma, 1)
