@@ -324,7 +324,7 @@ var RipFamilies = [...]string{"piano", "guitar", "voice", "bass", "strings", "wi
 // Hop seconds: onset strength, each drum's (kick, snare, hihat), each pitch's
 // salience from E1 to C7 (the bass's by its first partials, the melody's with the
 // bass cancelled) and each register's chroma, as a front end fills it: the analysis,
-// or a model (ripmodel), which may also give each frame's wave, voice and family.
+// or a model (ripmodel), which may also give each frame's wave, voice, family and beat.
 type RipFrames struct {
 	Hop                float64
 	Tuning             float64 // cents the recording's pitches sit off A440, as the front end heard them
@@ -340,6 +340,10 @@ type RipFrames struct {
 	Cents              []float32 // frames × RipPitches, the cents each pitch's sound sits from its cell's centre, or nil
 	CentsError         []float32 // frames × RipPitches, the error in cents the front end states for each, nil as Cents is
 	Family             []float32 // frames × len(RipFamilies), how surely each family plays there, summing to 1, or nil
+	// Beat and Downbeat are how surely a beat of the meter (Rip.Beats) and a bar
+	// line fall on each frame, a posterior a front end that hears them states; nil
+	// from the analysis and from a model without the heads
+	Beat, Downbeat []float64
 	// Spectrum is what the frames were read from, frames × RipMelBands, each
 	// band's energy as MelStream gives it: a stream's whose Ripper asks, else nil
 	Spectrum []float32
@@ -372,6 +376,8 @@ func (f *RipFrames) fields(visit func(field any, per int)) {
 	visit(&f.Wave, len(VoiceWaves))
 	visit(&f.Voice, VoiceGeneCount)
 	visit(&f.Family, len(RipFamilies))
+	visit(&f.Beat, 1)
+	visit(&f.Downbeat, 1)
 	visit(&f.Spectrum, RipMelBands)
 	for b := range f.bands {
 		visit(&f.bands[b], 1)
