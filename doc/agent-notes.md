@@ -106,11 +106,15 @@ that a document now states, and link the document instead.
   `Document.Bytes` is the caller's slice until an edit: the save defines from a
   copy and appends to a clipped frame.
 - A comment group is the side's that fewer blank lines part it from, the one
-  below on a tie (toml's README). A save writes one blank line above each
-  entry, so a comment that closes the source's own text with a blank line above
-  it, the file's closing comment too, is the first entry's from then on, and
-  the blank lines around it settle a save later: `saveOver` saves such a result
-  over itself until it holds (`endsLoose`), so the first save is a fixed point.
+  below on a tie (toml's README), and a save writes one blank line above each
+  entry. So of the comments that end what stays of a source under a blank line
+  (`ending`), those that end the source too closed the file and go below the
+  entries, where they stay the file's last; the others stand above the entries
+  and are the first entry's from then on. Each run of blank lines above or
+  among either is cut to one, which is what a later save would make of them,
+  so the first save is a fixed point. A source of comments alone has a head
+  and no close. toml has no multi-line strings, so a line that opens with `#`
+  outside a statement is a comment.
 - `PatternSpecFile.Pattern` has no `omitempty`, so songs alone marshal under
   `pattern = []`: the save sets it as it sets `include`, or a source with
   nothing of its own would not come back as `MarshalPatternFile` writes it.

@@ -159,10 +159,13 @@ TOML module's to change.
 
 A save ([README](../README.md#documents)) writes every entry anew, so a comment
 inside one is lost: above a key or a sub-table's header, as the eight above
-`[[sound.layer]]` in `bank/drums.toml`, or at a line's end. The comment above
-an entry's own header stays, and `desc` is data. The smallest close: toml reads
-a table's inner comments by the key each stands above, and the save writes each
-above that key where the entry still holds it.
+`[[sound.layer]]` in `bank/drums.toml`, at a line's end, or under its last key,
+which by toml's rule takes in a comment below the last entry that stands nearer
+it than what follows: commented-out entries a blank line under it and two above
+a closing line. The comment above an entry's own header stays, and `desc` is
+data. The smallest close: toml reads a table's inner comments by the key each
+stands above, and the save writes each above that key where the entry still
+holds it.
 
 ## Meters
 
