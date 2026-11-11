@@ -207,22 +207,78 @@ decoders need no change to use it.
 - Priority: P2
 - Affected files: `ripstream.go`, `ripmodel/ripmodel.go`
 
-`RipStream` ([Audio §9](audio.md#9-ripping-a-recording)) costs a desktop core
+`RipStream` ([Audio §9](audio.md#9-ripping-a-recording)) cost a desktop core
 0.08 s a second of audio through the analysis and 0.34 s through a model of the
 trainer's shapes (`Spec`, and PitchNet with dilations 3, 9 and 27), 0.30 s of it
-the model's ear, which runs the frames the attention window and the notes
-model's reach read around each half second again. What is left: the cost on the
-phone; the model's onset, drums, wave, voice and family heads, whose attention
-reaches across the recording through its four layers offline but 64 frames back
-and half a second ahead in the stream, so a trained model's stream may track
-other beats and hits than its `RipSamples` (unmeasured: no trained model here);
-the tempo, meter and key held from the first six bars, so a recording that
-changes meter or key reads on in the first until `Final`; and the notes' lag, a
-median taken as they come, which moved one note a bar a step in five early bars
-of the loop at 175 bpm. The smallest close: measure on the phone and score a
-trained model's stream against its offline rip (`MatchBars`, `BarDistance`),
-then a longer `earStep` (a second runs a third fewer frames) or a forward in
-`transformer` that runs each new frame through the notes model's layers once.
+the model's ear, which ran `Forward` over a window around each half second.
+The ear now runs each frame through each model once: `BenchmarkEar`, 30 s
+through those shapes on one core of a 4-vCPU Xeon with AVX2, medians of five,
+in seconds a second of audio:
+
+```
+                                      heard    the ear waiting
+                                      whole    the reach   half a second
+transformer v0.5.0, windows           0.105        -          0.295
+v0.6.0's streams, the GELU as it was  0.105      0.097        0.095
+v0.6.0                                0.068      0.068        0.065
+```
+
+On four cores the ear takes 0.060 s where it took 0.186 and the whole 0.027
+where it took 0.034: a stream's writes spread less over the cores than
+`Forward` ([transformer's todo](https://github.com/lixenwraith/transformer/blob/main/doc/todo.md)).
+
+What is left: the cost on the phone, where the NEON GELU is untimed; the frame
+model's heads under the shorter wait (`FrontEnd.Ahead`), which on random
+weights of `Spec`'s shape lie from the whole's, as the rip reads them, by 0.09
+rms for the onset (0.16 at worst), 0.04 for the drums (0.16), 0.19 for the
+wave (0.69, of rms 1.45), 0.05 for the voice (0.20) and 0.03 for the family
+(0.17), and on trained weights are unmeasured: `go test ./ripmodel -run
+TestTheEarHearsAsTheWholeRecording -v -args -model <file> -notes <file> -wav
+<file>` logs each head's under both waits; the tempo, meter and key held from
+the first six bars, so a recording that changes meter or key reads on in the
+first until `Final`; and the notes' lag, a median taken as they come, which
+moved one note a bar a step in five early bars of the loop at 175 bpm. The
+smallest close: measure on the phone, and score a trained model's stream at
+each wait against its offline rip (`MatchBars`, `BarDistance`).
+
+### Give each model's frames at its own reach
+
+- Priority: P2
+- Affected files: `rip.go` (`RipEar`, `RipFrames`), `ripstream.go`,
+  `ripmodel/ripmodel.go` (`ear`)
+
+The ear gives both models' frames in one step, so under the default wait the
+notes model's heads (pitch, strike, release, velocity), complete 46 frames,
+0.53 s, behind the sound, wait in the ear for the frame model's 256, 2.97 s:
+they could come 210 frames, 2.44 s, sooner. What it takes:
+
+- `RipEar.Hear` gives frames whose fields end at two frames: `RipFrames` holds
+  one length for every field (`frames`, `extend`, `cut`), so either a count for
+  the notes model's fields (`Salience`, `Chroma`, `BassChroma`, `Strike`,
+  `Release`, `Velocity`) beside the others', or the two models' frames apart;
+- `RipStream` reads up to one frame (`heard`, `next`, `decode`'s `upto`):
+  `events` would read the pitched notes up to the notes model's front and the
+  hits up to the frame model's, and `count` each register's level and each
+  drum's loudest at its own;
+- a bar still freezes at the frame model's front, since its line is tracked on
+  the onset head and cued by the hits and the bass (`beats`, `lineCues`): what
+  comes sooner is a view's, the notes' fields in `Frames`, and the open bars'
+  notes if `Open` lays them on lines carried on at the beat held. Frozen bars
+  come sooner only if those lines are then held.
+
+### Hear again the frames a louder sample reaches
+
+- Priority: P3
+- Affected files: `ripmodel/ripmodel.go` (`ear`)
+
+A frame is scaled by the loudest sample heard when it came and run once, so a
+model's heads are the whole's from its reach past the recording's loudest
+sample; the frames before were scaled by the loudest of their time, and those
+within a reach of a new loudest sample read frames scaled by two levels.
+Hearing again, at each new loudest sample, the frames not yet given and the
+reach before them would make every frame given from then on the whole's: at
+the default wait each time runs the frame model over 555 frames again, 6.4 s
+of them, and the notes model over 345. Not taken: each frame runs once.
 
 ### Read more of a stream from outside
 
@@ -240,7 +296,8 @@ read was not taken, since `lay`'s `bright` pass alone is 28% of the stream's
 time through the analysis (a profile of the 140 bpm loop) and it would run
 three to four times as often there. The smallest close: a layout of the bars
 after the frozen ones alone, their brightness read over the notes not yet
-frozen. Through a model the spectrum comes with its frames, half a second to a
-second behind, though its `MelStream` holds each band 46 ms after the sound: a
+frozen. Through a model the spectrum comes with its frames, three to three and
+a half seconds behind, though its `MelStream` holds each band 46 ms after the
+sound: a
 view that wants it sooner needs the bands handed on before the frames they
 belong to.
