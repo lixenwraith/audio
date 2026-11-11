@@ -44,6 +44,11 @@ type RipStream struct {
 	y0   int
 	nx   int // samples at RipRate heard
 	next int // the frame the decoders next read up to
+	// the frames heard since the last Write began, wrote frames in, that the
+	// window has let go already, from frame late0: Frames' until the next Write
+	late         *RipFrames
+	late0, wrote int
+	flux         []float64 // the decoders' onset strength, the window's left as heard
 	// the loudest of each drum's onset strength and each onset band, and each
 	// register's loudest row a frame, over the frames up to counted
 	loud    [InstrClap]float64
@@ -71,7 +76,19 @@ type RipStream struct {
 	tail     []ripNote
 	tailHits [InstrClap][]int
 	hits     [InstrClap][]ripStreamHit
-	closed   bool
+	// the bars after the frozen ones as last laid out, and the frame of each
+	// one's line through the last one's end
+	open   []RipBar
+	openAt []int
+	closed bool
+}
+
+// RipOpenBar is a bar after a stream's frozen ones as its decoders last laid it
+// out, on the frames its line and the next bar's fall on, as Frames counts
+// them: provisional, as it may change until it freezes among Bars
+type RipOpenBar struct {
+	RipBar
+	Start, End int
 }
 
 // ripStreamHit is a frozen hit as the drums' tone reads it: where it starts, in
@@ -98,7 +115,7 @@ func NewRipStream(rp Ripper) (*RipStream, error) {
 		return nil, errors.New("rip: the front end cannot hear a recording as it plays")
 	}
 	p := rp.params()
-	ear, err := live.Ear(p)
+	ear, err := live.Ear(p, rp.Spectrum)
 	if err != nil {
 		return nil, err
 	}
@@ -124,6 +141,7 @@ func (s *RipStream) Write(x []float64, rate int) error {
 	if len(x) == 0 {
 		return nil
 	}
+	s.late, s.wrote = nil, s.heard()
 	s.n += len(x)
 	for _, v := range x {
 		s.kept = append(s.kept, float32(v))
@@ -159,6 +177,40 @@ func (s *RipStream) Bars() *Rip {
 	return &r
 }
 
+// Frames is the frames heard from frame since on, as the ear gave them, and the
+// index of the first given: since, or the first the stream still holds where
+// that is later, which a caller that asks after every Write never meets, as a
+// frame a Write hears stays until the next. It shares the stream's frames, so
+// it is read, not changed.
+func (s *RipStream) Frames(since int) (*RipFrames, int) {
+	from := min(max(since, s.w0), s.heard())
+	f := *s.f
+	f.cut(from-s.w0, f.frames())
+	if s.late == nil || since >= s.w0 {
+		return &f, from
+	}
+	from = max(since, s.late0)
+	late := *s.late
+	late.cut(from-s.late0, late.frames())
+	late.extend(&f)
+	return &late, from
+}
+
+// Open is the bars after the frozen ones as the decoders laid them out when the
+// last bar froze, the read that freezes a bar laying out those after it too:
+// provisional, and none before the first bars freeze or once the stream is
+// closed. It shares the stream's bars, so it is read, not changed.
+func (s *RipStream) Open() []RipOpenBar {
+	if len(s.open) == 0 {
+		return nil
+	}
+	out := make([]RipOpenBar, len(s.open))
+	for i, b := range s.open {
+		out[i] = RipOpenBar{RipBar: b, Start: s.openAt[i], End: s.openAt[i+1]}
+	}
+	return out
+}
+
 // Close hears the end of the recording, freezes every bar left and returns the
 // rip of everything heard: the bars frozen, the transcript of every note, the
 // voices a front end named and the drums' tone.
@@ -170,6 +222,7 @@ func (s *RipStream) Close() (*Rip, error) {
 	if s.rate == 0 || s.n < 4*s.rate {
 		return nil, errors.New("rip: the recording is shorter than four seconds")
 	}
+	s.late, s.wrote = nil, s.heard()
 	at := len(s.x)
 	s.x = s.res.close(s.x)
 	s.nx += len(s.x) - at
@@ -284,7 +337,11 @@ func (s *RipStream) decode(upto int, end bool) error {
 	for i, lh := range ripRegisters { // the ninetieth percentile, as register reads it
 		f.refs[lh] = s.levels[i].at(s.levels[i].n * 9 / 10)
 	}
-	f.flux(s.peak)
+	if f.bands[0] != nil { // against the loudest heard, on a copy: the window's stay as heard
+		s.flux = append(s.flux[:0], f.Flux...)
+		f.Flux = s.flux
+		f.flux(s.peak)
+	}
 	if !s.held && !end {
 		if _, tr := s.rp.track(&f, s.p); len(tr.pulses) <= StepsPerBeat*ripMeterBars*tr.k {
 			return nil
@@ -398,6 +455,10 @@ func (s *RipStream) freeze(f *RipFrames, x []float64, g ripGrid, ev ripEvents, f
 		}
 	}
 	r := g.lay(f, x, ev, s.tempo, shift, loud, s.p)
+	s.open, s.openAt = r.Bars[first+n:], s.openAt[:0]
+	for _, l := range g.lines[first+n:] {
+		s.openAt = append(s.openAt, s.w0+l)
+	}
 	frozen := func(frame int) bool {
 		bar, _, ok := g.at(frame)
 		switch {
@@ -475,6 +536,15 @@ func (s *RipStream) drop(w int) {
 	w = min(w, s.heard())
 	if w <= s.w0 {
 		return
+	}
+	if a := max(s.w0, s.wrote); a < w {
+		late := *s.f
+		late.cut(a-s.w0, w-s.w0)
+		if s.late == nil {
+			s.late, s.late0 = &late, a
+		} else {
+			s.late.extend(&late)
+		}
 	}
 	s.f.cut(w-s.w0, s.f.frames())
 	cut := min((w-s.w0)*RipHop, len(s.x))

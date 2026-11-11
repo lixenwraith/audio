@@ -230,9 +230,10 @@ const (
 // notes model's reach, follows them, with the frames before them that reach or the
 // model's attention window reads, all against the loudest sample heard by then. Its
 // frames are the same whatever the blocks, and once the recording's loudest is
-// heard the notes model hears each frame as in the whole, to rounding.
-func (fe *FrontEnd) Ear(audio.RipParams) (audio.RipEar, error) {
-	e := &ear{fe: fe, mel: audio.NewMelStream(), ahead: int(math.Round(earAhead / audio.RipFrameSec)),
+// heard the notes model hears each frame as in the whole, to rounding. Asked for
+// the spectrum, it gives each frame's mel bands, the samples as they are.
+func (fe *FrontEnd) Ear(_ audio.RipParams, spectrum bool) (audio.RipEar, error) {
+	e := &ear{fe: fe, spectrum: spectrum, mel: audio.NewMelStream(), ahead: int(math.Round(earAhead / audio.RipFrameSec)),
 		step: int(math.Round(earStep / audio.RipFrameSec)), left: fe.Model.Config().Window}
 	if fe.Notes != nil {
 		r := reach(fe.Notes.Config().Cells)
@@ -269,6 +270,9 @@ type ear struct {
 	// frames a frame waits for before it is heard, frames heard at once, and the
 	// frames before them the model and the notes model read
 	ahead, step, left, notesLeft int
+	// the frames heard and not yet given, their bands' energies, when asked
+	spectrum bool
+	given    []float32
 }
 
 // Hear takes the next samples at RipRate and returns the frames heard, each step
@@ -279,7 +283,7 @@ func (e *ear) Hear(x []float64) (*audio.RipFrames, error) {
 		k := min(max(e.ready()-e.n, 0), len(x))
 		e.write(x[:k])
 		if x = x[k:]; e.n < e.ready() {
-			return e.fe.read(out, notes), nil
+			return e.give(out, notes), nil
 		}
 		o, n := e.hear(e.next + e.step)
 		out, notes = append(out, o...), append(notes, n...)
@@ -289,7 +293,14 @@ func (e *ear) Hear(x []float64) (*audio.RipFrames, error) {
 // Close hears the frames left, the recording's end after them
 func (e *ear) Close() (*audio.RipFrames, error) {
 	e.e = append(e.e, e.mel.Close()...)
-	return e.fe.read(e.hear(e.e0 + len(e.e))), nil
+	return e.give(e.hear(e.e0 + len(e.e))), nil
+}
+
+// give is the frames the models' outputs say, with their spectrum when asked
+func (e *ear) give(out, notes [][]float32) *audio.RipFrames {
+	f := e.fe.read(out, notes)
+	f.Spectrum, e.given = e.given, nil
+	return f
 }
 
 // ready is the samples heard once the frames the next step waits for are in
@@ -352,6 +363,13 @@ func (e *ear) hear(upto int) (out, notes [][]float32) {
 	if e.fe.Notes != nil {
 		b := max(e.next-e.notesLeft, e.e0)
 		notes = e.fe.Notes.Forward(stacked(in[b-e.e0:]))[e.next-b : upto-b]
+	}
+	if e.spectrum {
+		for _, row := range e.e[e.next-e.e0 : upto-e.e0] {
+			for _, v := range row {
+				e.given = append(e.given, float32(v))
+			}
+		}
 	}
 	e.next = upto
 	if drop := e.next - max(e.left, e.notesLeft) - e.e0; drop > 0 {

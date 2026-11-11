@@ -338,6 +338,9 @@ type RipFrames struct {
 	Release            []float32 // frames × RipPitches, how surely each pitch is let go there, or nil
 	Velocity           []float32 // frames × RipPitches, how hard a pitch struck there was struck, or nil
 	Family             []float32 // frames × len(RipFamilies), how surely each family plays there, summing to 1, or nil
+	// Spectrum is what the frames were read from, frames × RipMelBands, each
+	// band's energy as MelStream gives it: a stream's whose Ripper asks, else nil
+	Spectrum []float32
 	// bands are the analysis's onset bands per frame, under 200 Hz, to 4 kHz and
 	// over 5 kHz, the onset strength read from them against each one's loudest;
 	// nil from a model
@@ -367,6 +370,7 @@ func (f *RipFrames) fields(visit func(field any, per int)) {
 	visit(&f.Wave, len(VoiceWaves))
 	visit(&f.Voice, VoiceGeneCount)
 	visit(&f.Family, len(RipFamilies))
+	visit(&f.Spectrum, RipMelBands)
 	for b := range f.bands {
 		visit(&f.bands[b], 1)
 	}
@@ -378,7 +382,7 @@ func (f *RipFrames) extend(g *RipFrames) {
 		return
 	}
 	f.Hop, f.Tuning = g.Hop, g.Tuning
-	var from []any
+	from := make([]any, 0, 24) // every field's, at one allocation
 	g.fields(func(field any, _ int) { from = append(from, field) })
 	i := 0
 	f.fields(func(field any, _ int) {
@@ -430,10 +434,11 @@ type RipEar interface {
 	Close() (*RipFrames, error)
 }
 
-// RipLiveFrontEnd is a front end that can also hear a recording as it plays
+// RipLiveFrontEnd is a front end that can also hear a recording as it plays;
+// an ear asked for the spectrum gives each frame's (RipFrames.Spectrum)
 type RipLiveFrontEnd interface {
 	RipFrontEnd
-	Ear(p RipParams) (RipEar, error)
+	Ear(p RipParams, spectrum bool) (RipEar, error)
 }
 
 // Ripper rips with a front end of its choosing; a nil FrontEnd is the package's
@@ -449,6 +454,9 @@ type Ripper struct {
 	// Meter pins the bars' meter, the bar line still decoded; nil decodes it,
 	// or reads 4/4 under a Grid pinned with its downbeat
 	Meter *Meter
+	// Spectrum has a stream's frames keep the spectrum they were read from
+	// (RipFrames.Spectrum), for a view of the rip at work
+	Spectrum bool
 }
 
 // RipGrid pins the grid a recording is read on, as a render's is known, so a
@@ -942,7 +950,13 @@ func (analysis) Hear(x []float64, rate int, p RipParams) (*RipFrames, error) {
 // Ear is the analysis as a recording plays: the frames it gives the whole, the
 // tuning read over the first ripEarTune seconds and held, the onset strength's
 // bands against their loudest so far.
-func (analysis) Ear(p RipParams) (RipEar, error) { return newAnalysisEar(p), nil }
+func (analysis) Ear(p RipParams, spectrum bool) (RipEar, error) {
+	e := newAnalysisEar(p)
+	if spectrum {
+		e.edges, e.mel = melEdges(), make([]float64, RipMelBands)
+	}
+	return e, nil
+}
 
 // ripEarTune is the seconds a live analysis reads the tuning over before it
 // hears a frame, or the whole recording when shorter
@@ -986,6 +1000,8 @@ type analysisEar struct {
 	out  *RipFrames
 	rise [4]float64
 	peak [3]float64
+	// the mel bands' edges and a frame's energies, when the spectrum is asked
+	edges, mel []float64
 }
 
 func newAnalysisEar(p RipParams) *analysisEar {
@@ -1163,6 +1179,12 @@ func (e *analysisEar) finish(c int) {
 	binHz := float64(RipRate) / RipN
 	f := e.out
 	row := e.ring[c%ripKernel]
+	if e.edges != nil {
+		melBands(row, e.edges, e.mel)
+		for _, v := range e.mel {
+			f.Spectrum = append(f.Spectrum, float32(v))
+		}
+	}
 	for k := range e.hrow {
 		e.hrow[k] = e.timeMed[k].sorted[len(e.timeMed[k].sorted)/2]
 	}
@@ -1336,14 +1358,20 @@ type MelStream struct {
 
 // NewMelStream starts a stream at the recording's first sample
 func NewMelStream() *MelStream {
+	return &MelStream{s: newSTFT(RipN), frame: make([]float64, RipN), edges: melEdges()}
+}
+
+// melEdges is the mel bands' edges in the transform's bins: RipMelBands
+// triangles from 30 Hz to the top of the band, evenly apart on the mel scale
+func melEdges() []float64 {
 	mel := func(hz float64) float64 { return 2595 * math.Log10(1+hz/700) }
 	hz := func(m float64) float64 { return 700 * (math.Pow(10, m/2595) - 1) }
 	lo, hi := mel(30), mel(RipRate/2)
-	m := &MelStream{s: newSTFT(RipN), frame: make([]float64, RipN), edges: make([]float64, RipMelBands+2)}
-	for i := range m.edges {
-		m.edges[i] = hz(lo+(hi-lo)*float64(i)/float64(RipMelBands+1)) * RipN / RipRate // in bins
+	edges := make([]float64, RipMelBands+2)
+	for i := range edges {
+		edges[i] = hz(lo+(hi-lo)*float64(i)/float64(RipMelBands+1)) * RipN / RipRate // in bins
 	}
-	return m
+	return edges
 }
 
 // Write takes the next samples at RipRate and returns the frames they finish
@@ -1381,11 +1409,18 @@ func (m *MelStream) bands(t int) []float64 {
 			}
 		}
 	}
-	mag := m.s.at(m.frame, RipN/2)
-	scale := 1 / float64(RipN/4) // a unit sine's peak magnitude under the window
 	out := make([]float64, RipMelBands)
+	melBands(m.s.at(m.frame, RipN/2), m.edges, out)
+	return out
+}
+
+// melBands sets out to the energy under each mel band of a frame's magnitude
+// spectrum
+func melBands(mag, edges, out []float64) {
+	const bins = RipN/2 + 1
+	scale := 1 / float64(RipN/4) // a unit sine's peak magnitude under the window
 	for b := range RipMelBands {
-		l, c, r := m.edges[b], m.edges[b+1], m.edges[b+2]
+		l, c, r := edges[b], edges[b+1], edges[b+2]
 		var e float64
 		for k := max(int(l), 0); k <= int(r) && k < bins; k++ {
 			var w float64
@@ -1401,7 +1436,6 @@ func (m *MelStream) bands(t int) []float64 {
 		}
 		out[b] = e
 	}
-	return out
 }
 
 // tuning is the cents a recording's pitches sit off equal temperament at A440:

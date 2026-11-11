@@ -529,3 +529,20 @@ that a document now states, and link the document instead.
   five early bars the stream placed one note a step later than `RipSamples`.
   Before calling such a bar a stream bug, compare the shift the stream froze it
   with (`RipStream.lag` × `stepFrames`) with the offline grid's.
+- **The decoders read a frame's onset strength against the loudest heard, so
+  they read a copy.** `decode` renormalises the analysis's flux at every read
+  (`RipStream.flux`); done in place, what `Frames` gives would depend on the
+  blocks. The loop reaches its loudest onset in its first bar, which hides
+  that: a test of what a stream gives ramps the recording's level.
+- **A stream can hear a frame and let go of it within one `Write`.** The
+  analysis's first eight seconds of frames arrive at once, and a block longer
+  than about four bars freezes past its own start; `drop` keeps such frames in
+  `late` until the next `Write`, or a view asking after every `Write` misses
+  them. `TestRipStreamGivesEachFrameOnce` feeds six-second blocks to reach it.
+- **A per-frame field is one line in `RipFrames.fields`, and `extend`'s list
+  is sized for them.** A seventeenth field grew that list past its capacity at
+  every extend: 423 allocations and 247 KB more a 20 s stream that read
+  nothing. Run `BenchmarkRipStream/unread` before and after a new field.
+- **The layout is the dear part of a read that freezes.** `lay` is 28% of the
+  stream's time through the analysis in `bright` alone, so `Open` hands on the
+  bars the freezing read laid out and no read lays out for it.

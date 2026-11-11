@@ -779,6 +779,23 @@ bars from the third on, note for note; a lag taken as the notes come can round a
 note to the next step where the whole's does not (one note a bar in the third to
 seventh bars of a loop at 175 bpm, read at 88).
 
+A stream is read from outside too, for a view of the rip at work. `Frames`
+gives the frames heard from a frame on, as the ear gave them, and the index of
+the first given: they stay while the decoders read them, and one a `Write`
+hears stays until the next, so a caller that asks after every `Write` gets each
+frame once, whatever the blocks. Under `Ripper.Spectrum` each frame carries the
+spectrum it was read from (`RipFrames.Spectrum`), `MelStream`'s bands of the
+samples as they are, the same through either ear: the analysis reduces the
+transform it makes and a model's ear hands on its own bands, so none is made
+twice, and none is made or held unasked. The frames come as the ear finishes
+them: through the analysis a third of a second behind the sound, none before
+the eight seconds its tuning reads; through a model half a second to a second
+behind, in its half-second steps. `Open` gives the bars after the frozen ones,
+each on the frames it spans (`RipOpenBar`), as they were laid out when the last
+bar froze, since the read that freezes a bar lays out those after it:
+provisional, renewed about once a bar, and on the engine's loop each is the bar
+that then freezes, note for note, its velocities settling.
+
 What it does not yet tell apart: a bass note's attack from a kick, a plucked
 chord's attack from a snare, two voices in one register, a note off the key
 from a change of key, and one meter from another within a recording. What it

@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"math"
 	"math/rand/v2"
 	"reflect"
 	"slices"
@@ -135,5 +136,160 @@ func TestRipStreamBarsAreTheSameWhateverTheBlocks(t *testing.T) {
 	}
 	if !reflect.DeepEqual(rips[0], rips[1]) {
 		t.Errorf("%d bars and %d notes in 50 ms blocks, %d and %d in others", len(rips[0].Bars), len(rips[0].Notes), len(rips[1].Bars), len(rips[1].Notes))
+	}
+}
+
+// TestRipStreamGivesEachFrameOnce: asked after every Write for the frames since
+// the last given, a caller gets every frame the stream heard, once and in order,
+// each with the bands MelStream gives it, the same in 50 ms blocks and in blocks
+// of six seconds, whose frames the window lets go of within the Write that
+// hears them.
+func TestRipStreamGivesEachFrameOnce(t *testing.T) {
+	const bpm, bars = 140, 8
+	ae, slots := startLoopEngine(t)
+	buf, err := ae.RenderMusic(slots, bpm, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range buf { // louder to its end, so the loudest onset heard keeps moving
+		buf[i] *= 0.5 + 0.5*float64(i)/float64(len(buf))
+	}
+	var given []*RipFrames
+	for _, block := range []int{AudioSampleRate / 20, 6 * AudioSampleRate} {
+		s, err := NewRipStream(Ripper{Params: DefaultRipParams(), Spectrum: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		all, next, late := &RipFrames{}, 0, false
+		take := func() {
+			f, from := s.Frames(next)
+			if from != next {
+				t.Fatalf("asked from frame %d, given from %d", next, from)
+			}
+			all.extend(f)
+			next, late = next+f.frames(), late || s.late != nil
+		}
+		for i := 0; i < len(buf); i += block {
+			if err := s.Write(buf[i:min(i+block, len(buf))], AudioSampleRate); err != nil {
+				t.Fatal(err)
+			}
+			take()
+		}
+		if _, err := s.Close(); err != nil {
+			t.Fatal(err)
+		}
+		take()
+		if next != s.heard() || next < len(buf)/AudioSampleRate*RipRate/RipHop {
+			t.Fatalf("%d frames given of %d heard, in %.1fs", next, s.heard(), float64(len(buf))/AudioSampleRate)
+		}
+		if given = append(given, all); late != (block > AudioSampleRate) {
+			t.Errorf("in blocks of %d samples, frames let go within a Write: %v", block, late)
+		}
+	}
+	if !reflect.DeepEqual(given[0], given[1]) {
+		t.Errorf("the %d frames given depend on the blocks", given[0].frames())
+	}
+	var bands []float32
+	ms := NewMelStream()
+	for _, row := range append(ms.Write(Resample(buf, AudioSampleRate, RipRate)), ms.Close()...) {
+		for _, v := range row {
+			bands = append(bands, float32(v))
+		}
+	}
+	if !slices.Equal(given[0].Spectrum, bands) {
+		t.Errorf("the spectrum given, %d bands, is not MelStream's %d", len(given[0].Spectrum), len(bands))
+	}
+}
+
+// TestRipStreamFreezesItsOpenBarsAsRead: no bar is open before the first freeze
+// and none once the stream is closed; between, the open bars follow the frozen
+// ones frame for frame, and each bar the loop then freezes, at the next freeze
+// or at Close, is the bar read open in its place, on its frames, note for note.
+func TestRipStreamFreezesItsOpenBarsAsRead(t *testing.T) {
+	const bpm, bars = 140, 8
+	ae, slots := startLoopEngine(t)
+	buf, err := ae.RenderMusic(slots, bpm, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewRipStream(Ripper{Params: DefaultRipParams()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame := func(sec float64) int { return int(math.Round(sec / RipFrameSec)) }
+	var open []RipOpenBar
+	frozen, read := 0, 0
+	// froze holds the bars frozen since the last read to the bars open at it
+	froze := func(r *Rip) {
+		for i, o := range open[:min(len(open), len(r.Bars)-frozen)] {
+			k := frozen + i
+			if at := frame(r.Beats[k*r.Meter.Beats()]); o.Start != at || BarDistance(&o.RipBar, &r.Bars[k]) != 0 {
+				t.Errorf("bar %d froze at frame %d as %v, read open at %d as %v", k, at, r.Bars[k], o.Start, o.RipBar)
+			}
+			read++
+		}
+		frozen = len(r.Bars)
+	}
+	for i, block := 0, AudioSampleRate/20; i < len(buf); i += block {
+		if err := s.Write(buf[i:min(i+block, len(buf))], AudioSampleRate); err != nil {
+			t.Fatal(err)
+		}
+		r := s.Bars()
+		if r == nil {
+			if s.Open() != nil {
+				t.Fatalf("at %.2fs a bar is open before any froze", float64(i+block)/AudioSampleRate)
+			}
+			continue
+		}
+		froze(r)
+		open = s.Open()
+		for j, o := range open {
+			if from := frame(r.Beats[len(r.Beats)-1]); j == 0 && o.Start != from || j > 0 && o.Start != open[j-1].End || o.End <= o.Start {
+				t.Fatalf("at %.2fs open bar %d spans frames %d to %d, the frozen bars ending at %d", float64(i+block)/AudioSampleRate, j, o.Start, o.End, from)
+			}
+		}
+	}
+	r, err := s.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if froze(r); read < 3 || s.Open() != nil {
+		t.Errorf("%d bars froze that were read open, of %d; %d open once closed", read, len(r.Bars), len(s.Open()))
+	}
+}
+
+// BenchmarkRipStream is a live rip of the loop, twelve bars in 50 ms blocks
+// through the analysis: unread, and read after every block as a view reads it,
+// the frames since the last with their spectrum and the open bars.
+func BenchmarkRipStream(b *testing.B) {
+	ae, slots := startLoopEngine(b)
+	buf, err := ae.RenderMusic(slots, 140, Meter{}, 12, DefaultRootNote, ScalePhrygian, nil, 1)
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, read := range []bool{false, true} {
+		b.Run(map[bool]string{false: "unread", true: "read"}[read], func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				s, err := NewRipStream(Ripper{Params: DefaultRipParams(), Spectrum: read})
+				if err != nil {
+					b.Fatal(err)
+				}
+				next := 0
+				for i, block := 0, AudioSampleRate/20; i < len(buf); i += block {
+					if err := s.Write(buf[i:min(i+block, len(buf))], AudioSampleRate); err != nil {
+						b.Fatal(err)
+					}
+					if read {
+						f, from := s.Frames(next)
+						next = from + f.frames()
+						s.Open()
+					}
+				}
+				if _, err := s.Close(); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
