@@ -893,9 +893,11 @@ func (f *RipFrames) fluxLevel() float64 {
 }
 
 // accAsk is what a rip asks of the accounting beside its notes: a judge to
-// rule in the installed scores' place
+// rule in the installed scores' place, every strike judged listed, and each
+// one's row with it
 type accAsk struct {
-	judge *RipJudge
+	judge         *RipJudge
+	strikes, rows bool
 }
 
 // accStrike is how sure a strike is for a judge to be asked of it, and
@@ -907,15 +909,31 @@ const accStrike, accJudgeBar = 0.5, 0.5
 // others account for goes; then every strike over the bar the decoder dropped is
 // judged against the notes kept, and comes back where its sound is its own. A
 // judge rules both in the scores' place, over every strike surer than accStrike.
-func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody []ripNote) ([]ripNote, []ripNote) {
+func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody []ripNote) ([]ripNote, []ripNote, []RipStrike) {
 	if f.Strike == nil {
-		return bass, melody
+		return bass, melody, nil
 	}
-	judge := ask.judge
+	judge, rows := ask.judge, ask.judge != nil || ask.strikes && ask.rows
 	refs := f.accRefs()
 	notes := accNotes(accDedup(slices.Concat(bass, melody)), false, f.Tuning, f.frames())
-	cands := accNotes(f.accCandidates(p, notes, refs, judge != nil), true, f.Tuning, f.frames())
+	lay := func(every bool) []*accNote {
+		return accNotes(f.accCandidates(p, notes, refs, every), true, f.Tuning, f.frames())
+	}
+	// the installed scores weigh the candidates over the decoder's bars; a judge
+	// rules every strike, which the read lists whoever rules
+	var cands, every []*accNote
+	if judge == nil {
+		cands = lay(false)
+	}
+	if judge != nil || ask.strikes {
+		every = lay(true)
+	}
 	all := slices.Concat(notes, cands)
+	if judge != nil {
+		cands, all = every, slices.Concat(notes, every)
+	} else if rows {
+		all = append(all, every...)
+	}
 	accMeasure(x, all)
 	accTerms(notes)
 	fit := newAccFit(notes, f.frames())
@@ -931,10 +949,26 @@ func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody [
 	}
 	ref := accRef(judged)
 	var flux float64
-	if judge != nil {
+	if rows {
 		flux = f.fluxLevel()
 	}
-	var row []float32
+	var scratch []float32
+	// row is a strike's row, one of its own where the read keeps the rows
+	row := func(n *accNote, in accInput) []float32 {
+		if scratch = f.row(scratch[:0], n, in, ref, refs, flux); ask.strikes && ask.rows {
+			return slices.Clone(scratch)
+		}
+		return scratch
+	}
+	var strikes []RipStrike
+	list := func(st RipStrike) {
+		if !ask.rows {
+			st.Row = nil
+		}
+		if ask.strikes {
+			strikes = append(strikes, st)
+		}
+	}
 	var kept, dropped []*accNote
 	for i, n := range notes {
 		if n.of != nil {
@@ -942,21 +976,29 @@ func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody [
 		}
 		// a held note whose harmonics all sit under louder pitches' is one the fit
 		// cannot see, a soft line under a chord: it stays on the heads' word
-		keep := ev[i].covered > accCovered && n.end-n.start >= accHeld
-		if !keep {
+		st := RipStrike{Frame: n.start, MIDI: n.midi, Reported: true, Held: ev[i].covered > accCovered && n.end-n.start >= accHeld}
+		if st.Kept = st.Held; !st.Held || ask.strikes {
 			in := f.accInput(n, ev[i], notes, refs)
+			if rows {
+				st.Row = row(n, in)
+			}
 			if judge != nil {
-				row = f.row(row[:0], n, in, ref, refs, flux)
-				keep = judge.odds(judgeReported, row) >= accJudgeBar
+				st.Odds = judge.odds(judgeReported, st.Row)
+				st.Kept = st.Held || st.Odds >= accJudgeBar
 			} else {
-				keep = accReported.odds(in, ref) >= accBar
+				st.Odds = accReported.odds(in, ref)
+				st.Kept = st.Held || st.Odds >= accBar
 			}
 		}
-		if keep {
+		if st.Kept {
 			kept = append(kept, n)
 		} else {
 			dropped = append(dropped, n)
 		}
+		if n.whole != nil {
+			st.MIDI = n.whole.midi
+		}
+		list(st)
 	}
 	// a kept sound's later cells explain what sounds over them, and are no notes
 	for _, n := range notes {
@@ -965,31 +1007,76 @@ func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody [
 		}
 	}
 	accRingOn(kept, dropped)
-	if reported := kept; len(cands) > 0 {
-		all, ev := fit.against(reported, cands)
+	reported, floor := kept, fit.b
+	if judge == nil && rows {
+		floor = slices.Clone(fit.b) // as it is before the candidates' fit moves it
+	}
+	var weighed []RipStrike // the candidates the installed scores weighed
+	if len(cands) > 0 {
+		all, ev := fit.against(reported, cands, fit.b)
 		for i, n := range all {
-			switch {
+			switch st := (RipStrike{Frame: n.start, MIDI: n.midi}); {
 			case !n.cand:
 			case judge != nil:
 				// its pitch rings where a kept note of it sounds, never another candidate
-				row = f.row(row[:0], n, f.accInput(n, ev[i], reported, refs), ref, refs, flux)
-				if judge.odds(judgeDropped, row) < accJudgeBar {
-					continue
+				st.Row = row(n, f.accInput(n, ev[i], reported, refs))
+				st.Odds = judge.odds(judgeDropped, st.Row)
+				if st.Kept = st.Odds >= accJudgeBar; st.Kept {
+					kept = append(kept, n)
 				}
-				kept = append(kept, n)
-				// on a pitch still sounding it ends the kept note before it, but for a
-				// followed sound, whose cells it is not the accounting's to part
-				for _, k := range reported {
-					if k.midi == n.midi && k.of == nil && k.whole == nil && k.start < n.start && k.end > n.start {
-						k.end = n.start
-					}
-				}
+				list(st)
 			default:
 				// a strike on a pitch still sounding is the decoder's StrikeAgain to judge: the
 				// fit cannot tell a held note's swell from a new strike, and one admitted cuts it
-				if in := f.accInput(n, ev[i], all, refs); !in.ringing && accCandidate.odds(in, ref) >= accCandBar {
+				in := f.accInput(n, ev[i], all, refs)
+				if !in.ringing || ask.strikes {
+					st.Odds = accCandidate.odds(in, ref)
+				}
+				if st.Kept = !in.ringing && st.Odds >= accCandBar; st.Kept {
 					kept = append(kept, n)
 				}
+				if ask.strikes {
+					weighed = append(weighed, st)
+				}
+			}
+		}
+	}
+	if judge != nil {
+		// a strike that came back on a pitch still sounding ends the kept note before
+		// it, but for a followed sound, whose cells are not the accounting's to part
+		for _, n := range kept[len(reported):] {
+			for _, k := range reported {
+				if k.midi == n.midi && k.of == nil && k.whole == nil && k.start < n.start && k.end > n.start {
+					k.end = n.start
+				}
+			}
+		}
+	} else if ask.strikes {
+		// every strike is listed as a judge would be asked of it, measured against
+		// the same kept notes, with what the installed scores made of the candidate
+		// of its pitch nearest it within StrikeGap
+		var ev []accEvidence
+		all, at, gap := every, len(strikes), int(p.StrikeGap/f.Hop)
+		if rows && len(every) > 0 {
+			all, ev = fit.against(reported, every, floor)
+		}
+		for i, n := range all {
+			if st := (RipStrike{Frame: n.start, MIDI: n.midi}); n.cand {
+				if rows {
+					st.Row = row(n, f.accInput(n, ev[i], reported, refs))
+				}
+				list(st)
+			}
+		}
+		for _, w := range weighed {
+			best, off := -1, gap
+			for i, st := range strikes[at:] {
+				if d := max(st.Frame-w.Frame, w.Frame-st.Frame); st.MIDI == w.MIDI && d < off {
+					best, off = at+i, d
+				}
+			}
+			if best >= 0 && (w.Kept || !strikes[best].Kept) {
+				strikes[best].Odds, strikes[best].Kept = w.Odds, w.Kept
 			}
 		}
 	}
@@ -1011,17 +1098,18 @@ func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody [
 	byStart := func(a, b ripNote) int { return cmp.Or(a.start-b.start, a.midi-b.midi) }
 	slices.SortFunc(bass, byStart)
 	slices.SortFunc(melody, byStart)
-	return bass, melody
+	slices.SortStableFunc(strikes, func(a, b RipStrike) int { return cmp.Or(a.Frame-b.Frame, a.MIDI-b.MIDI) })
+	return bass, melody, strikes
 }
 
 // against fits the candidates against the notes kept, whose activations hold,
-// on the fit's templates and floor, and returns them together in the order
-// fitted and each one's evidence
-func (f *accFit) against(kept, cands []*accNote) ([]*accNote, []accEvidence) {
+// on the fit's templates and the floor b, which it moves, and returns them
+// together in the order fitted and each one's evidence
+func (f *accFit) against(kept, cands []*accNote, b []float32) ([]*accNote, []accEvidence) {
 	all := slices.Concat(kept, cands)
 	slices.SortFunc(all, byFrame)
 	accTerms(all)
-	fit := &accFit{notes: all, w: f.w, b: f.b, local: make([]int, len(all))}
+	fit := &accFit{notes: all, w: f.w, b: b, local: make([]int, len(all))}
 	for i := range fit.local {
 		fit.local[i] = -1
 	}
