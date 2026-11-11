@@ -97,6 +97,44 @@ under the reference outweighing it; candidates under a ring with new sound,
 a sure pitch head and a sure strike are right in only half of the clean
 take's cases and a tenth of the Pixel take's, so no rule admits them yet.
 
+### Close what a judge leaves open
+
+- Priority: P1
+- Affected files: `account.go`, `judge.go`, `ripstream.go`
+
+A judge can rule the accounting's verdicts ([Audio
+§9](audio.md#9-ripping-a-recording)); none is accepted or shipped yet, and the
+installed scores stay until one is. What the stage leaves open:
+
+- **A returned strike's end.** It ends at the next strike over a half of its
+  pitch, whatever became of that strike, where a reported note sounds on
+  through a dropped restrike (`accRingOn`); with the bar at a half more strikes
+  cut it short. Not taken, as the count a judge is fitted and read by is of
+  pitch and onset. The smallest close: `accRingOn` over the strikes that came
+  back and the candidates dropped, read on note lengths against a truth's.
+- **A followed sound is not cut.** A strike that comes back in the cell a
+  followed note was struck in starts a note beside it; ending the followed
+  note there would part its cells, which is the glides' decoding.
+- **Candidates never see each other.** Each is fitted against the kept notes
+  alone, as the installed candidates are, so two partials of one missed note
+  can both come back. Judged together, a bass note's partials took its sound.
+- **The rows a fit takes are not the rows its judge reads.** With no judge a
+  dropped strike is measured against the notes the installed scores kept,
+  under a judge against those it kept. The smallest close: rows written again
+  under the first judge, if a fit on them measures better.
+- **The file names the notes weights alone.** The row's flux is the frame
+  model's onset head, so a judge run beside another frame model reads another
+  flux. The smallest close: the file names both checksums.
+- **In a stream a row ends at the newest frame.** A strike within eight frames
+  of it reads zeros after it until the next read; frozen strikes are read two
+  bars behind and are whole. The flux's level is binned as the registers'
+  levels are, and counted as the ear gave it, which is not what the decoders
+  read through a front end whose flux a stream scales again (the analysis,
+  which hears no strikes).
+- **The read with no judge fits every strike a second time**, apart from the
+  installed candidates, whose fit moves the floor: 7% more of the loop's rip.
+  A judge's network is scalar float32, 0.16 M multiply-adds a strike.
+
 ### The misses and extras the ear still hears
 
 - Priority: P1
@@ -299,13 +337,11 @@ of them, and the notes model over 345. Not taken: each frame runs once.
 - Priority: P2
 - Affected files: `ripstream.go`, `rip.go`
 
-A view reads a stream's frames with their spectrum (`Frames`) and its open bars
-(`Open`) ([Audio §9](audio.md#9-ripping-a-recording)). Two reads are left.
-What the decoders made of a read, each candidate with what became of it, is
-not kept: it comes with the judge ([Stapes' rip design
-§7](https://github.com/lixenwraith/stapes/blob/main/doc/rip-design.md#7-plan)),
-whose verdicts are what a view shows. And the open bars are those of the last
-read that froze a bar, about a bar old: laying them out at every half-second
+A view reads a stream's frames with their spectrum (`Frames`), its open bars
+(`Open`) and the strikes judged with what became of each (`Strikes`) ([Audio
+§9](audio.md#9-ripping-a-recording)). The open bars and their strikes are
+those of the last read that froze a bar, about a bar old, and none come before
+the first bars freeze: laying them out at every half-second
 read was not taken, since `lay`'s `bright` pass alone is 28% of the stream's
 time through the analysis (a profile of the 140 bpm loop) and it would run
 three to four times as often there. The smallest close: a layout of the bars

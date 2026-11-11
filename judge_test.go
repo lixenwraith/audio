@@ -10,7 +10,11 @@ import (
 
 // judgeSaying is a judge of one unit a layer whose stages give the odds said
 // whatever the row
-func judgeSaying(odds [judgeStages]float64) *RipJudge {
+func judgeSaying(odds [judgeStages]float64) *RipJudge { return judgeSized(1, 1, odds) }
+
+// judgeSized is a judge of layers h1 and h2 wide whose stages give the odds
+// said whatever the row
+func judgeSized(h1, h2 int, odds [judgeStages]float64) *RipJudge {
 	j := &RipJudge{}
 	for s := range j.stages {
 		n := &j.stages[s]
@@ -18,8 +22,8 @@ func judgeSaying(odds [judgeStages]float64) *RipJudge {
 		for k := range n.spread {
 			n.spread[k] = 1
 		}
-		n.w = [3][]float32{make([]float32, RipRowSize), {0}, {0}}
-		n.b = [3][]float32{{0}, {0}, {float32(math.Log(odds[s] / (1 - odds[s])))}}
+		n.w = [3][]float32{make([]float32, h1*RipRowSize), make([]float32, h2*h1), make([]float32, h2)}
+		n.b = [3][]float32{make([]float32, h1), make([]float32, h2), {float32(math.Log(odds[s] / (1 - odds[s])))}}
 	}
 	return j
 }

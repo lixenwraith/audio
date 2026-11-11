@@ -361,7 +361,10 @@ func (s *RipStream) decode(upto int, end bool) error {
 	if !end {
 		x = x[:min(len(x), (upto-s.w0)*RipHop+RipN/2)]
 	}
-	f.loud, f.refs, f.fluxRef = s.loud, map[[2]int]float64{}, s.fluxes.at(s.fluxes.n*accRowFlux/100)
+	f.loud, f.refs = s.loud, map[[2]int]float64{}
+	if s.fluxes.n > 0 {
+		f.fluxRef = s.fluxes.at(s.fluxes.n * accRowFlux / 100)
+	}
 	for i, lh := range ripRegisters { // the ninetieth percentile, as register reads it
 		f.refs[lh] = s.levels[i].at(s.levels[i].n * 9 / 10)
 	}

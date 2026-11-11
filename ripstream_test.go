@@ -2,6 +2,7 @@ package audio
 
 import (
 	"cmp"
+	"maps"
 	"math"
 	"math/rand/v2"
 	"reflect"
@@ -359,20 +360,58 @@ func TestRipStreamGivesTheStrikesOfTheFramesItHolds(t *testing.T) {
 	}
 }
 
-// BenchmarkRipStream is a live rip of the loop, twelve bars in 50 ms blocks
-// through the analysis: unread, and read after every block as a view reads it,
-// the frames since the last with their spectrum and the open bars.
+// ripWays are the ways a rip through a front end that hears strikes is
+// measured: with no judge, with one of the fitted size loaded, and with the
+// strikes read with their rows, as the rows a fit takes are written
+func ripWays() map[string]Ripper {
+	rp := Ripper{Params: DefaultRipParams(), FrontEnd: struck{}}
+	judged, read := rp, rp
+	judged.Judge = judgeSized(256, 64, [judgeStages]float64{0.9, 0.1})
+	read.Strikes, read.Rows = true, true
+	return map[string]Ripper{"unjudged": rp, "judged": judged, "read": read}
+}
+
+// BenchmarkRip is the offline rip of the loop, twelve bars, through a front end
+// that hears strikes, so the accounting runs, each of ripWays.
+func BenchmarkRip(b *testing.B) {
+	ae, slots := startLoopEngine(b)
+	buf, err := ae.RenderMusic(slots, 140, Meter{}, 12, DefaultRootNote, ScalePhrygian, nil, 1)
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, way := range slices.Sorted(maps.Keys(ripWays())) {
+		rp := ripWays()[way]
+		b.Run(way, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := rp.Samples(buf, AudioSampleRate); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+// BenchmarkRipStream is a live rip of the loop, twelve bars in 50 ms blocks:
+// through the analysis unread, and read after every block as a view reads it,
+// the frames since the last with their spectrum, the open bars and the
+// strikes; and through a front end that hears strikes, unread, each of ripWays.
 func BenchmarkRipStream(b *testing.B) {
 	ae, slots := startLoopEngine(b)
 	buf, err := ae.RenderMusic(slots, 140, Meter{}, 12, DefaultRootNote, ScalePhrygian, nil, 1)
 	if err != nil {
 		b.Fatal(err)
 	}
-	for _, read := range []bool{false, true} {
-		b.Run(map[bool]string{false: "unread", true: "read"}[read], func(b *testing.B) {
+	ways := map[string]Ripper{"unread": {Params: DefaultRipParams()}, "read": {Params: DefaultRipParams(), Spectrum: true, Strikes: true}}
+	for way, rp := range ripWays() {
+		ways["struck/"+way] = rp
+	}
+	for _, way := range slices.Sorted(maps.Keys(ways)) {
+		rp, read := ways[way], way == "read"
+		b.Run(way, func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
-				s, err := NewRipStream(Ripper{Params: DefaultRipParams(), Spectrum: read})
+				s, err := NewRipStream(rp)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -383,6 +422,7 @@ func BenchmarkRipStream(b *testing.B) {
 					}
 					if read {
 						f, from := s.Frames(next)
+						s.Strikes(next)
 						next = from + f.frames()
 						s.Open()
 					}
