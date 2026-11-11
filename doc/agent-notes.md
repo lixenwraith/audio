@@ -530,10 +530,12 @@ that a document now states, and link the document instead.
   in the trainer's held-out line, the share of readings within the stated
   error, and is mended there.
 - **A stage that reads a note's pitch off the recording reads a followed
-  sound in its first cell.** The decoder may place a note at a pitch its sound
-  only reaches later (a scoop), and the accounting dropped such a note for
-  having no sound at its own pitch at its start; `accNotes` measures it as the
-  note the strikes read and keeps the whole (`accNote.whole`). `bright` and
+  sound cell by cell.** The decoder may place a note at a pitch its sound only
+  reaches later (a scoop), and the accounting dropped such a note for having
+  no sound at its own pitch at its start: `accNotes` judges it as the note the
+  strikes read in its first cell (`accNote.whole`). Fitted there alone, it left
+  the octave over a glide's landing unexplained and that ghost stayed, so each
+  later cell is fitted too and never judged (`accNote.of`). `bright` and
   stapes' `support` still read a note at its written pitch.
 - **A note's last frames are its release, which no label asks the head
   about.** A bend read off the last frame alone came out a third of a semitone

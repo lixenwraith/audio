@@ -198,34 +198,62 @@ func TestTheMemoryTellsARingFromAStrike(t *testing.T) {
 	}
 }
 
+// accScoop is a recording of frames frames that plays F4 from frame from for
+// twelve frames, rises to G4 over thirty and holds it to end, with the frames a
+// front end hears of it and the one note of G4 the decoder follows it as
+func accScoop(frames, from, end int) (x []float64, f *RipFrames, followed ripNote) {
+	x = make([]float64, frames*RipHop)
+	for h := 1; h <= 8; h++ {
+		var phase float64
+		for i := from * RipHop; i < end*RipHop; i++ {
+			at := float64(i)/RipHop - float64(from)
+			phase += 2 * math.Pi * NoteFreq(65) * math.Pow(2, min(max(at-12, 0)/30, 1)*2/12) * float64(h) / RipRate
+			x[i] += 0.3 / float64(h) * math.Exp(-at*RipHop/RipRate*float64(h)) * math.Sin(phase)
+		}
+	}
+	cells := []ripVisit{{midi: 65, start: from, end: from + 20}, {midi: 66, start: from + 20, end: from + 35}, {midi: 67, start: from + 35, end: end}}
+	f = accFrames(frames, []ripNote{{start: from, end: from + 20, midi: 65}}, nil)
+	for _, v := range cells[1:] {
+		for t := v.start; t < v.end; t++ {
+			f.Salience[t*RipPitches+v.midi-RipMinMIDI] = 0.9
+		}
+	}
+	return x, f, ripNote{start: from, end: end, midi: 67, vel: 0.5, cells: cells}
+}
+
 // TestAFollowedSoundIsJudgedWhereItWasStruck: a note the decoder followed up two
 // cells from its strike and placed at the pitch it settles on is measured in the
 // cell it was struck in, where its sound is, and stays whole; the same note over
 // a recording that plays nothing in that cell goes whole.
 func TestAFollowedSoundIsJudgedWhereItWasStruck(t *testing.T) {
 	const frames, from, end = 400, 50, 140
-	scoop, held := make([]float64, frames*RipHop), make([]float64, frames*RipHop)
-	for h := 1; h <= 8; h++ {
-		var phase float64
-		for i := from * RipHop; i < end*RipHop; i++ {
-			at := float64(i)/RipHop - from // frames in: F4 for twelve, up to G4 over thirty, then held
-			phase += 2 * math.Pi * NoteFreq(65) * math.Pow(2, min(max(at-12, 0)/30, 1)*2/12) * float64(h) / RipRate
-			scoop[i] += 0.3 / float64(h) * math.Exp(-at*RipHop/RipRate*float64(h)) * math.Sin(phase)
-		}
-	}
-	accTone(held, 67, from+35, end, 0.3, 8)
-	cells := []ripVisit{{midi: 65, start: from, end: from + 20}, {midi: 66, start: from + 20, end: from + 35}, {midi: 67, start: from + 35, end: end}}
-	f := accFrames(frames, []ripNote{{start: from, end: from + 20, midi: 65}}, nil)
-	for _, v := range cells[1:] {
-		for t := v.start; t < v.end; t++ {
-			f.Salience[t*RipPitches+v.midi-RipMinMIDI] = 0.9
-		}
-	}
-	reported := []ripNote{{start: from, end: end, midi: 67, vel: 0.5, cells: cells}}
-	if _, melody := f.account(scoop, DefaultRipParams(), nil, slices.Clone(reported)); len(melody) != 1 || melody[0].midi != 67 || melody[0].end != end || len(melody[0].cells) != 3 {
+	scoop, f, followed := accScoop(frames, from, end)
+	if _, melody := f.account(scoop, DefaultRipParams(), nil, []ripNote{followed}); len(melody) != 1 || melody[0].midi != 67 || melody[0].end != end || len(melody[0].cells) != 3 {
 		t.Errorf("a scoop from F4 kept as %v, want the one note of G4 to its end with its cells", melody)
 	}
-	if bass, melody := f.account(held, DefaultRipParams(), nil, slices.Clone(reported)); len(bass)+len(melody) != 0 {
+	held := make([]float64, frames*RipHop)
+	accTone(held, 67, from+35, end, 0.3, 8)
+	if bass, melody := f.account(held, DefaultRipParams(), nil, []ripNote{followed}); len(bass)+len(melody) != 0 {
 		t.Errorf("a followed sound whose first cell the recording never plays kept as %v", melody)
+	}
+}
+
+// TestAFollowedSoundAccountsForTheCellsItMovedOnTo: a note heard an octave over
+// the pitch a scoop settles on, as it lands there, is the scoop's own harmonics
+// and goes, the scoop fitted in that cell too; one the recording plays stays.
+func TestAFollowedSoundAccountsForTheCellsItMovedOnTo(t *testing.T) {
+	const frames, from, end = 400, 50, 140
+	scoop, f, followed := accScoop(frames, from, end)
+	over := ripNote{start: from + 40, end: end, midi: 79, vel: 0.5}
+	for t := over.start; t < over.end; t++ {
+		f.Salience[t*RipPitches+over.midi-RipMinMIDI] = 0.9
+	}
+	f.Strike[over.start*RipPitches+over.midi-RipMinMIDI] = 0.95
+	if _, melody := f.account(scoop, DefaultRipParams(), nil, []ripNote{followed, over}); len(melody) != 1 || melody[0].midi != 67 {
+		t.Errorf("a ghost an octave over a scoop's landing kept: %v", accPitches(melody))
+	}
+	accTone(scoop, over.midi, over.start, over.end, 0.3, 8)
+	if _, melody := f.account(scoop, DefaultRipParams(), nil, []ripNote{followed, over}); len(melody) != 2 {
+		t.Errorf("a note played an octave over a scoop's landing read as %v", accPitches(melody))
 	}
 }

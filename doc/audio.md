@@ -733,9 +733,11 @@ on, and not written. A note struck again inside itself in its own cell is
 `StrikeAgain`'s to judge as before, since its frequency holds either way.
 
 The accounting measures a note at one pitch's harmonics, where a moving sound
-is not. It reads a followed sound in the cell it was struck in, while it sounds
-there, as the note the strikes read, and keeps or drops the whole on that
-verdict; and it does not bring back a strike in a cell a glide passed.
+is not. It fits a followed sound in every cell it visits, from its first entry
+to its last leaving, so what sounds over the pitch a glide lands on is held
+against the glide. Its verdict is read in the cell it was struck in, as the
+note the strikes read, and keeps or drops the whole; and no strike comes back
+in a cell a glide passed.
 
 The model's input (`features`) is each band in dB less the frame's mean, over
 80, and the mean, so the bands are level-free and loudness is one input. A model
