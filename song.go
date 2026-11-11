@@ -245,6 +245,15 @@ func LoadPatternFile(data []byte) (*PatternSpecFile, error) {
 // MarshalPatternFile emits patterns and songs together, as save writes them
 func MarshalPatternFile(f *PatternSpecFile) ([]byte, error) { return toml.Marshal(*f) }
 
+// SavePatternFile is MarshalPatternFile over src, the bytes the document was
+// loaded from: src's [macros], its own comments and the comment above each
+// entry stay, and every pattern and song is written anew, an invocation of
+// those macros where one expands to it. A comment inside an entry is lost; a
+// src holding nothing of its own, or none, gives MarshalPatternFile's bytes.
+func SavePatternFile(src []byte, f *PatternSpecFile) ([]byte, error) {
+	return saveOver(src, f, loadPatternSpecFile, "pattern", "song")
+}
+
 // Cluster groups n items whose distance stays within threshold: each its own
 // group at first, the two nearest groups merged while their mean distance holds
 // within it. It returns each item's group and each group's medoid, the member

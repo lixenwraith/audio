@@ -1045,6 +1045,340 @@ event = [{ macro = "Note", each = { pos = [0, 4, 8], deg = [0, 2, 4] } }]
 	}
 }
 
+// authoredMusic and authoredSounds stand in for documents a person wrote: a
+// comment of the file's, macros under one of their own, an entry a macro writes
+// and one no macro fits, each under a comment, a banner or one touching its
+// header, and a comment inside an entry.
+const authoredMusic = `# A tune as its author wrote it.
+
+[macros.Hit]
+params = { pos = "int", vel = "float" }
+defaults = { vel = 1.0 }
+body = { pos = "${pos}", vel = "${vel}" }
+
+# a lane is one drum at every pos
+[macros.Lane]
+params = { instr = "string", pos = "array" }
+body = { instr = "${instr}", event = [{ macro = "Hit", each = { pos = "${pos}" } }] }
+
+# ---------------
+# the rhythm
+
+[[pattern]]
+name = "beat"
+steps = 16
+[[pattern.track]]
+macro = "Lane"
+instr = "kick"
+pos = [0, 4, 8, 12]
+
+# the line bends
+[[pattern]]
+name = "line"
+steps = 16
+[[pattern.track]]
+instr = "lead"
+# no macro writes a bend
+event = [{ pos = 0, vel = 0.5, deg = 2, bend = 1.0 }]
+
+[[song]]
+name = "tune"
+bpm = 120
+root = 40
+scale = "minor"
+bars = [["beat", "line"]]
+`
+
+const authoredSounds = `# Sounds as their author wrote them.
+
+include = [ "more.toml" ] # beside this file
+
+# a blip is one sine
+[macros.Blip]
+params = { name = "string", freq = "float" }
+body = { name = "${name}", duration = 0.1, layer = [{ source = { kind = "osc", wave = "sine", freq = "${freq}" } }] }
+
+# the low one
+[[sound]]
+macro = "Blip"
+name = "low"
+freq = 220
+
+[[sound]]
+name = "hiss"
+duration = 0.05
+[[sound.layer]]
+# no macro writes noise
+source = { kind = "noise" }
+
+[[voice]]
+name = "lead"
+wave = "square"
+`
+
+// asAuthored fails unless out, a save over src, holds src up to its first entry
+// byte for byte and each of wants among the entries after it
+func asAuthored(t *testing.T, src, out []byte, first string, wants ...string) {
+	t.Helper()
+	own := src[:bytes.Index(src, []byte(first))]
+	if !bytes.HasPrefix(out, own) {
+		t.Fatalf("the source's own text moved:\n%s", out)
+	}
+	for _, want := range wants {
+		if !bytes.Contains(out[len(own):], []byte(want)) {
+			t.Errorf("the entries lack %q:\n%s", want, out[len(own):])
+		}
+	}
+}
+
+// TestSavedMusicIsStillItsAuthors is the rule that a save keeps what a music
+// document's author wrote: its macros and its own comments byte for byte, the
+// comment above each entry, an edited entry as the invocation that still writes
+// it, one no macro fits written out beside it, and what the session holds.
+func TestSavedMusicIsStillItsAuthors(t *testing.T) {
+	src := []byte(authoredMusic)
+	f, err := LoadPatternFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Pattern[0].Track[0].Event = f.Pattern[0].Track[0].Event[:2]
+	out, err := SavePatternFile(src, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asAuthored(t, src, out, "# -----",
+		"# ---------------\n# the rhythm\n\n[[pattern]]\nname = \"beat\"\n",
+		"macro = \"Lane\"\ninstr = \"kick\"\npos = [0, 4]\n",
+		"# the line bends\n[[pattern]]\nname = \"line\"\n",
+		"[[pattern.track.event]]\nbend = 1.0\ndeg = 2\npos = 0\nvel = 0.5\n")
+	want, _ := MarshalPatternFile(f)
+	if got, err := reloaded(loadPatternSpecFile, out); err != nil || !bytes.Equal(got, want) {
+		t.Errorf("the saved document loads to other definitions (%v):\n%s", err, out)
+	}
+}
+
+// TestSavedSoundsAreStillTheirAuthors is the same rule for a sound document,
+// whose include stays as written where the session holds the same.
+func TestSavedSoundsAreStillTheirAuthors(t *testing.T) {
+	src := []byte(authoredSounds)
+	f, err := decodeSpecFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Sound[0].Layer[0].Source.Freq = 330
+	out, err := SaveSoundsFile(src, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asAuthored(t, src, out, "# the low one",
+		"# the low one\n[[sound]]\nmacro = \"Blip\"\nfreq = 330.0\nname = \"low\"\n",
+		"[sound.layer.source]\nkind = \"noise\"\n")
+	want, _ := MarshalSoundsFile(f)
+	if got, err := reloaded(decodeSpecFile, out); err != nil || !bytes.Equal(got, want) {
+		t.Errorf("the saved document loads to other definitions (%v):\n%s", err, out)
+	}
+}
+
+// TestACommentFollowsItsEntryByName is the rule that the comment above an
+// entry is that entry's: it moves with it and goes when the session renames or
+// removes it, and a table that expands to several entries loses its own, no
+// one entry being what it stood above, while the tables beside it keep theirs.
+func TestACommentFollowsItsEntryByName(t *testing.T) {
+	src := []byte(authoredMusic)
+	f, err := LoadPatternFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	save := func(src []byte, f *PatternSpecFile) string {
+		out, err := SavePatternFile(src, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(out)
+	}
+	beat, line := f.Pattern[0], f.Pattern[1]
+	banner := "# ---------------\n# the rhythm\n\n[[pattern]]\nname = \"beat\"\n"
+	note := "# the line bends\n[[pattern]]\nname = \"line\"\n"
+	moved := save(src, &PatternSpecFile{Pattern: []*PatternDef{line, beat}})
+	if at := strings.Index(moved, banner); at < 0 || !strings.Contains(moved[:at], note) {
+		t.Errorf("a comment did not move with its entry:\n%s", moved)
+	}
+	solo := *line
+	solo.Name = "solo"
+	gone := save(src, &PatternSpecFile{Pattern: []*PatternDef{&solo}})
+	asAuthored(t, src, []byte(gone), "# -----")
+	if strings.Contains(gone, "# the rhythm") || strings.Contains(gone, "# the line bends") {
+		t.Errorf("a removed or a renamed entry kept its comment:\n%s", gone)
+	}
+	pair := []byte("[macros.Pair]\nparams = { name = \"string\" }\n" +
+		"body = [{ name = \"${name}_a\", steps = 16, track = [] }, { name = \"${name}_b\", steps = 16, track = [] }]\n\n" +
+		"# both halves\n[[pattern]]\nmacro = \"Pair\"\nname = \"half\"\n\n# alone\n[[pattern]]\nname = \"one\"\nsteps = 16\ntrack = []\n")
+	g, err := LoadPatternFile(pair)
+	if err != nil {
+		t.Fatal(err)
+	}
+	halves := save(pair, g)
+	asAuthored(t, pair, []byte(halves), "# both halves", "# alone\n[[pattern]]\nname = \"one\"\n")
+	if strings.Contains(halves, "# both halves") {
+		t.Errorf("a table that expands to two entries kept its comment:\n%s", halves)
+	}
+}
+
+// TestSavingASavedDocumentChangesNoByte is the rule that a save is a fixed
+// point: what it wrote, loaded and saved over itself, is the same bytes.
+func TestSavingASavedDocumentChangesNoByte(t *testing.T) {
+	music := func(src []byte) ([]byte, error) {
+		f, err := LoadPatternFile(src)
+		if err != nil {
+			return nil, err
+		}
+		return SavePatternFile(src, f)
+	}
+	sounds := func(src []byte) ([]byte, error) {
+		f, err := decodeSpecFile(src)
+		if err != nil {
+			return nil, err
+		}
+		return SaveSoundsFile(src, f)
+	}
+	for src, save := range map[string]func([]byte) ([]byte, error){authoredMusic: music, authoredSounds: sounds} {
+		once, err := save([]byte(src))
+		if err != nil {
+			t.Fatal(err)
+		}
+		twice, err := save(once)
+		if err != nil || !bytes.Equal(once, twice) {
+			t.Errorf("a second save moved the document (%v):\n%s\n%s", err, once, twice)
+		}
+	}
+}
+
+// TestACommentThatEndsWhatStaysSettlesInOneSave is the rule that a comment
+// closing the source's own text under a blank line, the file's last or one
+// between the macros and the entries, is kept as the first entry's and the
+// save is a fixed point at once, whatever blank lines stood around it.
+func TestACommentThatEndsWhatStaysSettlesInOneSave(t *testing.T) {
+	macros := authoredMusic[:strings.Index(authoredMusic, "# -----")]
+	entry := "[[pattern]]\nname = \"a\"\nsteps = 16\ntrack = []\n"
+	comments := func(doc string) int { return strings.Count("\n"+doc, "\n#") }
+	for name, src := range map[string]string{
+		"the file's last":   macros + "\n" + entry + "\n# the end\n",
+		"nearer the macros": macros + "\n# so much for the macros\n\n\n\n" + entry,
+	} {
+		f, err := LoadPatternFile([]byte(src))
+		if err != nil {
+			t.Fatal(err)
+		}
+		once, err := SavePatternFile([]byte(src), f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		twice, err := SavePatternFile(once, f)
+		if err != nil || !bytes.Equal(once, twice) || comments(string(once)) != comments(src) {
+			t.Errorf("%s: a second save moved the document, or a comment went (%v):\n%s\n%s", name, err, once, twice)
+		}
+	}
+}
+
+// TestASourceWithNothingOfItsOwnSavesAsMarshalled is the rule that a source
+// holding only what Marshal wrote, or no source, gives Marshal's bytes: a
+// document no person wrote stays as it was made, whatever the session changed.
+func TestASourceWithNothingOfItsOwnSavesAsMarshalled(t *testing.T) {
+	music, err := LoadPatternFile([]byte(authoredMusic))
+	if err != nil {
+		t.Fatal(err)
+	}
+	songs := &PatternSpecFile{Song: music.Song}
+	for _, f := range []*PatternSpecFile{music, songs} {
+		want, _ := MarshalPatternFile(f)
+		for _, made := range []*PatternSpecFile{nil, music, songs} {
+			var src []byte
+			if made != nil {
+				src, _ = MarshalPatternFile(made)
+			}
+			if got, err := SavePatternFile(src, f); err != nil || !bytes.Equal(got, want) {
+				t.Errorf("music over %q (%v):\n%s\nwant\n%s", src, err, got, want)
+			}
+		}
+	}
+	sounds, err := decodeSpecFile([]byte(authoredSounds))
+	if err != nil {
+		t.Fatal(err)
+	}
+	voices := &SoundSpecFile{Voice: sounds.Voice}
+	for _, f := range []*SoundSpecFile{sounds, voices} {
+		want, _ := MarshalSoundsFile(f)
+		for _, made := range []*SoundSpecFile{nil, sounds, voices} {
+			var src []byte
+			if made != nil {
+				src, _ = MarshalSoundsFile(made)
+			}
+			if got, err := SaveSoundsFile(src, f); err != nil || !bytes.Equal(got, want) {
+				t.Errorf("sounds over %q (%v):\n%s\nwant\n%s", src, err, got, want)
+			}
+		}
+	}
+}
+
+// TestSaveWritesTheSessionsInclude is the rule that include is the session's:
+// as its author wrote it where the session holds the same, set in place where
+// it differs, deleted where the session has none, and added above the first
+// table where the source had none, the rest of the source as written.
+func TestSaveWritesTheSessionsInclude(t *testing.T) {
+	const line = "include = [ \"more.toml\" ] # beside this file\n"
+	bare := strings.Replace(authoredSounds, line+"\n", "", 1)
+	macros := bare[strings.Index(bare, "# a blip"):strings.Index(bare, "# the low one")]
+	for name, c := range map[string]struct {
+		src     string
+		include []string
+		want    string
+	}{
+		"kept":    {authoredSounds, []string{"more.toml"}, line},
+		"changed": {authoredSounds, []string{"a.toml", "b.toml"}, "include = [\"a.toml\", \"b.toml\"] # beside this file\n"},
+		"removed": {authoredSounds, nil, ""},
+		"added":   {bare, []string{"new.toml"}, "include = [\"new.toml\"]\n"},
+	} {
+		f, err := decodeSpecFile([]byte(c.src))
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.Include = c.include
+		out, err := SaveSoundsFile([]byte(c.src), f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got string
+		for l := range strings.Lines(string(out)) {
+			if strings.HasPrefix(l, "include") {
+				got += l
+			}
+		}
+		back, err := decodeSpecFile(out)
+		if err != nil || got != c.want || !slices.Equal(back.Include, c.include) || !strings.Contains(string(out), macros) {
+			t.Errorf("%s: include reads %q, want %q under the macros as written (%v):\n%s", name, got, c.want, err, out)
+		}
+	}
+}
+
+// TestAnEntryThatLoadsBackDifferentIsNamed is the rule the save's check stands
+// on: of two documents under the same macros that differ in what one entry
+// means, that entry is named, however the others are spelled.
+func TestAnEntryThatLoadsBackDifferentIsNamed(t *testing.T) {
+	frame := []byte(authoredMusic[:strings.Index(authoredMusic, "# -----")])
+	lane := func(name, pos string) []byte {
+		return []byte("[[pattern]]\nname = \"" + name + "\"\nsteps = 16\n[[pattern.track]]\nmacro = \"Lane\"\ninstr = \"kick\"\npos = " + pos + "\n")
+	}
+	a := [][]byte{lane("a", "[0, 8]"), lane("b", "[4, 12]"), lane("c", "[2]")}
+	b := [][]byte{
+		[]byte("[[pattern]]\nname = \"a\"\nsteps = 16\n[[pattern.track]]\ninstr = \"kick\"\nevent = [{ pos = 0, vel = 1.0 }, { pos = 8, vel = 1.0 }]\n"),
+		lane("b", "[4, 13]"),
+		lane("c", "[2]"),
+	}
+	if got := strays(frame, a, b, loadPatternSpecFile); !slices.Equal(got, []int{1}) {
+		t.Errorf("entries %v differ, want the second alone", got)
+	}
+}
+
 // TestVoiceDocumentAddsAnInstrument is the rule that a [[voice]] in the sound
 // document is an instrument patterns name: a model name retunes that instrument in
 // place, a new name adds one, and a pattern's def carries the name both ways.
