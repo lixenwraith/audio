@@ -382,7 +382,7 @@ func (f *RipFrames) extend(g *RipFrames) {
 		return
 	}
 	f.Hop, f.Tuning = g.Hop, g.Tuning
-	var from []any
+	from := make([]any, 0, 24) // every field's, at one allocation
 	g.fields(func(field any, _ int) { from = append(from, field) })
 	i := 0
 	f.fields(func(field any, _ int) {

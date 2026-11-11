@@ -14,7 +14,7 @@ import (
 // startLoopEngine starts a null engine on the test bank with a snare, a hihat,
 // saw voices and three patterns, a beat, a melody and a bass line, so a loop the
 // engine renders of them has a rip a perfect listener would make
-func startLoopEngine(t *testing.T) (*AudioEngine, [MusicSlots]PatternID) {
+func startLoopEngine(t testing.TB) (*AudioEngine, [MusicSlots]PatternID) {
 	t.Helper()
 	t.Cleanup(ResetRegistries)
 	ResetRegistries()

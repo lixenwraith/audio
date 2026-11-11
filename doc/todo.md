@@ -223,3 +223,24 @@ of the loop at 175 bpm. The smallest close: measure on the phone and score a
 trained model's stream against its offline rip (`MatchBars`, `BarDistance`),
 then a longer `earStep` (a second runs a third fewer frames) or a forward in
 `transformer` that runs each new frame through the notes model's layers once.
+
+### Read more of a stream from outside
+
+- Priority: P2
+- Affected files: `ripstream.go`, `rip.go`
+
+A view reads a stream's frames with their spectrum (`Frames`) and its open bars
+(`Open`) ([Audio §9](audio.md#9-ripping-a-recording)). Two reads are left.
+What the decoders made of a read, each candidate with what became of it, is
+not kept: it comes with the judge ([Stapes' rip design
+§7](https://github.com/lixenwraith/stapes/blob/main/doc/rip-design.md#7-plan)),
+whose verdicts are what a view shows. And the open bars are those of the last
+read that froze a bar, about a bar old: laying them out at every half-second
+read was not taken, since `lay`'s `bright` pass alone is 28% of the stream's
+time through the analysis (a profile of the 140 bpm loop) and it would run
+three to four times as often there. The smallest close: a layout of the bars
+after the frozen ones alone, their brightness read over the notes not yet
+frozen. Through a model the spectrum comes with its frames, half a second to a
+second behind, though its `MelStream` holds each band 46 ms after the sound: a
+view that wants it sooner needs the bands handed on before the frames they
+belong to.

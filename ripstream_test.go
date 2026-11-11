@@ -257,3 +257,39 @@ func TestRipStreamFreezesItsOpenBarsAsRead(t *testing.T) {
 		t.Errorf("%d bars froze that were read open, of %d; %d open once closed", read, len(r.Bars), len(s.Open()))
 	}
 }
+
+// BenchmarkRipStream is a live rip of the loop, twelve bars in 50 ms blocks
+// through the analysis: unread, and read after every block as a view reads it,
+// the frames since the last with their spectrum and the open bars.
+func BenchmarkRipStream(b *testing.B) {
+	ae, slots := startLoopEngine(b)
+	buf, err := ae.RenderMusic(slots, 140, Meter{}, 12, DefaultRootNote, ScalePhrygian, nil, 1)
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, read := range []bool{false, true} {
+		b.Run(map[bool]string{false: "unread", true: "read"}[read], func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				s, err := NewRipStream(Ripper{Params: DefaultRipParams(), Spectrum: read})
+				if err != nil {
+					b.Fatal(err)
+				}
+				next := 0
+				for i, block := 0, AudioSampleRate/20; i < len(buf); i += block {
+					if err := s.Write(buf[i:min(i+block, len(buf))], AudioSampleRate); err != nil {
+						b.Fatal(err)
+					}
+					if read {
+						f, from := s.Frames(next)
+						next = from + f.frames()
+						s.Open()
+					}
+				}
+				if _, err := s.Close(); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
