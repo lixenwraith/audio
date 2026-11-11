@@ -383,7 +383,8 @@ the program of the shipped voice nearest it, its wave first, then its genes
   set by RPN 0 to the least of 2, 12 or 24 semitones that holds the lane's
   largest bend and a lane that glides on a channel of its own, as a channel
   bends every note it sounds; `MIDIScore` reads a note's bend back as `bend` and
-  `bend_at`, to the hundredth, where it moves a quarter tone or more.
+  `bend_at`, to the hundredth, where it moves a quarter tone or more. `WriteMIDI`
+  writes a transcript's the same way, a line a channel.
 - Reading (`MIDIScore.Song`): the file's parts quantized on its ticks, a step its
   sixteenth at its first tempo folded by octaves into the sequencer's range, as
   `MIDIScore.Rip` folds; a pattern a part a bar, named and shared between bars as
@@ -579,7 +580,7 @@ notes' pitch classes as the analysis takes it of the chroma, and a note outside
 E1 to C7 dropped; each line plays on the shipped voice its program plays on
 (`MIDIScore.Voices`, through §8's table). `WriteMIDI` writes a transcript the
 other way, a track a line and the drums on the drum channel at the rip's tempo,
-to correct in a sequencer. The song a rip compresses into carries the
+a note's glide as pitch bend (§8), to correct in a sequencer. The song a rip compresses into carries the
 recording's tuning (`SongDef.Tuning`), and the engine plays or renders it there
 (`AudioEngine.SetTuning`), as a voice fit renders its candidate notes there
 (`RenderNoteAt`), so a render stands beside the recording at its own pitch.
@@ -692,6 +693,42 @@ log-frequency axis of three bins a semitone from MIDI 27, each a channel for
 each harmonic of a half and one to seven, shifted so a pitch's harmonics lie at
 its own bin, 16 channels of 213 bins, each ending in its plane's scalar. Without
 it the model gives every head, as before.
+
+A notes model trained with one has a cents head too (`ripmodel.HeadCents`, two
+values a pitch): how far each pitch's sound sits from its cell's centre, and the
+error the head states for that reading, both in cents (`RipFrames.Cents`,
+`CentsError`; nil from a model without the head, and nothing below runs then).
+The decoder reads a glide from them (`glides`). The strikes' notes stand as
+above, and each note's sound is then followed frame by frame:
+
+- **One frequency.** Two neighbouring cells are one sound where they name one
+  frequency as it passes from one to the other, cell k at +50 cents being cell
+  k+1 at -50: the two readings must lie nearer than half a cell by more than
+  the errors stated for them (`oneFrequency`). The rule's only numbers are the
+  grid's half cell and the head's own error, so an unsure head joins nothing
+  and the notes are the strikes'.
+- **Handing over.** A sound goes to the cell beside when its own stops
+  sounding, or when its reading sits surely outside the cell and the next
+  names the same frequency. It ends at a release, where its reading surely
+  jumped, at a cell another sound holds, and at a sure strike in the cell it
+  enters: one over `StrikeAgain` and no weaker than its neighbours'.
+- **What it takes in.** A note the strikes made along its way that no sure
+  strike started is the sound itself and goes into it, as does a note in a
+  neighbouring cell whose reading names the frequency the sound's cell names.
+  So a note struck again a cell over with its frequency unbroken is one note.
+- **A step that lands.** The followed sound is cut where it rests half a cell
+  or more from where it last rested (`parted`; a rest is `MinNote` of frames
+  whose halves agree within their stated errors). A legato step is two notes;
+  a glide that runs on through the boundary is one.
+- **The note.** It takes the pitch of its longest rest, or of its first cell
+  where it never rests, and `Bend` and `BendAt` say how far its last frame
+  ends from that pitch and from where it last stood on it.
+
+A step's bend holds one motion that ends with the note. A scoop that settles
+before its note ends and a vibrato are heard, the note at the pitch it settles
+on, and not written. A note struck again inside itself in its own cell is
+`StrikeAgain`'s to judge as before, since its frequency holds either way. The
+accounting does not bring back a strike in a cell a glide passed.
 
 The model's input (`features`) is each band in dB less the frame's mean, over
 80, and the mean, so the bands are level-free and loudness is one input. A model

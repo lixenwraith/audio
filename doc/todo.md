@@ -118,16 +118,26 @@ than the accounting. The smallest close: the ends from the fitted activation
 on a Für Elise sheet, and the under voice's soft notes judged as a population
 of their own. A sheet's Note length row goes where extra sounds take over.
 
-### Hear a note's glide
+### Write the motion a glide's note leaves out
 
 - Priority: P2
-- Affected files: `rip.go`, `midi.go`
+- Affected files: `rip.go`, `voice.go`, `pattern.go`
 
-A step, a rip's notes and bars and a MIDI file carry a glide ([Audio
-§7](audio.md#7-music-sequencer)); nothing in the rip sets one yet. What is
-left: the decoder merging cells into one note where the notes model's cents
-head runs on (stapes' todo and rip design §7), and `WriteMIDI` writing a
-transcript's glides as `WriteSongMIDI` does.
+The decoder follows a glide across pitch cells from a notes model's cents head
+and writes one bent note ([Audio §9](audio.md#9-ripping-a-recording)). What a
+step's bend cannot hold is heard and dropped:
+
+- A scoop that settles before its note ends, and a fall after a held pitch
+  that stops short of the note's end: a bend is one motion ending with the
+  note. A step that glides to a share of its length, or a second segment.
+- A vibrato: the note takes the pitch it sways about. A rate and a depth on
+  the note, as a voice has them, read from the cents along it.
+- A note struck again in its own cell: the cents say nothing there, so
+  `StrikeAgain` judges it as before. The 69 repeats inside a sung note on
+  vocadito are of this kind where the voice never left the cell.
+- A sound is followed within the register its note was struck in: a glide
+  across E3 reads the cells past it, but takes in no note the other register
+  made there.
 
 ## The bank's music
 

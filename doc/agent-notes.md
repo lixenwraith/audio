@@ -523,6 +523,21 @@ that a document now states, and link the document instead.
   any set is regraded: the first
   implementation let 6/8 challenge 4/4 where the fit had only consulted it as
   a name, and lost 22 of 40 GuitarSet labels the fit had kept.
+- **A glide's rule has the grid's number and the head's, and no third.** Two
+  readings are one frequency when they lie nearer than half a cell by more
+  than their stated errors, a multiplier of one. A margin swept until a set
+  scores well is what the rule exists to avoid: an over-confident head shows
+  in the trainer's held-out line, the share of readings within the stated
+  error, and is mended there.
+- **The strikes hold a struck note `MinNote` whether or not its cell sounds.**
+  A scoop leaves its first cell inside that wait, so the follower treats a
+  cell that does not sound there as lost, to hand over, and not as the note's
+  end (`glides`' `wait`).
+- **A reading means something only where its cell sounds.** The head is taught
+  where a pitch sounds within a semitone of the cell, so `named` is read at
+  voiced frames alone, and a test's hand-built frames need the cell beside a
+  sound over `StrikeHold` of the reference before the strikes make the note a
+  smear test is about; at 0.6 that test passed with nothing to drop.
 
 ## A live rip
 
