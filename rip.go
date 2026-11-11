@@ -339,14 +339,23 @@ const (
 
 // RipFamilies names the instrument families a model's family head scores, in
 // its order: what plays a frame's highest sounding note, unknown for a sound of
-// none of the others.
+// none of the others. A note is named one of the others or none: unknown is the
+// absence of a name.
 var RipFamilies = [...]string{"piano", "guitar", "voice", "bass", "strings", "winds", "synth", "drums", "unknown"}
+
+// RipVoiceCells is how many of a frame's pitches a front end tells the voice of,
+// its most salient
+const RipVoiceCells = 12
+
+// RipVoiceSize is the values a pitch's voice is told in: a share for each of
+// RipFamilies but unknown, one for each of VoiceWaves, and each gene
+var RipVoiceSize = len(RipFamilies) - 1 + len(VoiceWaves) + VoiceGeneCount
 
 // RipFrames is a recording as the rip's decoders read it, a value per frame every
 // Hop seconds: onset strength, each drum's (kick, snare, hihat), each pitch's
 // salience from E1 to C7 (the bass's by its first partials, the melody's with the
 // bass cancelled) and each register's chroma, as a front end fills it: the analysis,
-// or a model (ripmodel), which may also give each frame's wave, voice and family.
+// or a model (ripmodel), which may also say what plays the frame and its pitches.
 type RipFrames struct {
 	Hop                float64
 	Tuning             float64 // cents the recording's pitches sit off A440, as the front end heard them
@@ -362,6 +371,12 @@ type RipFrames struct {
 	Cents              []float32 // frames × RipPitches, the cents each pitch's sound sits from its cell's centre, or nil
 	CentsError         []float32 // frames × RipPitches, the error in cents the front end states for each, nil as Cents is
 	Family             []float32 // frames × len(RipFamilies), how surely each family plays there, summing to 1, or nil
+	// VoiceAt is each frame's RipVoiceCells most salient pitches, from RipMinMIDI,
+	// and Voices what plays each, RipVoiceSize values of 255 a whole; or nil
+	VoiceAt, Voices []uint8
+	// Sure is the share a family must pass over a note's frames to name it, as
+	// the front end measured it; zero where it measured none, and no note is named
+	Sure float64
 	// Spectrum is what the frames were read from, frames × RipMelBands, each
 	// band's energy as MelStream gives it: a stream's whose Ripper asks, else nil
 	Spectrum []float32
@@ -396,6 +411,8 @@ func (f *RipFrames) fields(visit func(field any, per int)) {
 	visit(&f.Wave, len(VoiceWaves))
 	visit(&f.Voice, VoiceGeneCount)
 	visit(&f.Family, len(RipFamilies))
+	visit(&f.VoiceAt, RipVoiceCells)
+	visit(&f.Voices, RipVoiceCells*RipVoiceSize)
 	visit(&f.Spectrum, RipMelBands)
 	for b := range f.bands {
 		visit(&f.bands[b], 1)
@@ -407,7 +424,7 @@ func (f *RipFrames) extend(g *RipFrames) {
 	if g == nil {
 		return
 	}
-	f.Hop, f.Tuning = g.Hop, g.Tuning
+	f.Hop, f.Tuning, f.Sure = g.Hop, g.Tuning, g.Sure
 	from := make([]any, 0, 24) // every field's, at one allocation
 	g.fields(func(field any, _ int) { from = append(from, field) })
 	i := 0
@@ -417,6 +434,8 @@ func (f *RipFrames) extend(g *RipFrames) {
 			*s = append(*s, *from[i].(*[]float64)...)
 		case *[]float32:
 			*s = append(*s, *from[i].(*[]float32)...)
+		case *[]uint8:
+			*s = append(*s, *from[i].(*[]uint8)...)
 		case *[][12]float64:
 			*s = append(*s, *from[i].(*[][12]float64)...)
 		}
@@ -432,6 +451,8 @@ func (f *RipFrames) cut(a, b int) {
 		case *[]float64:
 			*s = cutFrames(*s, a, b, per)
 		case *[]float32:
+			*s = cutFrames(*s, a, b, per)
+		case *[]uint8:
 			*s = cutFrames(*s, a, b, per)
 		case *[][12]float64:
 			*s = cutFrames(*s, a, b, per)

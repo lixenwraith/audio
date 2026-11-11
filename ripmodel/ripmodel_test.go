@@ -2,6 +2,7 @@ package ripmodel
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/binary"
 	"flag"
 	"io"
@@ -16,12 +17,11 @@ import (
 	"github.com/lixenwraith/transformer"
 )
 
-// TestAnUntrainedModelHearsFramesTheRipReads is the contract between the model
-// and the decoders: a model of Spec's shape yields frames the rip runs on, with
-// every field it reads and a frame's family shares summing to one; one without
-// its strike, release, velocity or family head hears without them, one of two
-// channels hears, one of three is refused, and a notes model gives the notes,
-// with each pitch's cents and their stated error unless it was trained before them.
+// TestAnUntrainedModelHearsFramesTheRipReads is the contract between the models
+// and the decoders: Spec's yields frames the rip runs on, every field read, a
+// family's shares summing to one, with or without its last four heads, in one
+// channel or two; a notes model gives the notes, each pitch's cents and what
+// plays a frame's most salient pitches, unless it was trained before those.
 func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 	cfg := Spec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window = 16, 2, 1, 32, 8 // a small one for the test's sake
@@ -140,14 +140,36 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 		nf.CentsError[at] != float32(100*math.Exp(float64(c[audio.RipPitches+7]))) {
 		t.Errorf("%d cents and %d errors of %d, the model alone %d", len(nf.Cents), len(nf.CentsError), per, len(f.Cents))
 	}
+	// the pitches told are a frame's most salient, the most salient first, each family's shares and each wave's a whole
+	told, row := nf.VoiceAt[n/2*audio.RipVoiceCells:][:audio.RipVoiceCells], nf.Voices[n/2*audio.RipVoiceCells*audio.RipVoiceSize:]
+	sal, names, waves := nf.Salience[n/2*audio.RipPitches:][:audio.RipPitches], len(audio.RipFamilies)-1, len(audio.VoiceWaves)
+	rest := slices.DeleteFunc(slices.Clone(sal), func(v float32) bool {
+		return slices.ContainsFunc(told, func(c uint8) bool { return sal[c] == v })
+	})
+	total := func(b []uint8) (n int) {
+		for _, v := range b {
+			n += int(v)
+		}
+		return n
+	}
+	gene := nm.Slice(heard[n/2], HeadPitchVoice)[3*audio.RipPitches+int(told[0])]
+	if len(nf.VoiceAt) != n*audio.RipVoiceCells || len(nf.Voices) != n*audio.RipVoiceCells*audio.RipVoiceSize || f.Voices != nil ||
+		!slices.IsSortedFunc(told, func(a, b uint8) int { return cmp.Compare(sal[b], sal[a]) }) || sal[told[len(told)-1]] < slices.Max(rest) ||
+		math.Abs(float64(total(row[:names]))-255) > 4 || math.Abs(float64(total(row[names:names+waves]))-255) > 3 ||
+		row[names+waves+3] != uint8(math.Round(255*sigmoid(gene))) || nf.Sure != float64(nm.Slice(heard[0], HeadSure)[0]) {
+		t.Errorf("%d pitches told and %d values of %d frames, the model alone %d; frame %d tells %v, the first's shares %v, a name sure past %v",
+			len(nf.VoiceAt), len(nf.Voices), n, len(f.Voices), n/2, told, row[:names+waves], nf.Sure)
+	}
 	before := NotesSpec()
 	before.Cells.Reduce, before.Cells.Wide, before.Cells.Cell, before.Cells.Frame, before.Cells.Heads = 2, 3, 4, 5, 4
-	before.Outputs = slices.DeleteFunc(before.Outputs, func(h transformer.Head) bool { return h.Name == HeadCents })
+	before.Outputs = slices.DeleteFunc(before.Outputs, func(h transformer.Head) bool {
+		return slices.Contains([]string{HeadCents, HeadPitchFamily, HeadPitchWave, HeadPitchVoice, HeadSure}, h.Name)
+	})
 	bm, _ := transformer.NewRandom(before, 2)
 	if bfe, err := New(m, bm); err != nil {
-		t.Errorf("a notes model trained before the cents head: %v", err)
-	} else if bf, _ := bfe.Hear(x, audio.AudioSampleRate, audio.DefaultRipParams()); bf.Strike == nil || bf.Cents != nil || bf.CentsError != nil {
-		t.Error("a notes model trained before the cents head heard cents, or no strikes")
+		t.Errorf("a notes model trained before the cents head and those of what plays each pitch: %v", err)
+	} else if bf, _ := bfe.Hear(x, audio.AudioSampleRate, audio.DefaultRipParams()); bf.Strike == nil || bf.Cents != nil || bf.CentsError != nil || bf.Voices != nil || bf.Sure != 0 {
+		t.Error("a notes model trained before the cents head and those of what plays each pitch heard cents or voices, or no strikes")
 	}
 	older := cfg
 	older.Outputs = older.Outputs[:len(older.Outputs)-optionalHeads]
@@ -312,6 +334,16 @@ func byHead(to map[string][]float32, f *audio.RipFrames) {
 			to[head] = append(to[head], c/100)
 		}
 	}
+	// what plays each pitch told as a share, zero for a pitch not told
+	for t := 0; t < len(f.VoiceAt); t += audio.RipVoiceCells {
+		plane := make([]float32, audio.RipPitches*audio.RipVoiceSize)
+		for k, cell := range f.VoiceAt[t:][:audio.RipVoiceCells] {
+			for i, b := range f.Voices[(t+k)*audio.RipVoiceSize:][:audio.RipVoiceSize] {
+				plane[int(cell)*audio.RipVoiceSize+i] = float32(b) / 255
+			}
+		}
+		to[HeadPitchVoice] = append(to[HeadPitchVoice], plane...)
+	}
 }
 
 // through is x through an ear of fe in blocks of block's sizes: every frame it
@@ -348,8 +380,8 @@ func apart(a, b []float32, frames, from int) (rms, worst, of float64) {
 // TestTheEarHearsAsTheWholeRecording: an ear gives a recording's frames alike
 // whatever the blocks, each with MelStream's bands, a step once the model's
 // reach follows it, and from a model's reach past the loudest sample each of its
-// heads as heard whole, to rounding. Waiting half a second it holds the notes
-// model's so and logs how far the model's lie; -model, -notes, -wav log both.
+// heads as heard whole, to rounding, what plays a pitch to a byte's. Waiting half
+// a second it holds the notes model's so; -model, -notes, -wav log both.
 func TestTheEarHearsAsTheWholeRecording(t *testing.T) {
 	cfg := Spec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window, cfg.Channels = 16, 2, 2, 32, 32, 2
@@ -398,10 +430,14 @@ func TestTheEarHearsAsTheWholeRecording(t *testing.T) {
 			if len(heard[head]) != len(v) || from >= frames {
 				t.Fatalf("waiting %d frames, %d values of %s heard of %d, read from frame %d of %d", wait, len(heard[head]), head, len(v), from, frames)
 			}
+			bar := 1e-5
+			if head == HeadPitchVoice {
+				bar += 1.0 / 255
+			}
 			switch rms, worst, of := apart(heard[head], v, frames, from); {
 			case !exact || *trained != "":
 				t.Logf("waiting %d frames, %s lies %.3g rms and %.3g at worst from the whole's, of rms %.3g", wait, head, rms, worst, of)
-			case worst > 1e-5:
+			case worst > bar:
 				t.Errorf("waiting %d frames, %s lies %.3g from the whole's from frame %d on", wait, head, worst, from)
 			}
 		}
