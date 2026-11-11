@@ -132,8 +132,9 @@ installed scores stay until one is. What the stage leaves open:
   read through a front end whose flux a stream scales again (the analysis,
   which hears no strikes).
 - **The read with no judge fits every strike a second time**, apart from the
-  installed candidates, whose fit moves the floor: 7% more of the loop's rip.
-  A judge's network is scalar float32, 0.16 M multiply-adds a strike.
+  installed candidates, whose fit moves the floor: 3% more of the loop's rip
+  and a tenth more of its stream's. A judge's network is scalar float32, 0.16 M
+  multiply-adds a strike: 5% more of the loop's rip, 8% of its stream's.
 
 ### The misses and extras the ear still hears
 
