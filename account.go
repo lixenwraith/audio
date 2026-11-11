@@ -39,8 +39,10 @@ const (
 // and the memory of the sound at its first partials through its start
 type accNote struct {
 	ripNote
-	cand   bool // a strike the decoder dropped, judged against the kept notes
-	t0, t1 int  // frames measured
+	whole  *ripNote // a sound followed across cells, measured as the note the strikes read in its first
+	of     *accNote // a followed sound in a cell it moved on to: fitted, and judged with the first
+	cand   bool     // a strike the decoder dropped, judged against the kept notes
+	t0, t1 int      // frames measured
 	f0     float64
 	nh     int
 	floor  []float32 // the floor's shape at each harmonic
@@ -88,19 +90,47 @@ func accFloorShape(hz float64) float32 { return float32(math.Sqrt(100 / math.Max
 // accNotes lays the notes out for the measurement, in time order
 func accNotes(notes []ripNote, cand bool, tuning float64, frames int) []*accNote {
 	out := make([]*accNote, 0, len(notes))
-	for _, n := range notes {
-		a := &accNote{ripNote: n, cand: cand, f0: NoteFreq(n.midi) * math.Pow(2, tuning/1200)}
-		a.t0 = max(n.start-accBefore, 0)
-		a.t1 = min(max(n.end+accAfter, n.start+accMemGap+accMemSpan+1), n.start+accSpan, frames)
+	lay := func(a *accNote) bool {
+		a.f0 = NoteFreq(a.midi) * math.Pow(2, tuning/1200)
+		a.t0 = max(a.start-accBefore, 0)
+		a.t1 = min(max(a.end+accAfter, a.start+accMemGap+accMemSpan+1), a.start+accSpan, frames)
 		a.nh = min(accHarmonics, int(accMaxHz/a.f0))
 		if a.t1 <= a.t0 || a.nh < 1 {
-			continue
+			return false
 		}
 		a.floor = make([]float32, a.nh)
 		for h := range a.floor {
 			a.floor[h] = accFloorShape(float64(h+1) * a.f0)
 		}
 		out = append(out, a)
+		return true
+	}
+	for _, n := range notes {
+		a := &accNote{ripNote: n, cand: cand}
+		if len(n.cells) < 2 {
+			lay(a)
+			continue
+		}
+		// a sound that moves is at no one pitch's harmonics. The fit reads it in each
+		// cell while it is there, from its first entry to its last leaving; the cell it
+		// was struck in is the note the strikes read, and its verdict is the whole's
+		whole := n
+		a.whole, a.midi, a.end = &whole, n.cells[0].midi, n.cells[0].end
+		if !lay(a) {
+			continue
+		}
+		var later []*accNote
+		for _, v := range n.cells[1:] {
+			i := slices.IndexFunc(later, func(o *accNote) bool { return o.midi == v.midi })
+			if i < 0 {
+				later = append(later, &accNote{ripNote: ripNote{start: v.start, end: v.end, midi: v.midi, vel: n.vel}, of: a})
+				continue
+			}
+			later[i].end = v.end
+		}
+		for _, o := range later {
+			lay(o)
+		}
 	}
 	slices.SortFunc(out, byFrame)
 	return out
@@ -482,9 +512,10 @@ func (f *accFit) sweep(frozen func(*accNote) bool, templates bool) {
 	if templates {
 		f.share(&numW, &denW)
 	}
-	// a note's activation may rise through its attack and only swell after
+	// a note's activation may rise through its attack and only swell after; a
+	// followed sound comes and goes in the cells it moved on to
 	for _, n := range notes {
-		if frozen != nil && frozen(n) {
+		if frozen != nil && frozen(n) || n.of != nil {
 			continue
 		}
 		for u := n.start - n.t0 + accRise + 1; u < len(n.g); u++ {
@@ -751,7 +782,7 @@ var (
 type accInput struct {
 	accEvidence
 	strike, support float64 // the strike head's sureness, the pitch head's salience over the register's reference
-	low, ringing    bool    // the bass register; another note of its pitch sounding at its start
+	low, ringing    bool    // the bass register; another note sounding in its pitch's cell at its start
 }
 
 func (s accScore) odds(in accInput, ref float64) float64 {
@@ -788,15 +819,29 @@ func (f *RipFrames) account(x []float64, p RipParams, bass, melody []ripNote) ([
 		fit.sweep(nil, true)
 	}
 	ev := fit.evidences()
-	ref := accRef(ev)
+	var judged []accEvidence
+	for i, n := range notes {
+		if n.of == nil {
+			judged = append(judged, ev[i])
+		}
+	}
+	ref := accRef(judged)
 	var kept, dropped []*accNote
 	for i, n := range notes {
 		// a held note whose harmonics all sit under louder pitches' is one the fit
 		// cannot see, a soft line under a chord: it stays on the heads' word
-		if ev[i].covered > accCovered && n.end-n.start >= accHeld || accReported.odds(f.accInput(n, ev[i], notes, refs), ref) >= accBar {
+		switch {
+		case n.of != nil:
+		case ev[i].covered > accCovered && n.end-n.start >= accHeld || accReported.odds(f.accInput(n, ev[i], notes, refs), ref) >= accBar:
 			kept = append(kept, n)
-		} else {
+		default:
 			dropped = append(dropped, n)
+		}
+	}
+	// a kept sound's later cells explain what sounds over them, and are no notes
+	for _, n := range notes {
+		if n.of != nil && slices.Contains(kept, n.of) {
+			kept = append(kept, n)
 		}
 	}
 	accRingOn(kept, dropped)
@@ -823,10 +868,17 @@ func (f *RipFrames) account(x []float64, p RipParams, bass, melody []ripNote) ([
 	}
 	bass, melody = bass[:0], melody[:0]
 	for _, n := range kept {
+		if n.of != nil {
+			continue
+		}
+		out := n.ripNote
+		if n.whole != nil {
+			out = *n.whole
+		}
 		if n.midi < RipBassTop {
-			bass = append(bass, n.ripNote)
+			bass = append(bass, out)
 		} else {
-			melody = append(melody, n.ripNote)
+			melody = append(melody, out)
 		}
 	}
 	byStart := func(a, b ripNote) int { return cmp.Or(a.start-b.start, a.midi-b.midi) }
@@ -916,8 +968,17 @@ func (f *RipFrames) accInput(n *accNote, ev accEvidence, notes []*accNote, refs 
 		}
 	}
 	for _, o := range notes {
-		if o != n && o.midi == n.midi && o.start < n.start-accDup && o.end > n.start-accDup {
+		if o == n {
+			continue
+		}
+		if o.midi == n.midi && o.start < n.start-accDup && o.end > n.start-accDup {
 			in.ringing = true
+		}
+		// a note's glide through the pitch's cell is that note sounding there
+		for _, v := range o.cells {
+			if v.midi == n.midi && v.start-accDup <= n.start && n.start < v.end {
+				in.ringing = true
+			}
 		}
 	}
 	return in

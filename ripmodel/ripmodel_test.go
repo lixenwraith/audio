@@ -19,7 +19,8 @@ import (
 // and the decoders: a model of Spec's shape yields frames the rip runs on, with
 // every field it reads and a frame's family shares summing to one; one without
 // its strike, release, velocity or family head hears without them, one of two
-// channels hears, one of three is refused, and a notes model gives the notes.
+// channels hears, one of three is refused, and a notes model gives the notes,
+// with each pitch's cents and their stated error unless it was trained before them.
 func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 	cfg := Spec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window = 16, 2, 1, 32, 8 // a small one for the test's sake
@@ -124,6 +125,20 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 	}
 	if !slices.Equal(nf.Voice, f.Voice) || !slices.Equal(nf.Onset[0], f.Onset[0]) || !slices.Equal(nf.Family, f.Family) {
 		t.Error("the notes model moved the voice, the kicks or the family")
+	}
+	at, c := n/2*audio.RipPitches+7, nm.Slice(heard[n/2], HeadCents)
+	if f.Cents != nil || len(nf.Cents) != per || len(nf.CentsError) != per || nf.Cents[at] != 100*c[7] ||
+		nf.CentsError[at] != float32(100*math.Exp(float64(c[audio.RipPitches+7]))) {
+		t.Errorf("%d cents and %d errors of %d, the model alone %d", len(nf.Cents), len(nf.CentsError), per, len(f.Cents))
+	}
+	before := NotesSpec()
+	before.Cells.Reduce, before.Cells.Wide, before.Cells.Cell, before.Cells.Frame, before.Cells.Heads = 2, 3, 4, 5, 4
+	before.Outputs = slices.DeleteFunc(before.Outputs, func(h transformer.Head) bool { return h.Name == HeadCents })
+	bm, _ := transformer.NewRandom(before, 2)
+	if bfe, err := New(m, bm); err != nil {
+		t.Errorf("a notes model trained before the cents head: %v", err)
+	} else if bf, _ := bfe.Hear(x, audio.AudioSampleRate, audio.DefaultRipParams()); bf.Strike == nil || bf.Cents != nil || bf.CentsError != nil {
+		t.Error("a notes model trained before the cents head heard cents, or no strikes")
 	}
 	older := cfg
 	older.Outputs = older.Outputs[:len(older.Outputs)-optionalHeads]
@@ -281,6 +296,12 @@ func byHead(to map[string][]float32, f *audio.RipFrames) {
 	for head, v := range map[string][]float32{HeadPitch: f.Salience, HeadStrike: f.Strike, HeadRelease: f.Release, HeadVelocity: f.Velocity,
 		HeadWave: f.Wave, HeadVoice: f.Voice, HeadFamily: f.Family, "spectrum": f.Spectrum} {
 		to[head] = append(to[head], v...)
+	}
+	// the cents in cells, the head's own scale, where one bar of rounding fits every head
+	for head, v := range map[string][]float32{HeadCents: f.Cents, HeadCents + " error": f.CentsError} {
+		for _, c := range v {
+			to[head] = append(to[head], c/100)
+		}
 	}
 }
 

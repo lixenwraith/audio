@@ -1034,10 +1034,10 @@ func writeSMF(w io.Writer, tracks [][]midiEvent) error {
 }
 
 // WriteMIDI writes a transcript as a Standard MIDI File of type 1 at bpm in meter
-// m: its lines as tracks named melody, under and bass on channels 1 to 3 and the
-// lead's, lead's and bass's programs, the tempo and a meter other than 4/4 on
-// the first, its hits as a track named drums on the drum channel, a sixteenth
-// each. A note lasts a tick at least; ReadMIDI reads it back within half a tick.
+// m: its lines as tracks named melody, under and bass on channels 1 to 3 on the
+// lead's, lead's and bass's programs, a note's glide as pitch bend (midiBends),
+// the tempo and a meter other than 4/4 on the first; its hits as a drums track, a
+// sixteenth each. A note lasts a tick at least and reads back within half a tick.
 func WriteMIDI(w io.Writer, notes []RipNote, hits []RipHit, bpm int, m Meter) error {
 	if bpm <= 0 {
 		return fmt.Errorf("midi: tempo %d bpm", bpm)
@@ -1052,6 +1052,7 @@ func WriteMIDI(w io.Writer, notes []RipNote, hits []RipHit, bpm int, m Meter) er
 	}
 	tracks[3] = []midiEvent{midiMeta(0, 0x03, []byte("drums")...)}
 	perSec := float64(bpm) / 60 * midiDivision
+	var lines [3][]midiPlayed
 	for _, n := range notes {
 		if n.MIDI < 0 || n.MIDI > 127 || n.Start < 0 {
 			return fmt.Errorf("midi: a note at %.3fs of pitch %d: want a pitch 0 to 127 at or after 0s", n.Start, n.MIDI)
@@ -1059,7 +1060,18 @@ func WriteMIDI(w io.Writer, notes []RipNote, hits []RipHit, bpm int, m Meter) er
 		on := int64(math.Round(n.Start * perSec))
 		off := max(int64(math.Round(n.End*perSec)), on+1)
 		l := lineOf(n)
-		tracks[l] = append(tracks[l], midiNoteOn(on, byte(l), byte(n.MIDI), midiVel(n.Vel)), midiNoteOff(off, byte(l), byte(n.MIDI)))
+		lines[l] = append(lines[l], midiPlayed{on: on, off: off, end: off, key: byte(n.MIDI), vel: midiVel(n.Vel), bend: n.Bend, bendAt: n.BendAt})
+	}
+	for l, played := range lines {
+		slices.SortStableFunc(played, func(a, b midiPlayed) int { return cmp.Compare(a.on, b.on) })
+		var reach float64
+		for _, n := range played {
+			reach = max(reach, math.Abs(n.bend))
+		}
+		if reach > 0 {
+			tracks[l] = append(tracks[l], midiBends(byte(l), reach, played)...)
+		}
+		tracks[l] = append(tracks[l], midiNotes(byte(l), played)...)
 	}
 	for _, h := range hits {
 		if h.Drum < 0 || h.Drum >= InstrClap || h.Start < 0 {

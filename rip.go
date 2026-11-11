@@ -337,6 +337,8 @@ type RipFrames struct {
 	Strike             []float32 // frames × RipPitches, how surely each pitch is struck there, or nil
 	Release            []float32 // frames × RipPitches, how surely each pitch is let go there, or nil
 	Velocity           []float32 // frames × RipPitches, how hard a pitch struck there was struck, or nil
+	Cents              []float32 // frames × RipPitches, the cents each pitch's sound sits from its cell's centre, or nil
+	CentsError         []float32 // frames × RipPitches, the error in cents the front end states for each, nil as Cents is
 	Family             []float32 // frames × len(RipFamilies), how surely each family plays there, summing to 1, or nil
 	// Spectrum is what the frames were read from, frames × RipMelBands, each
 	// band's energy as MelStream gives it: a stream's whose Ripper asks, else nil
@@ -362,7 +364,7 @@ func (f *RipFrames) fields(visit func(field any, per int)) {
 	for d := range f.Onset {
 		visit(&f.Onset[d], 1)
 	}
-	for _, h := range [...]*[]float32{&f.Salience, &f.Strike, &f.Release, &f.Velocity} {
+	for _, h := range [...]*[]float32{&f.Salience, &f.Strike, &f.Release, &f.Velocity, &f.Cents, &f.CentsError} {
 		visit(h, RipPitches)
 	}
 	visit(&f.Chroma, 1)
@@ -2462,6 +2464,7 @@ type ripNote struct {
 	bright           float64 // RipNote.Bright
 	bend, bendAt     float64 // RipNote.Bend and BendAt
 	voice            []float64
+	cells            []ripVisit // the cells its sound passed through, when more than its own
 }
 
 // notes tracks a register's lines: the bass as one path, the melody as two
@@ -2576,7 +2579,273 @@ func (f *RipFrames) strikes(lo, hi int, p RipParams) []ripNote {
 		}
 	}
 	slices.SortFunc(notes, func(a, b ripNote) int { return cmp.Or(a.start-b.start, a.midi-b.midi) })
+	if f.Cents != nil {
+		notes = r.glides(notes, p, func(t, midi int) bool { return renews(t, midi-lo) },
+			func(t, midi int) bool { return peak(f.Release, t, midi, p.Release) })
+	}
 	return notes
+}
+
+// ripHalfCell is the cents from a pitch's centre to its cell's edge: frequencies
+// nearer each other than that are nearer one pitch than a semitone apart
+const ripHalfCell = 50.0
+
+// named is the frequency pitch midi's cell names at frame t, in cents from MIDI
+// 0, and the error the front end states for it
+func (f *RipFrames) named(t, midi int) (cents, err float64) {
+	i := t*RipPitches + midi - RipMinMIDI
+	return 100*float64(midi) + float64(f.Cents[i]), float64(f.CentsError[i])
+}
+
+// oneFrequency says whether two readings name one frequency: nearer each other
+// than half a cell by more than the errors stated for them, so a reading the
+// front end is unsure of names none
+func oneFrequency(a, ea, b, eb float64) bool { return math.Abs(a-b)+ea+eb < ripHalfCell }
+
+// ripVisit is a stretch of one sound in one pitch's cell: the frequency it sits
+// at there, in cents from MIDI 0, and the error stated for it, both medians, and
+// whether it rests there, MinNote at least with no move between its halves the
+// front end can tell, or only passes
+type ripVisit struct {
+	midi, start, end int
+	level, err       float64
+	rests            bool
+}
+
+// rest reads where a visit's sound sits and whether it rests there, which it reports
+func (f *RipFrames) rest(v *ripVisit, short int) bool {
+	if n := v.end - v.start; n >= short && n > 1 {
+		a, ea := f.stood(v.start, v.start+n/2, v.midi)
+		b, eb := f.stood(v.end-n/2, v.end, v.midi)
+		v.rests = math.Abs(a-b) <= ea+eb
+	}
+	v.level, v.err = f.stood(v.start, v.end, v.midi)
+	return v.rests
+}
+
+// stood is the frequency pitch midi's cell names over frames a to b and the error
+// stated for it, each the frames' median
+func (f *RipFrames) stood(a, b, midi int) (cents, err float64) {
+	at, e := make([]float64, b-a), make([]float64, b-a)
+	for i := range at {
+		at[i], e[i] = f.named(a+i, midi)
+	}
+	return median(at), median(e)
+}
+
+// glides follows each note's sound past its cell, when a front end hears where
+// in its cell each pitch sits: where the reading is sure the sound is nearer the
+// next pitch, or the cell loses it, and the next cell sounds naming the frequency
+// this one named a frame before (oneFrequency), the note sounds on there, and
+// only a sure strike starts another. A reading that surely jumps ends the note.
+func (r register) glides(notes []ripNote, p RipParams, sure, released func(t, midi int) bool) []ripNote {
+	f, T, short := r.f, r.f.frames(), max(int(p.MinNote/r.f.Hop), 1)
+	voiced := func(t, midi int) bool {
+		return midi >= RipMinMIDI && midi < RipMaxMIDI && float64(f.Salience[t*RipPitches+midi-RipMinMIDI]) >= p.Voicing*r.ref
+	}
+	taken := make([]bool, len(notes)) // read into a sound, its own or another's
+	starts := map[[2]int]int{}        // a pitch and a frame: the note starting there
+	in := map[int][]int{}             // a pitch: its notes
+	for i, n := range notes {
+		starts[[2]int{n.midi, n.start}], in[n.midi] = i, append(in[n.midi], i)
+	}
+	held := map[int][]ripVisit{} // a pitch: the stretches of its cell the sounds read hold
+	holds := func(t, midi int) bool {
+		return slices.ContainsFunc(held[midi], func(v ripVisit) bool { return v.start <= t && t < v.end })
+	}
+	// next is the frame the sound of visit v leaves its cell at and the pitch whose
+	// cell takes it there, 0 for none; the first visit is the note as strikes read it
+	next := func(v ripVisit, first bool) (int, int) {
+		for t := v.start + 1; t < T; t++ {
+			here, lost := voiced(t, v.midi), false
+			wait := first && t < v.end // strikes waits MinNote for a struck pitch to sound
+			switch {
+			case wait:
+				lost = !here
+			case first:
+				if lost = true; here {
+					return t, 0 // let go or struck again
+				}
+			case !here:
+				lost = true
+			case released(t, v.midi):
+				return t, 0
+			default:
+				if j, ok := starts[[2]int{v.midi, t}]; ok && !taken[j] {
+					if sure(t, v.midi) {
+						return t, 0
+					}
+					taken[j] = true
+				}
+			}
+			if !voiced(t-1, v.midi) {
+				if lost && !wait {
+					return t, 0
+				}
+				continue
+			}
+			was, ew := f.named(t-1, v.midi)
+			takes := func(to int) bool {
+				if !voiced(t, to) {
+					return false
+				}
+				is, ei := f.named(t, to)
+				return oneFrequency(was, ew, is, ei)
+			}
+			side := v.midi + 1 // the pitch the sound was nearer
+			if was < 100*float64(v.midi) {
+				side = v.midi - 1
+			}
+			if lost {
+				for _, to := range [2]int{side, 2*v.midi - side} {
+					if takes(to) {
+						return t, to
+					}
+				}
+				if wait {
+					continue
+				}
+				return t, 0
+			}
+			is, ei := f.named(t, v.midi)
+			if off := is - 100*float64(v.midi); math.Abs(off)-ei > ripHalfCell {
+				if to := v.midi + int(math.Copysign(1, off)); takes(to) {
+					return t, to
+				}
+				if math.Abs(is-was)-ei-ew >= ripHalfCell {
+					return t, 0 // what the cell hears now is another sound
+				}
+			}
+		}
+		return T, 0
+	}
+	// enter takes pitch midi's cell at frame t for a sound: not one another sound
+	// holds or a sure strike's note sounds in, and with it the note read there
+	enter := func(t, midi int) bool {
+		if holds(t, midi) {
+			return false
+		}
+		for _, j := range in[midi] {
+			if o := notes[j]; !taken[j] && o.start <= t && t < o.end {
+				if sure(o.start, midi) {
+					return false
+				}
+				taken[j] = true
+			}
+		}
+		return true
+	}
+	var out []ripNote
+	for i, n := range notes {
+		if taken[i] {
+			continue
+		}
+		taken[i] = true
+		// a note no sure strike started whose last frame names the frequency a sound
+		// read holds in the cell beside it is that sound, heard from the next cell
+		if a, ea := f.named(n.end-1, n.midi); !sure(n.start, n.midi) && slices.ContainsFunc([]int{n.midi - 1, n.midi + 1}, func(m int) bool {
+			if !holds(n.end-1, m) {
+				return false
+			}
+			b, eb := f.named(n.end-1, m)
+			return oneFrequency(a, ea, b, eb)
+		}) {
+			continue
+		}
+		sound := []ripVisit{{midi: n.midi, start: n.start, end: n.end}}
+		for {
+			v := &sound[len(sound)-1]
+			end, to := next(*v, len(sound) == 1)
+			if v.end = end; to == 0 || !enter(end, to) {
+				break
+			}
+			sound = append(sound, ripVisit{midi: to, start: end})
+		}
+		for k := range sound {
+			f.rest(&sound[k], short)
+			held[sound[k].midi] = append(held[sound[k].midi], sound[k])
+		}
+		out = append(out, r.parted(n, sound, short)...)
+	}
+	slices.SortFunc(out, func(a, b ripNote) int { return cmp.Or(a.start-b.start, a.midi-b.midi) })
+	return out
+}
+
+// parted is a sound's visits as its notes: a visit that rests half a cell or
+// more from where the sound last rested, their errors past, is a step that
+// landed and starts a note; the visits that pass belong to the note they follow,
+// or the first, as its glide and its scoop. Each has the velocity the sound was
+// struck with, and lasts MinNote at least.
+func (r register) parted(struck ripNote, sound []ripVisit, short int) []ripNote {
+	var out []ripNote
+	from, last := 0, -1
+	for i := 0; i <= len(sound); i++ {
+		if i < len(sound) && !sound[i].rests {
+			continue
+		}
+		if i < len(sound) && (last < 0 || oneFrequency(sound[last].level, sound[last].err, sound[i].level, sound[i].err)) {
+			last = i
+			continue
+		}
+		if g := sound[from:i]; g[len(g)-1].end-g[0].start >= short {
+			out = append(out, r.glided(struck, g, short))
+		}
+		from, last = i, i
+	}
+	return out
+}
+
+// glided is one note of a sound's visits: at the pitch of its longest rest, or
+// the next where the rest surely sits nearer it; where it rests nowhere, at the
+// first visit's, from where it starts. Its bend is the semitones it surely ends
+// half a cell or more from that level, from the share of its length it last
+// stood there
+func (r register) glided(struck ripNote, g []ripVisit, short int) ripNote {
+	f, start, end := r.f, g[0].start, g[len(g)-1].end
+	n := ripNote{start: start, end: end, midi: g[0].midi, vel: struck.vel, voice: f.voiceOver(start, end)}
+	// edge is where the sound sits at frame at of a visit: where it stands over
+	// the MinNote of frames a to b around it, or else that frame's own reading
+	edge := func(a, b, midi, at int) (float64, float64) {
+		if v := (ripVisit{midi: midi, start: a, end: b}); f.rest(&v, short) {
+			return v.level, v.err
+		}
+		return f.named(at, midi)
+	}
+	level, _ := edge(start, min(start+short, g[0].end), n.midi, start)
+	rest := -1
+	for i, v := range g {
+		if v.rests && (rest < 0 || v.end-v.start > g[rest].end-g[rest].start) {
+			rest = i
+		}
+		for t := v.start; t < v.end; t++ {
+			n.strength += float64(f.Salience[t*RipPitches+v.midi-RipMinMIDI])
+		}
+	}
+	n.strength /= float64(end-start) * r.ref
+	if rest >= 0 {
+		level, n.midi = g[rest].level, g[rest].midi
+		if math.Abs(level-100*float64(n.midi))-g[rest].err > ripHalfCell {
+			n.midi = min(max(int(math.Round(level/100)), RipMinMIDI), RipMaxMIDI-1)
+		}
+	}
+	if len(g) > 1 {
+		n.cells = slices.Clone(g)
+	}
+	last := g[len(g)-1]
+	to, e := edge(max(end-short, last.start), end, last.midi, end-1)
+	if math.Abs(to-level)-e < ripHalfCell {
+		return n
+	}
+	n.bend = min(max(math.Round(to-level)/100, -MaxStepBend), MaxStepBend)
+	for k := len(g) - 1; k >= 0; k-- {
+		for t := g[k].end - 1; t >= g[k].start; t-- {
+			if at, e := f.named(t, g[k].midi); math.Abs(at-level) <= e {
+				n.bendAt = min(math.Round(float64(t+1-start)/float64(end-start)*100)/100, 0.99)
+				return n
+			}
+		}
+	}
+	return n
 }
 
 // lines reads the registers. A front end that hears each pitch struck reads both by
@@ -3141,12 +3410,13 @@ func (g *ripGrid) place(r *Rip, n ripNote, part func(*RipBar) *[]Step) {
 }
 
 // RipEvent is one step of patterns placed in the slots as they would sound: a
-// drum's hit, or a note's pitch, length and instrument.
+// drum's hit, or a note's pitch, length, instrument and glide (Step.Bend).
 type RipEvent struct {
 	Bar, Step, Dur int
 	Instr          InstrumentType
 	MIDI           int // 0 for a drum
 	Vel            float64
+	Bend, BendAt   float64
 }
 
 // ExpectedEvents is what patterns placed in the slots and played for bars bars of
@@ -3175,6 +3445,7 @@ func ExpectedEvents(slots [MusicSlots]PatternID, m Meter, bars, root int, scale 
 						e := RipEvent{Bar: bar, Step: step, Dur: max(ev.Dur, 1), Instr: tr.Instr, Vel: ev.Vel}
 						if !tr.Instr.IsDrum() {
 							e.MIDI = h.resolve(ev.Deg, ev.Oct, ev.Acc, tr.FollowChord)
+							e.Bend, e.BendAt = ev.Bend, ev.BendAt
 						}
 						out = append(out, e)
 					}

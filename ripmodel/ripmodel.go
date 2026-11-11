@@ -29,6 +29,9 @@ const (
 	HeadRelease  = "release"  // each of the rip's pitches let go at this frame
 	HeadVelocity = "velocity" // how hard each pitch struck at this frame was struck
 	HeadFamily   = "family"   // what plays the highest note sounding, one score per RipFamilies entry
+	// HeadCents is a notes model's alone: where in its cell each pitch's sound sits,
+	// in cells from the centre, then the log of the error it states for each
+	HeadCents = "cents"
 )
 
 // Spec is the model the trainer builds and a weight file must match in its
@@ -54,15 +57,25 @@ func NotesSpec() transformer.Config {
 	heads := Spec().Outputs
 	return transformer.Config{
 		Inputs: stackBins + 1, Channels: stackChannels,
-		Outputs: []transformer.Head{heads[2], heads[6], heads[7], heads[8], heads[0], heads[1], heads[3], heads[4], heads[5]},
+		Outputs: []transformer.Head{heads[2], heads[6], heads[7], heads[8], {Name: HeadCents, Size: 2 * audio.RipPitches},
+			heads[0], heads[1], heads[3], heads[4], heads[5]},
 		Cells: &transformer.Cells{Bins: stackBins, Reduce: 8, Wide: 16, WideTime: 3, WideFreq: 39, Cell: 32, CellTime: 7, CellFreq: 3,
-			Stride: 3, Depth: 1, NearTime: 7, NearFreq: 3, First: audio.RipMinMIDI - stackRootMIDI, Read: audio.RipPitches, Heads: 4, Regions: 16,
+			Stride: 3, Depth: 1, NearTime: 7, NearFreq: 3, First: audio.RipMinMIDI - stackRootMIDI, Read: audio.RipPitches, Heads: 5, Regions: 16,
 			Scalars: []int{stackBins, stackChannels/2*(stackBins+1) + stackBins}, Frame: 64, FrameTime: 5, AgainTime: 9, Dilation: 2},
 	}
 }
 
-// notesHeads are the heads a notes model gives in place of the model's
-var notesHeads = []string{HeadPitch, HeadVoicing, HeadStrike, HeadRelease, HeadVelocity}
+// notesHead is a head a notes model gives: one of Spec's it gives in place of
+// the model's, or one of its own of per values a pitch, which a notes model
+// trained before it may lack
+type notesHead struct {
+	name string
+	per  int
+}
+
+// notesHeads is a row a head
+var notesHeads = []notesHead{{name: HeadPitch}, {name: HeadVoicing}, {name: HeadStrike}, {name: HeadRelease}, {name: HeadVelocity},
+	{name: HeadCents, per: 2}}
 
 // FrontEnd hears with a model, and takes the notes from Notes when it has one
 type FrontEnd struct {
@@ -98,7 +111,7 @@ const optionalHeads = 4
 // New wraps a model and a notes model, nil for none, refusing a model whose
 // inputs or heads are not a prefix of Spec's or that reads more than two
 // channels, and a notes model that does not read the harmonic stack or lacks
-// one of notesHeads.
+// one of notesHeads that Spec has.
 func New(m, notes *transformer.Model) (*FrontEnd, error) {
 	want, got := Spec(), m.Config()
 	if got.Inputs != want.Inputs || got.Channels > 2 {
@@ -118,10 +131,17 @@ func New(m, notes *transformer.Model) (*FrontEnd, error) {
 	if got := notes.Config(); got.Inputs != stackBins+1 || got.Channels != stackChannels {
 		return nil, fmt.Errorf("ripmodel: notes model reads %d inputs in %d channels, want the harmonic stack's %d in %d", got.Inputs, got.Channels, stackBins+1, stackChannels)
 	}
-	for _, name := range notesHeads {
-		i := slices.IndexFunc(want.Outputs, func(h transformer.Head) bool { return h.Name == name })
-		if j := slices.Index(notes.Config().Outputs, want.Outputs[i]); j < 0 {
-			return nil, fmt.Errorf("ripmodel: notes model has no head %q of %d", name, want.Outputs[i].Size)
+	for _, h := range notesHeads {
+		head := transformer.Head{Name: h.name, Size: h.per * audio.RipPitches}
+		if h.per == 0 {
+			head = want.Outputs[slices.IndexFunc(want.Outputs, func(o transformer.Head) bool { return o.Name == h.name })]
+		}
+		i := slices.IndexFunc(notes.Config().Outputs, func(o transformer.Head) bool { return o.Name == h.name })
+		if i < 0 && h.per > 0 {
+			continue
+		}
+		if i < 0 || notes.Config().Outputs[i] != head {
+			return nil, fmt.Errorf("ripmodel: notes model has no head %q of %d", h.name, head.Size)
 		}
 	}
 	return &FrontEnd{Model: m, Notes: notes}, nil
@@ -131,7 +151,8 @@ func New(m, notes *transformer.Model) (*FrontEnd, error) {
 // model when there is one, and reads their heads into frames: the onset and drum
 // scores as strengths, the pitch scores as salience, the chroma folded from them,
 // the wave scores and voice genes as they are, the strike, release and velocity
-// scores when a model has them, and the family's softmax when the model has it.
+// scores when a model has them, the family's softmax when the model has it, and
+// each pitch's cents and their stated error when the notes model has them.
 func (fe *FrontEnd) Hear(x []float64, rate int, _ audio.RipParams) (*audio.RipFrames, error) {
 	in := features(audio.MelFrames(x, rate), fe.pcen())
 	out := fe.Model.Forward(fe.planes(in))
@@ -160,7 +181,7 @@ func (fe *FrontEnd) planes(in [][]float32) [][]float32 {
 func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 	// head is a head's scores at frame t, from the model that gives it; nil for none
 	head := func(name string, t int) []float32 {
-		if fe.Notes != nil && slices.Contains(notesHeads, name) {
+		if fe.Notes != nil && slices.ContainsFunc(notesHeads, func(h notesHead) bool { return h.name == name }) {
 			return fe.Notes.Slice(notes[t], name)
 		}
 		return fe.Model.Slice(out[t], name)
@@ -191,6 +212,9 @@ func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 	if n > 0 && head(HeadFamily, 0) != nil {
 		f.Family = make([]float32, 0, n*len(audio.RipFamilies))
 	}
+	if n > 0 && head(HeadCents, 0) != nil {
+		f.Cents, f.CentsError = make([]float32, 0, n*audio.RipPitches), make([]float32, 0, n*audio.RipPitches)
+	}
 	for t := range out {
 		f.Flux[t] = sigmoid(head(HeadOnset, t)[0])
 		for d, v := range head(HeadDrums, t) {
@@ -218,6 +242,13 @@ func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 		}
 		if f.Family != nil {
 			f.Family = appendSoftmax(f.Family, head(HeadFamily, t))
+		}
+		if f.Cents != nil {
+			c := head(HeadCents, t)
+			for i, v := range c[:audio.RipPitches] {
+				f.Cents = append(f.Cents, 100*v)
+				f.CentsError = append(f.CentsError, float32(100*math.Exp(float64(c[audio.RipPitches+i]))))
+			}
 		}
 	}
 	return f
