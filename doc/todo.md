@@ -138,6 +138,10 @@ step's bend cannot hold is heard and dropped:
 - A sound is followed within the register its note was struck in: a glide
   across E3 reads the cells past it, but takes in no note the other register
   made there.
+- `bright` measures a note's partials at its written pitch along its whole
+  length, as stapes' `notes` reads its support: while a bent note moves, and
+  through a scoop's rise, the sound is not there. The cells a followed sound
+  passed are in `ripNote.cells`, where the accounting already reads them.
 
 ## The bank's music
 

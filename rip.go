@@ -2612,17 +2612,25 @@ type ripVisit struct {
 	rests            bool
 }
 
-// rest reads where a visit's sound sits and whether it rests there
-func (f *RipFrames) rest(v *ripVisit, short int) {
-	n := v.end - v.start
-	at, err := make([]float64, n), make([]float64, n)
+// rest reads where a visit's sound sits and whether it rests there, which it reports
+func (f *RipFrames) rest(v *ripVisit, short int) bool {
+	if n := v.end - v.start; n >= short && n > 1 {
+		a, ea := f.stood(v.start, v.start+n/2, v.midi)
+		b, eb := f.stood(v.end-n/2, v.end, v.midi)
+		v.rests = math.Abs(a-b) <= ea+eb
+	}
+	v.level, v.err = f.stood(v.start, v.end, v.midi)
+	return v.rests
+}
+
+// stood is the frequency pitch midi's cell names over frames a to b and the error
+// stated for it, each the frames' median
+func (f *RipFrames) stood(a, b, midi int) (cents, err float64) {
+	at, e := make([]float64, b-a), make([]float64, b-a)
 	for i := range at {
-		at[i], err[i] = f.named(v.start+i, v.midi)
+		at[i], e[i] = f.named(a+i, midi)
 	}
-	if h := n / 2; n >= short && h > 0 {
-		v.rests = math.Abs(median(at[:h])-median(at[n-h:])) <= median(err[:h])+median(err[n-h:])
-	}
-	v.level, v.err = median(at), median(err)
+	return median(at), median(e)
 }
 
 // glides follows each note's sound past its cell, when a front end hears where
@@ -2780,7 +2788,7 @@ func (r register) parted(struck ripNote, sound []ripVisit, short int) []ripNote 
 			continue
 		}
 		if g := sound[from:i]; g[len(g)-1].end-g[0].start >= short {
-			out = append(out, r.glided(struck, g))
+			out = append(out, r.glided(struck, g, short))
 		}
 		from, last = i, i
 	}
@@ -2788,13 +2796,22 @@ func (r register) parted(struck ripNote, sound []ripVisit, short int) []ripNote 
 }
 
 // glided is one note of a sound's visits: at the pitch of its longest rest, or
-// the next where the rest surely sits nearer it, at the first visit's where it
-// rests nowhere; its bend the semitones its last frame surely ends half a cell
-// or more from that level, from the share of its length it last stood there
-func (r register) glided(struck ripNote, g []ripVisit) ripNote {
+// the next where the rest surely sits nearer it; where it rests nowhere, at the
+// first visit's, from where it starts. Its bend is the semitones it surely ends
+// half a cell or more from that level, from the share of its length it last
+// stood there
+func (r register) glided(struck ripNote, g []ripVisit, short int) ripNote {
 	f, start, end := r.f, g[0].start, g[len(g)-1].end
 	n := ripNote{start: start, end: end, midi: g[0].midi, vel: struck.vel, voice: f.voiceOver(start, end)}
-	level, _ := f.named(start, n.midi)
+	// edge is where the sound sits at frame at of a visit: where it stands over
+	// the MinNote of frames a to b around it, or else that frame's own reading
+	edge := func(a, b, midi, at int) (float64, float64) {
+		if v := (ripVisit{midi: midi, start: a, end: b}); f.rest(&v, short) {
+			return v.level, v.err
+		}
+		return f.named(at, midi)
+	}
+	level, _ := edge(start, min(start+short, g[0].end), n.midi, start)
 	rest := -1
 	for i, v := range g {
 		if v.rests && (rest < 0 || v.end-v.start > g[rest].end-g[rest].start) {
@@ -2814,7 +2831,8 @@ func (r register) glided(struck ripNote, g []ripVisit) ripNote {
 	if len(g) > 1 {
 		n.cells = slices.Clone(g)
 	}
-	to, e := f.named(end-1, g[len(g)-1].midi)
+	last := g[len(g)-1]
+	to, e := edge(max(end-short, last.start), end, last.midi, end-1)
 	if math.Abs(to-level)-e < ripHalfCell {
 		return n
 	}

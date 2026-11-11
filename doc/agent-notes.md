@@ -529,6 +529,17 @@ that a document now states, and link the document instead.
   scores well is what the rule exists to avoid: an over-confident head shows
   in the trainer's held-out line, the share of readings within the stated
   error, and is mended there.
+- **A stage that reads a note's pitch off the recording reads a followed
+  sound in its first cell.** The decoder may place a note at a pitch its sound
+  only reaches later (a scoop), and the accounting dropped such a note for
+  having no sound at its own pitch at its start; `accNotes` measures it as the
+  note the strikes read and keeps the whole (`accNote.whole`). `bright` and
+  stapes' `support` still read a note at its written pitch.
+- **A note's last frames are its release, which no label asks the head
+  about.** A bend read off the last frame alone came out a third of a semitone
+  wide on a rendered glide; `glided` reads each end where the sound stands
+  over `MinNote`, by the head's own errors, and the one frame only where it is
+  still moving.
 - **The strikes hold a struck note `MinNote` whether or not its cell sounds.**
   A scoop leaves its first cell inside that wait, so the follower treats a
   cell that does not sound there as lost, to hand over, and not as the note's

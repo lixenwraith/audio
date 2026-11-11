@@ -580,10 +580,11 @@ notes' pitch classes as the analysis takes it of the chroma, and a note outside
 E1 to C7 dropped; each line plays on the shipped voice its program plays on
 (`MIDIScore.Voices`, through §8's table). `WriteMIDI` writes a transcript the
 other way, a track a line and the drums on the drum channel at the rip's tempo,
-a note's glide as pitch bend (§8), to correct in a sequencer. The song a rip compresses into carries the
-recording's tuning (`SongDef.Tuning`), and the engine plays or renders it there
-(`AudioEngine.SetTuning`), as a voice fit renders its candidate notes there
-(`RenderNoteAt`), so a render stands beside the recording at its own pitch.
+a note's glide as pitch bend (§8), to correct in a sequencer. The song a rip
+compresses into carries the recording's tuning (`SongDef.Tuning`), and the
+engine plays or renders it there (`AudioEngine.SetTuning`), as a voice fit
+renders its candidate notes there (`RenderNoteAt`), so a render stands beside
+the recording at its own pitch.
 
 `RipParams` holds every threshold, each with a range (`RipGeneRanges`) and a
 place in a gene vector (`Genes`, `RipParamsFromGenes`), among them `compress`,
@@ -721,14 +722,20 @@ above, and each note's sound is then followed frame by frame:
   whose halves agree within their stated errors). A legato step is two notes;
   a glide that runs on through the boundary is one.
 - **The note.** It takes the pitch of its longest rest, or of its first cell
-  where it never rests, and `Bend` and `BendAt` say how far its last frame
-  ends from that pitch and from where it last stood on it.
+  where it never rests, and `Bend` and `BendAt` say how far it ends from that
+  pitch and from where it last stood on it. Its start and its end are read
+  where the sound stands over `MinNote` of frames, its first or last frame's
+  reading where it is moving there.
 
 A step's bend holds one motion that ends with the note. A scoop that settles
 before its note ends and a vibrato are heard, the note at the pitch it settles
 on, and not written. A note struck again inside itself in its own cell is
-`StrikeAgain`'s to judge as before, since its frequency holds either way. The
-accounting does not bring back a strike in a cell a glide passed.
+`StrikeAgain`'s to judge as before, since its frequency holds either way.
+
+The accounting measures a note at one pitch's harmonics, where a moving sound
+is not. It reads a followed sound in the cell it was struck in, while it sounds
+there, as the note the strikes read, and keeps or drops the whole on that
+verdict; and it does not bring back a strike in a cell a glide passed.
 
 The model's input (`features`) is each band in dB less the frame's mean, over
 80, and the mean, so the bands are level-free and loudness is one input. A model

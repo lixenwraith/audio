@@ -39,8 +39,9 @@ const (
 // and the memory of the sound at its first partials through its start
 type accNote struct {
 	ripNote
-	cand   bool // a strike the decoder dropped, judged against the kept notes
-	t0, t1 int  // frames measured
+	whole  *ripNote // a sound followed across cells, measured as the note the strikes read in its first
+	cand   bool     // a strike the decoder dropped, judged against the kept notes
+	t0, t1 int      // frames measured
 	f0     float64
 	nh     int
 	floor  []float32 // the floor's shape at each harmonic
@@ -89,9 +90,16 @@ func accFloorShape(hz float64) float32 { return float32(math.Sqrt(100 / math.Max
 func accNotes(notes []ripNote, cand bool, tuning float64, frames int) []*accNote {
 	out := make([]*accNote, 0, len(notes))
 	for _, n := range notes {
-		a := &accNote{ripNote: n, cand: cand, f0: NoteFreq(n.midi) * math.Pow(2, tuning/1200)}
-		a.t0 = max(n.start-accBefore, 0)
-		a.t1 = min(max(n.end+accAfter, n.start+accMemGap+accMemSpan+1), n.start+accSpan, frames)
+		a := &accNote{ripNote: n, cand: cand}
+		// a sound that moves is at no one pitch's harmonics: the fit reads it in the
+		// cell it was struck in, while it sounds there, and its verdict is the whole's
+		if len(n.cells) > 1 {
+			whole := n
+			a.whole, a.midi, a.end = &whole, n.cells[0].midi, n.cells[0].end
+		}
+		a.f0 = NoteFreq(a.midi) * math.Pow(2, tuning/1200)
+		a.t0 = max(a.start-accBefore, 0)
+		a.t1 = min(max(a.end+accAfter, a.start+accMemGap+accMemSpan+1), a.start+accSpan, frames)
 		a.nh = min(accHarmonics, int(accMaxHz/a.f0))
 		if a.t1 <= a.t0 || a.nh < 1 {
 			continue
@@ -823,10 +831,14 @@ func (f *RipFrames) account(x []float64, p RipParams, bass, melody []ripNote) ([
 	}
 	bass, melody = bass[:0], melody[:0]
 	for _, n := range kept {
+		out := n.ripNote
+		if n.whole != nil {
+			out = *n.whole
+		}
 		if n.midi < RipBassTop {
-			bass = append(bass, n.ripNote)
+			bass = append(bass, out)
 		} else {
-			melody = append(melody, n.ripNote)
+			melody = append(melody, out)
 		}
 	}
 	byStart := func(a, b ripNote) int { return cmp.Or(a.start-b.start, a.midi-b.midi) }

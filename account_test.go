@@ -197,3 +197,35 @@ func TestTheMemoryTellsARingFromAStrike(t *testing.T) {
 		t.Errorf("a pitch struck again reads a step of %.2f, want over 0.8", s)
 	}
 }
+
+// TestAFollowedSoundIsJudgedWhereItWasStruck: a note the decoder followed up two
+// cells from its strike and placed at the pitch it settles on is measured in the
+// cell it was struck in, where its sound is, and stays whole; the same note over
+// a recording that plays nothing in that cell goes whole.
+func TestAFollowedSoundIsJudgedWhereItWasStruck(t *testing.T) {
+	const frames, from, end = 400, 50, 140
+	scoop, held := make([]float64, frames*RipHop), make([]float64, frames*RipHop)
+	for h := 1; h <= 8; h++ {
+		var phase float64
+		for i := from * RipHop; i < end*RipHop; i++ {
+			at := float64(i)/RipHop - from // frames in: F4 for twelve, up to G4 over thirty, then held
+			phase += 2 * math.Pi * NoteFreq(65) * math.Pow(2, min(max(at-12, 0)/30, 1)*2/12) * float64(h) / RipRate
+			scoop[i] += 0.3 / float64(h) * math.Exp(-at*RipHop/RipRate*float64(h)) * math.Sin(phase)
+		}
+	}
+	accTone(held, 67, from+35, end, 0.3, 8)
+	cells := []ripVisit{{midi: 65, start: from, end: from + 20}, {midi: 66, start: from + 20, end: from + 35}, {midi: 67, start: from + 35, end: end}}
+	f := accFrames(frames, []ripNote{{start: from, end: from + 20, midi: 65}}, nil)
+	for _, v := range cells[1:] {
+		for t := v.start; t < v.end; t++ {
+			f.Salience[t*RipPitches+v.midi-RipMinMIDI] = 0.9
+		}
+	}
+	reported := []ripNote{{start: from, end: end, midi: 67, vel: 0.5, cells: cells}}
+	if _, melody := f.account(scoop, DefaultRipParams(), nil, slices.Clone(reported)); len(melody) != 1 || melody[0].midi != 67 || melody[0].end != end || len(melody[0].cells) != 3 {
+		t.Errorf("a scoop from F4 kept as %v, want the one note of G4 to its end with its cells", melody)
+	}
+	if bass, melody := f.account(held, DefaultRipParams(), nil, slices.Clone(reported)); len(bass)+len(melody) != 0 {
+		t.Errorf("a followed sound whose first cell the recording never plays kept as %v", melody)
+	}
+}
