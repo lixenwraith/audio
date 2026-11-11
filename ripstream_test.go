@@ -140,8 +140,9 @@ func TestRipStreamBarsAreTheSameWhateverTheBlocks(t *testing.T) {
 
 // TestRipStreamGivesEachFrameOnce: asked after every Write for the frames since
 // the last given, a caller gets every frame the stream heard, once and in order,
-// the same in 50 ms blocks and in blocks of six seconds, whose frames the window
-// lets go of within the Write that hears them.
+// each with the bands MelStream gives it, the same in 50 ms blocks and in blocks
+// of six seconds, whose frames the window lets go of within the Write that
+// hears them.
 func TestRipStreamGivesEachFrameOnce(t *testing.T) {
 	const bpm, bars = 140, 8
 	ae, slots := startLoopEngine(t)
@@ -154,7 +155,7 @@ func TestRipStreamGivesEachFrameOnce(t *testing.T) {
 	}
 	var given []*RipFrames
 	for _, block := range []int{AudioSampleRate / 20, 6 * AudioSampleRate} {
-		s, err := NewRipStream(Ripper{Params: DefaultRipParams()})
+		s, err := NewRipStream(Ripper{Params: DefaultRipParams(), Spectrum: true})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -186,5 +187,15 @@ func TestRipStreamGivesEachFrameOnce(t *testing.T) {
 	}
 	if !reflect.DeepEqual(given[0], given[1]) {
 		t.Errorf("the %d frames given depend on the blocks", given[0].frames())
+	}
+	var bands []float32
+	ms := NewMelStream()
+	for _, row := range append(ms.Write(Resample(buf, AudioSampleRate, RipRate)), ms.Close()...) {
+		for _, v := range row {
+			bands = append(bands, float32(v))
+		}
+	}
+	if !slices.Equal(given[0].Spectrum, bands) {
+		t.Errorf("the spectrum given, %d bands, is not MelStream's %d", len(given[0].Spectrum), len(bands))
 	}
 }

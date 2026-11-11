@@ -103,7 +103,7 @@ func NewRipStream(rp Ripper) (*RipStream, error) {
 		return nil, errors.New("rip: the front end cannot hear a recording as it plays")
 	}
 	p := rp.params()
-	ear, err := live.Ear(p)
+	ear, err := live.Ear(p, rp.Spectrum)
 	if err != nil {
 		return nil, err
 	}

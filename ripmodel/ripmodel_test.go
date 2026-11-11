@@ -239,9 +239,10 @@ func TestPCENHoldsWhatIsSteadyAndLiftsAStrike(t *testing.T) {
 }
 
 // TestTheEarHearsAsTheWholeRecording: the ear gives a recording's frames alike in
-// 50 ms blocks and in blocks of any size, and once its loudest sample is heard,
-// every frame it holds has the whole's features, PCEN included, and the notes
-// model's heads as heard whole, to float32's rounding.
+// 50 ms blocks and in blocks of any size, each with the bands MelStream gives it,
+// and once its loudest sample is heard, every frame it holds has the whole's
+// features, PCEN included, and the notes model's heads as heard whole, to
+// float32's rounding.
 func TestTheEarHearsAsTheWholeRecording(t *testing.T) {
 	cfg := Spec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window, cfg.Channels = 16, 2, 1, 32, 8, 2
@@ -263,17 +264,24 @@ func TestTheEarHearsAsTheWholeRecording(t *testing.T) {
 	}
 	want := features(audio.MelFrames(x, audio.RipRate), true)
 	whole, _ := fe.Hear(x, audio.RipRate, audio.DefaultRipParams())
+	var bands []float32
+	ms := audio.NewMelStream()
+	for _, row := range append(ms.Write(x), ms.Close()...) {
+		for _, v := range row {
+			bands = append(bands, float32(v))
+		}
+	}
 	rng := rand.New(rand.NewPCG(1, 2))
-	var first [7][]float32
+	var first [8][]float32
 	var firstFlux []float64
 	for _, block := range []func() int{func() int { return audio.RipRate / 20 }, func() int { return rng.IntN(audio.RipRate) + 1 }} {
-		ea, _ := fe.Ear(audio.DefaultRipParams())
+		ea, _ := fe.Ear(audio.DefaultRipParams(), true)
 		e := ea.(*ear)
 		var flux []float64
-		var heard [7][]float32 // the strikes, then each other field of every frame heard
+		var heard [8][]float32 // the strikes, then each other field of every frame heard
 		take := func(f *audio.RipFrames) {
 			flux = append(flux, f.Flux...)
-			for i, v := range [...][]float32{f.Strike, f.Salience, f.Release, f.Velocity, f.Wave, f.Voice, f.Family} {
+			for i, v := range [...][]float32{f.Strike, f.Salience, f.Release, f.Velocity, f.Wave, f.Voice, f.Family, f.Spectrum} {
 				heard[i] = append(heard[i], v...)
 			}
 		}
@@ -304,6 +312,9 @@ func TestTheEarHearsAsTheWholeRecording(t *testing.T) {
 		}
 		if worst > 1e-6 || off > 1e-5 || len(strikes) != len(whole.Strike) {
 			t.Errorf("once the loudest is heard, features off by %.3g and strikes by %.3g; %d strikes heard of %d", worst, off, len(strikes), len(whole.Strike))
+		}
+		if !slices.Equal(heard[7], bands) {
+			t.Errorf("the spectrum given, %d bands, is not MelStream's %d", len(heard[7]), len(bands))
 		}
 		if firstFlux == nil {
 			firstFlux, first = flux, heard
