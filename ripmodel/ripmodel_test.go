@@ -2,6 +2,7 @@ package ripmodel
 
 import (
 	"bytes"
+	"encoding/binary"
 	"flag"
 	"io"
 	"maps"
@@ -32,9 +33,13 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 	if err := m.Save(&b); err != nil {
 		t.Fatal(err)
 	}
+	sum := binary.LittleEndian.Uint64(b.Bytes()[b.Len()-8:])
 	fe, err := Load(&b, nil)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if fe.NotesSum != sum {
+		t.Errorf("the notes weights' checksum %x, want the model's file's %x", fe.NotesSum, sum)
 	}
 	x := make([]float64, 5*audio.AudioSampleRate)
 	for i := range x {
@@ -109,9 +114,13 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 	var nb bytes.Buffer
 	nm.Save(&nb)
 	m.Save(&b)
+	sum = binary.LittleEndian.Uint64(nb.Bytes()[nb.Len()-8:])
 	nfe, err := Load(&b, &nb)
 	if err != nil {
 		t.Fatalf("a model and a notes model: %v", err)
+	}
+	if nfe.NotesSum != sum {
+		t.Errorf("the notes weights' checksum %x, want the notes model's file's %x", nfe.NotesSum, sum)
 	}
 	nf, err := nfe.Hear(x, audio.AudioSampleRate, audio.DefaultRipParams())
 	if err != nil || len(nf.Flux) != n {

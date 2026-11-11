@@ -6,6 +6,7 @@
 package ripmodel
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"math"
@@ -85,22 +86,49 @@ type FrontEnd struct {
 	// model hears it, when under the model's reach: its blocks share the wait,
 	// and its heads are no longer Hear's. Zero waits the reach.
 	Ahead float64
+	// NotesSum is the checksum the file of the weights that give the notes ends
+	// in, the notes model's or else the model's: what a judge names the weights
+	// it was fitted on by (audio.LoadRipJudge). Load sets it; zero from New.
+	NotesSum uint64
 }
 
 // Load reads a weight file, and a notes model's from notes when it is not nil,
 // and checks they hear and say what the rip expects.
 func Load(r, notes io.Reader) (*FrontEnd, error) {
-	m, err := transformer.Load(r)
+	sum := &tail{r: r}
+	m, err := transformer.Load(sum)
 	if err != nil {
 		return nil, err
 	}
 	var n *transformer.Model
 	if notes != nil {
-		if n, err = transformer.Load(notes); err != nil {
+		sum = &tail{r: notes}
+		if n, err = transformer.Load(sum); err != nil {
 			return nil, fmt.Errorf("notes model: %w", err)
 		}
 	}
-	return New(m, n)
+	fe, err := New(m, n)
+	if err != nil {
+		return nil, err
+	}
+	fe.NotesSum = binary.LittleEndian.Uint64(sum.last[:])
+	return fe, nil
+}
+
+// tail reads through r and keeps the last eight bytes read, the checksum a
+// weight file ends in
+type tail struct {
+	r    io.Reader
+	last [8]byte
+}
+
+func (t *tail) Read(p []byte) (int, error) {
+	n, err := t.r.Read(p)
+	if k := min(n, len(t.last)); k > 0 {
+		copy(t.last[:], t.last[k:])
+		copy(t.last[len(t.last)-k:], p[n-k:n])
+	}
+	return n, err
 }
 
 // optionalHeads is how many of Spec's last heads a model may lack: one trained
