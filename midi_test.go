@@ -121,7 +121,7 @@ func TestMIDITranscriptHoldsEveryPart(t *testing.T) {
 	if lines := slices.DeleteFunc(slices.Clone(five.Notes), func(n RipNote) bool { return n.Further }); !slices.Equal(lines, three.Notes) {
 		t.Errorf("the five parts' lines %+v, the three parts' %+v", lines, three.Notes)
 	}
-	ag := MatchNotes(five.Notes, five.Notes)
+	ag := MatchNotes(five.Notes, five.Notes, false)
 	if l := ag.Lines; l[0].B != 1 || l[1].B != 1 || l[2].Matched != 2 || ag.Register.Matched != 3 {
 		t.Errorf("matched to itself, lines of %d, %d and %d note(s) and a register of %d, want 1, 1, 2 and 3", l[0].B, l[1].B, l[2].Matched, ag.Register.Matched)
 	}

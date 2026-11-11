@@ -211,7 +211,7 @@ type Rip struct {
 	Params      RipParams
 	// MelodyVoice, UnderVoice and BassVoice are the voices a front end with a
 	// voice head heard the melody, the line under it and the bass played with,
-	// nil otherwise; stapes fits them when none was heard
+	// nil otherwise; stapes fits every line's, a voice heard its first seed
 	MelodyVoice, UnderVoice, BassVoice *VoiceDef
 	// Notes is the transcript before the grid: every note heard, in time
 	Notes []RipNote

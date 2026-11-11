@@ -489,6 +489,13 @@ that a document now states, and link the document instead.
   not see the lines change hands; the agreement per line was an illusion.
   `MatchNotes` matches within a line and reports the register as one line
   beside it, so the two numbers show the parting's own error.
+- **And grade the notes by pitch and onset.** A truth files its notes by its
+  own rule (a guitar's MIDI has no bass line), so within lines a right note
+  reads as an extra and a miss: `Agreement.All` counts every note as one line
+  and is what picks a threshold set or a round. It shares the lines' map and
+  transposition, both found from the pairs within lines so the counts by line
+  stayed as they were; where the truth's clock is the recording's, match it
+  `timed` and no map is fitted at all.
 - **A rule that fits a synthetic case can be refuted by one recording.** A
   note cut where its salience rose again by a third after falling off its
   peak heard thirty-two of thirty-two repeated piano strikes in a test and,
