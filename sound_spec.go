@@ -2,17 +2,6 @@ package audio
 
 import "slices"
 
-// Declarative sound specification.
-//
-// Conventions:
-//   - Times are seconds, frequencies Hz, gains linear.
-//   - A zero-valued field means "unset" and resolves to the neutral default
-//     documented on the field (the SoundShape convention: 0 -> 1.0).
-//   - Order-sensitive structure lives in arrays, never maps, so Marshal
-//     (which sorts keys) round-trips audio-identically.
-//   - Source frequencies always track pitch variance; processor frequencies
-//     only when track_pitch is set.
-
 // SoundSpecFile is the root of a sound TOML document: the sounds, and the voices
 // the tonal instruments play. The loaders return one with its includes flattened.
 type SoundSpecFile struct {
@@ -21,13 +10,16 @@ type SoundSpecFile struct {
 	Voice   []*VoiceDef `toml:"voice,omitempty"`
 }
 
-// SoundDef is one renderable sound. Registration is by Name; a later
-// definition replaces an earlier one wholesale, in place, keeping its SoundID.
+// SoundDef is one renderable sound, registered by Name: a later definition
+// replaces an earlier one whole, in place, keeping its SoundID. In a spec,
+// times are seconds, frequencies Hz and gains linear; a field at zero is unset
+// and takes the neutral default its comment names; and what has an order is an
+// array, never a map, so Marshal, which sorts keys, writes the same sound.
 type SoundDef struct {
 	Name string `toml:"name"`
 
-	// Desc is an annotation that survives Marshal: an editor's first save strips
-	// TOML comments.
+	// Desc is an annotation every writer keeps: a save keeps the comment above
+	// an entry and loses one inside it, and Marshal keeps none.
 	Desc string `toml:"desc,omitempty"`
 	// Duration is the master buffer length. 0 derives it from the layers as
 	// max(offset+length), which then requires every layer to set length.
@@ -83,6 +75,8 @@ type Bus struct {
 
 // Source is the tagged union of signal generators. Fields are shared across
 // kinds where they mean the same thing; unrelated fields are rejected at load.
+// Its frequencies always follow the pitch variance, a Proc's only under
+// track_pitch.
 type Source struct {
 	Kind string `toml:"kind"` // osc sweep fm noise impulse burst ref silence
 	Wave string `toml:"wave,omitempty"`
