@@ -1178,14 +1178,14 @@ func TestNoteLevelsReadARecordingsLoudness(t *testing.T) {
 // TestMIDIRoundTrip: a transcript written as a MIDI file reads back note for
 // note and hit for hit within half a tick, each line from its named track and
 // each drum from the drum channel, a note that ends as the next of its pitch
-// starts kept apart from it, and every note unmeasured.
+// starts kept apart from it, each glide as written and every note unmeasured.
 func TestMIDIRoundTrip(t *testing.T) {
 	in := []RipNote{
-		{Start: 0, End: 1.2, MIDI: 40, Vel: 1, Bass: true},
+		{Start: 0, End: 1.2, MIDI: 40, Vel: 1, Bass: true, Bend: -12, BendAt: 0.5},
 		{Start: 0.1, End: 0.4, MIDI: 72, Vel: 0.8, Bright: 0.9},
-		{Start: 0.4, End: 0.73, MIDI: 72, Vel: 0.5},
+		{Start: 0.4, End: 0.73, MIDI: 72, Vel: 0.5, Bend: 1.46, BendAt: 0.6},
 		{Start: 0.5, End: 1.1, MIDI: 67, Vel: 0.6, Second: true},
-		{Start: 0.77, End: 1.234, MIDI: 76, Vel: 0.3},
+		{Start: 0.77, End: 1.234, MIDI: 76, Vel: 0.3, Bend: -0.5},
 	}
 	hits := []RipHit{{Start: 0, Drum: InstrKick, Vel: 1}, {Start: 0.22, Drum: InstrHihat, Vel: 0.5}, {Start: 0.44, Drum: InstrSnare, Vel: 0.8}}
 	var file bytes.Buffer
@@ -1203,7 +1203,7 @@ func TestMIDIRoundTrip(t *testing.T) {
 	half := 0.5 / (137.0 / 60 * midiDivision)
 	for i, n := range out {
 		w := in[i]
-		if n.MIDI != w.MIDI || n.Bass != w.Bass || n.Second != w.Second || n.Bright != RipUnmeasured ||
+		if n.MIDI != w.MIDI || n.Bass != w.Bass || n.Second != w.Second || n.Bright != RipUnmeasured || n.Bend != w.Bend || n.BendAt != w.BendAt ||
 			math.Abs(n.Start-w.Start) > half || math.Abs(n.End-w.End) > half || math.Abs(n.Vel-w.Vel) > 0.5/127 {
 			t.Errorf("note %d: read %+v, wrote %+v", i, n, w)
 		}
