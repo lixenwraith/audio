@@ -218,6 +218,28 @@ type Rip struct {
 	// Tone is how each drum sounds in the recording, what Kit matches the
 	// registered drums to; unread for a score
 	Tone [InstrClap]RipTone
+	// Strikes is every strike judged, in time, when the Ripper asked for them
+	// and its front end hears strikes; a stream's bars carry none
+	// (RipStream.Strikes)
+	Strikes []RipStrike
+}
+
+// RipStrike is a strike the accounting judged: a note the decoder reported, or
+// a strike surer than a half that started none, the strongest of its pitch
+// within StrikeGap. With no judge loaded its odds and verdict are the installed
+// scores', which weigh only some of the strikes the decoder dropped.
+type RipStrike struct {
+	Frame    int  // where it starts, in frames of RipFrameSec, as RipStream.Frames counts them
+	MIDI     int  // its pitch, a followed note's the one it is reported at
+	Reported bool // the decoder reported it as a note
+	// Held marks a reported note the fit cannot see as its own that lasts a
+	// second: it stays on the heads' word, whatever its odds
+	Held bool
+	Kept bool    // it is a note of the rip
+	Odds float64 // that it is a note; 0 where the installed scores never weighed it
+	// Row is the row a judge reads of it (RipRowVersion), when the Ripper asked;
+	// a followed note's is read in the cell it was struck in
+	Row []float32
 }
 
 // RipNote is one note as heard, in seconds of the recording, before it was
@@ -348,10 +370,12 @@ type RipFrames struct {
 	// nil from a model
 	bands [3][]float64
 	// loud is each drum's loudest onset strength over the recording heard so
-	// far, past these frames' own, and refs each register's reference loudness
-	// (ripRegisters): what a live rip's frames are read against
-	loud [InstrClap]float64
-	refs map[[2]int]float64
+	// far, past these frames' own, refs each register's reference loudness
+	// (ripRegisters) and fluxRef the flux's level (fluxLevel): what a live rip's
+	// frames are read against
+	loud    [InstrClap]float64
+	refs    map[[2]int]float64
+	fluxRef float64
 }
 
 func (f *RipFrames) frames() int { return len(f.Flux) }
@@ -459,6 +483,13 @@ type Ripper struct {
 	// Spectrum has a stream's frames keep the spectrum they were read from
 	// (RipFrames.Spectrum), for a view of the rip at work
 	Spectrum bool
+	// Judge rules which strikes of a front end that hears them are notes, in the
+	// installed scores' place, when it is not nil: one fitted on that front end's
+	// notes weights (LoadRipJudge)
+	Judge *RipJudge
+	// Strikes has the rip list every strike judged (Rip.Strikes,
+	// RipStream.Strikes), and Rows each one's row with it
+	Strikes, Rows bool
 }
 
 // RipGrid pins the grid a recording is read on, as a render's is known, so a
@@ -557,7 +588,7 @@ func (rp Ripper) Samples(x []float64, rate int) (*Rip, error) {
 	}
 	ev := rp.events(f, x, p)
 	if t := musicStart(x); t > 0 {
-		ev.hits, ev.bass, ev.melody = heardFrom(t, ev.hits, ev.bass, ev.melody)
+		ev.from(t)
 	}
 	g, bpm, _, err := rp.grid(f, ev, p)
 	if err != nil {
@@ -569,16 +600,24 @@ func (rp Ripper) Samples(x []float64, rate int) (*Rip, error) {
 	r := g.lay(f, x, ev, bpm, shift, [InstrClap]float64{}, p)
 	r.MelodyVoice, r.UnderVoice, r.BassVoice = voiceOf(ev.melody), voiceOf(ev.melody), voiceOf(ev.bass)
 	r.Tone = drumTones(x, raw, rate, hitStarts(x, ev.seconds(f.Hop)))
+	r.Strikes = ev.strikes
 	return r, nil
 }
 
 // ripEvents are what the decoders hear before the bars: each drum's hits, the
-// key, and the bass and melody notes
+// key, the bass and melody notes, and the strikes judged when the Ripper asks
 type ripEvents struct {
 	hits         [InstrClap][]ripHit
 	root         int
 	scale        ScaleID
 	bass, melody []ripNote
+	strikes      []RipStrike
+}
+
+// from drops the events before frame t, where the music starts (heardFrom)
+func (ev *ripEvents) from(t int) {
+	ev.hits, ev.bass, ev.melody = heardFrom(t, ev.hits, ev.bass, ev.melody)
+	ev.strikes = slices.DeleteFunc(ev.strikes, func(s RipStrike) bool { return s.Frame < t-2 })
 }
 
 // events reads the hits, the key and the lines off the frames, x their samples
@@ -592,7 +631,7 @@ func (rp Ripper) events(f *RipFrames, x []float64, p RipParams) ripEvents {
 	if f.Velocity != nil {
 		dynamics(x, f.Hop, ev.melody, ev.bass)
 	}
-	ev.bass, ev.melody = f.account(x, p, ev.bass, ev.melody)
+	ev.bass, ev.melody, ev.strikes = f.account(x, p, accAsk{judge: rp.Judge, strikes: rp.Strikes, rows: rp.Rows}, ev.bass, ev.melody)
 	ev.melody = streams(ev.melody, f.Hop, rp.Lead)
 	return ev
 }

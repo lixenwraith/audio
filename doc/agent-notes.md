@@ -456,6 +456,25 @@ that a document now states, and link the document instead.
   from before reads the E3's step (.72) but the candidate score still refuses
   it at .16, and the memory's wobble under other pitches' rings at the higher
   partials costs the restrike kind, so the exclusion stays.
+- The engine's own tests never reach the accounting, as the analysis hears no
+  strikes. `struck` (`account_test.go`) is the analysis with strike, release
+  and velocity planes read off its salience, offline and as an ear. A change
+  that must leave the rip with no judge the same is checked through it: a
+  scratch test that dumps the loop's notes and bars, offline and from a
+  stream, run in a worktree of main with the helper copied in and on the
+  branch, the two files compared with `cmp`.
+- The candidates' fit moves the floor it shares with the reported notes' fit
+  (`accFit.against`; `settle` updates `b`). A second fit against the same kept
+  notes starts from a clone taken before the first. The kept notes'
+  activations and the templates do not move there, and `evidence` restores
+  what `without` settles, so the second reads the state the first did.
+- A verdict that changes a kept note is applied after every candidate's row is
+  read. A row's `ringing` reads the kept notes' ends: cutting a kept note as
+  each strike came back made a later strike's row depend on an earlier
+  verdict, so the rows written with no judge could never be a judge's.
+- `odds` stays as written beside `terms`, which scales the same inputs for a
+  row: `s.rise*in.rise/10` is not `s.rise*(in.rise/10)` to the last bit, and
+  the installed verdicts are held byte for byte.
 
 ## Decoders
 
@@ -603,3 +622,14 @@ that a document now states, and link the document instead.
 - **The layout is the dear part of a read that freezes.** `lay` is 28% of the
   stream's time through the analysis in `bright` alone, so `Open` hands on the
   bars the freezing read laid out and no read lays out for it.
+- **A strike freezes by the predicate its note would** (`frozen(frame -
+  shift)`), and each read hears the last frozen bar again as context: a strike
+  there is neither frozen again nor open. `Strikes` keeps a frozen strike
+  until the `Write` after its frames went, as `Frames` keeps a late frame.
+  The stream test holds the strikes kept to the notes frozen, one to one.
+- **`Final` rips the samples a stream kept, float32.** A test that compares it
+  with `Samples` rounds the recording to float32 first.
+- **`BenchmarkRip` and the stream's `struck` ways are mostly the analysis.**
+  The accounting is a small share of the loop's rip there, so a judge loaded
+  and the read on move them by a few percent; profile for the stage's own
+  cost.

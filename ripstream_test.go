@@ -1,6 +1,8 @@
 package audio
 
 import (
+	"cmp"
+	"maps"
 	"math"
 	"math/rand/v2"
 	"reflect"
@@ -258,20 +260,158 @@ func TestRipStreamFreezesItsOpenBarsAsRead(t *testing.T) {
 	}
 }
 
-// BenchmarkRipStream is a live rip of the loop, twelve bars in 50 ms blocks
-// through the analysis: unread, and read after every block as a view reads it,
-// the frames since the last with their spectrum and the open bars.
+// TestRipStreamFinalUnderAJudgeIsTheOfflineRip: a stream whose Ripper carries a
+// judge rips what it heard, at the end, as the offline rip does under that judge,
+// which is not the rip the installed scores make.
+func TestRipStreamFinalUnderAJudgeIsTheOfflineRip(t *testing.T) {
+	ae, slots := startLoopEngine(t)
+	buf, err := ae.RenderMusic(slots, 140, Meter{}, 8, DefaultRootNote, ScalePhrygian, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, v := range buf { // as a stream keeps them
+		buf[i] = float64(float32(v))
+	}
+	rp := Ripper{Params: DefaultRipParams(), FrontEnd: struck{}, Judge: judgeSaying([judgeStages]float64{0.9, 0.9})}
+	off, err := rp.Samples(buf, AudioSampleRate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewRipStream(rp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, block := 0, AudioSampleRate/2; i < len(buf); i += block {
+		if err := s.Write(buf[i:min(i+block, len(buf))], AudioSampleRate); err != nil {
+			t.Fatal(err)
+		}
+	}
+	final, err := s.Final()
+	if err != nil || !reflect.DeepEqual(final, off) {
+		t.Errorf("the stream's final rip is not the offline rip under the judge: %v", err)
+	}
+	rp.Judge = nil
+	if plain, err := rp.Samples(buf, AudioSampleRate); err != nil || len(plain.Notes) >= len(off.Notes) {
+		t.Errorf("the judge that says yes left %d notes of the installed scores' %d: %v", len(off.Notes), len(plain.Notes), err)
+	}
+}
+
+// TestRipStreamGivesTheStrikesOfTheFramesItHolds: a stream whose Ripper reads
+// the strikes gives, asked after every block for those since the last frozen,
+// each strike once its bar freezes and the open bars' after them; the ones kept
+// are the notes its bars freeze, as the offline rip's are its notes.
+func TestRipStreamGivesTheStrikesOfTheFramesItHolds(t *testing.T) {
+	ae, slots := startLoopEngine(t)
+	buf, err := ae.RenderMusic(slots, 140, Meter{}, 12, DefaultRootNote, ScalePhrygian, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := func(strikes []RipStrike) (at [][2]int) {
+		for _, st := range strikes {
+			if st.Kept {
+				at = append(at, [2]int{st.Frame, st.MIDI})
+			}
+		}
+		return at
+	}
+	notes := func(r *Rip) (at [][2]int) {
+		for _, n := range r.Notes {
+			at = append(at, [2]int{int(math.Round(n.Start / RipFrameSec)), n.MIDI})
+		}
+		slices.SortFunc(at, func(a, b [2]int) int { return cmp.Or(a[0]-b[0], a[1]-b[1]) })
+		return at
+	}
+	rp := Ripper{Params: DefaultRipParams(), FrontEnd: struck{}, Strikes: true}
+	off, err := rp.Samples(buf, AudioSampleRate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := kept(off.Strikes), notes(off); !slices.Equal(got, want) || len(off.Strikes) <= len(want) {
+		t.Errorf("the offline rip keeps %d of %d strikes, its notes are %d: %v, want %v", len(got), len(off.Strikes), len(want), got, want)
+	}
+	s, err := NewRipStream(rp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var frozen []RipStrike
+	next, open := 0, 0
+	for i, block := 0, AudioSampleRate/20; i < len(buf); i += block {
+		if err := s.Write(buf[i:min(i+block, len(buf))], AudioSampleRate); err != nil {
+			t.Fatal(err)
+		}
+		strikes, n := s.Strikes(next)
+		if len(strikes) > 0 && strikes[0].Frame < next || n > 0 && s.Bars() == nil {
+			t.Fatalf("asked since frame %d, %d strikes from frame %d, %d frozen", next, len(strikes), strikes[0].Frame, n)
+		}
+		if frozen, open = append(frozen, strikes[:n]...), max(open, len(strikes)-n); n > 0 {
+			next = strikes[n-1].Frame + 1
+		}
+	}
+	r, err := s.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	strikes, n := s.Strikes(next)
+	if frozen = append(frozen, strikes...); n != len(strikes) || open == 0 {
+		t.Errorf("%d of the %d strikes left at the end frozen, and %d open at most before it", n, len(strikes), open)
+	}
+	if got, want := kept(frozen), notes(r); !slices.Equal(got, want) || len(frozen) <= len(want) {
+		t.Errorf("the stream froze %d strikes, %d kept, its notes are %d: %v, want %v", len(frozen), len(got), len(want), got, want)
+	}
+}
+
+// ripWays are the ways a rip through a front end that hears strikes is
+// measured: with no judge, with one of the fitted size loaded, and with the
+// strikes read with their rows, as the rows a fit takes are written
+func ripWays() map[string]Ripper {
+	rp := Ripper{Params: DefaultRipParams(), FrontEnd: struck{}}
+	judged, read := rp, rp
+	judged.Judge = judgeSized(256, 64, [judgeStages]float64{0.9, 0.1})
+	read.Strikes, read.Rows = true, true
+	return map[string]Ripper{"unjudged": rp, "judged": judged, "read": read}
+}
+
+// BenchmarkRip is the offline rip of the loop, twelve bars, through a front end
+// that hears strikes, so the accounting runs, each of ripWays.
+func BenchmarkRip(b *testing.B) {
+	ae, slots := startLoopEngine(b)
+	buf, err := ae.RenderMusic(slots, 140, Meter{}, 12, DefaultRootNote, ScalePhrygian, nil, 1)
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, way := range slices.Sorted(maps.Keys(ripWays())) {
+		rp := ripWays()[way]
+		b.Run(way, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := rp.Samples(buf, AudioSampleRate); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+// BenchmarkRipStream is a live rip of the loop, twelve bars in 50 ms blocks:
+// through the analysis unread, and read after every block as a view reads it,
+// the frames since the last with their spectrum, the open bars and the
+// strikes; and through a front end that hears strikes, unread, each of ripWays.
 func BenchmarkRipStream(b *testing.B) {
 	ae, slots := startLoopEngine(b)
 	buf, err := ae.RenderMusic(slots, 140, Meter{}, 12, DefaultRootNote, ScalePhrygian, nil, 1)
 	if err != nil {
 		b.Fatal(err)
 	}
-	for _, read := range []bool{false, true} {
-		b.Run(map[bool]string{false: "unread", true: "read"}[read], func(b *testing.B) {
+	ways := map[string]Ripper{"unread": {Params: DefaultRipParams()}, "read": {Params: DefaultRipParams(), Spectrum: true, Strikes: true}}
+	for way, rp := range ripWays() {
+		ways["struck/"+way] = rp
+	}
+	for _, way := range slices.Sorted(maps.Keys(ways)) {
+		rp, read := ways[way], way == "read"
+		b.Run(way, func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
-				s, err := NewRipStream(Ripper{Params: DefaultRipParams(), Spectrum: read})
+				s, err := NewRipStream(rp)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -282,6 +422,7 @@ func BenchmarkRipStream(b *testing.B) {
 					}
 					if read {
 						f, from := s.Frames(next)
+						s.Strikes(next)
 						next = from + f.frames()
 						s.Open()
 					}
