@@ -13,16 +13,16 @@ import (
 	"strings"
 )
 
-// Agreement is how two transcripts of one piece agree: each line's notes of one
-// matched to the other's of the same pitch, under one transposition, where a
-// time map following the piece's tempo places them, so a tempo that drifts or a
-// phrase played freer does not break the match and a note far from its place
-// does not count, the melody register also as a whole in case the two part its
-// lines differently, and the map as a line, a's seconds of b's.
+// Agreement is how two transcripts of one piece agree: a note of one matched to
+// the other's of its pitch, under one transposition, within matchWindow of where
+// a time map following the piece's tempo places it, counted line by line, with
+// the melody register as one, and with every note as one line, since the two may
+// file a note on different lines; and the map as a line, a's seconds of b's.
 type Agreement struct {
 	Shift           int // semitones added to b's pitches to match a's
 	Lines           [3]LineAgreement
 	Register        LineAgreement // the melody register as one: both lines, a score's further parts
+	All             LineAgreement // every note as one line: by pitch and onset, whatever line either side filed it on
 	Stretch, Offset float64       // a's time of a matched note ≈ Stretch*b's + Offset
 	// paired are seconds of b and where each falls on a, in order, the map At follows
 	paired [][2]float64
@@ -192,6 +192,7 @@ func align(a, b []RipNote, shift int) Agreement {
 		ag.Lines[line] = part(inLine(line))
 	}
 	ag.Register = part(register)
+	ag.All = part(func(RipNote) bool { return true })
 	return ag
 }
 

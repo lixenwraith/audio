@@ -852,6 +852,27 @@ func TestMatchNotesAlignsTwoTranscripts(t *testing.T) {
 	}
 }
 
+// TestAgreementCountsEveryNoteWhateverItsLine: a truth that files a guitar's
+// notes on one line, against a rip that put its low strings on a bass line and
+// some of the rest on a second, matches every note in All, where the lines and
+// the register count only what the two filed alike.
+func TestAgreementCountsEveryNoteWhateverItsLine(t *testing.T) {
+	var a, b []RipNote
+	for i, m := range [...]int{40, 59, 47, 64, 43, 67, 52, 60, 45, 71, 50, 62, 41, 65, 48, 69} {
+		n := RipNote{Start: 0.25 * float64(i), End: 0.25*float64(i) + 0.2, MIDI: m}
+		b = append(b, n)
+		n.Bass, n.Second = m < RipBassTop, m >= RipBassTop && i%3 == 0
+		a = append(a, n)
+	}
+	ag := MatchNotes(a, b)
+	if all := ag.All; all.A != 16 || all.B != 16 || all.Matched != 16 || len(all.OnlyA)+len(all.OnlyB) != 0 {
+		t.Errorf("every note as one line: %d of a's %d and b's %d matched, only a %v, only b %v", all.Matched, all.A, all.B, all.OnlyA, all.OnlyB)
+	}
+	if ag.Lines[0].Matched != 5 || ag.Lines[1].Matched != 0 || ag.Lines[2].Matched != 0 || ag.Register.Matched != 9 {
+		t.Errorf("by line %d, %d and %d matched, the register %d: want 5, 0, 0 and 9, what the two filed alike", ag.Lines[0].Matched, ag.Lines[1].Matched, ag.Lines[2].Matched, ag.Register.Matched)
+	}
+}
+
 // TestMatchHitsPlacesARipsDrumsOnTheGivenOnes: a rip's drum steps, placed on its
 // beats at 117 bpm, match a beat given at 120 bpm two seconds later under the
 // map the search finds, drum by drum within half a step: a kick the rip missed
