@@ -676,11 +676,12 @@ since they sort the strikes into two populations the score weighs apart, and
 strikes judged all together let a bass note's partials take its sound. A front end's drum strength is how sure it is, so a
 drum it never grows sure of stays silent, where a bar set against its own loudest
 would raise its doubts to hits, and one striking under four times a minute is no
-part (`drumHits`). A register's voice is the mean of its notes' genes, one voice
-over the melody's two lines, on a modal bank whatever wave the head names, as it
-names saw through a phone's narrow band, with one oscillator, as that mean of two
-would beat, and a fade that keeps the line's long notes within 12 dB to their end
-(`lasting`).
+part (`drumHits`). A register's voice is the mean of the frames' genes over its
+notes, one voice over the melody's two lines, on a modal bank whatever wave the
+head names, as it names saw through a phone's narrow band; where a notes model
+says what plays each pitch (below), a line's voice is its own notes' instead.
+Either plays with one oscillator, as that mean of two would beat, and a fade
+that keeps the line's long notes within 12 dB to their end (`lasting`).
 `ripmodel.Load` reads
 a weight file into a front end; rip-train, stapes' trainer, writes one from loops
 the engine renders.
@@ -795,6 +796,33 @@ odds of zero; a candidate they weighed is the strike of its pitch nearest it
 within `StrikeGap`. Its row is then fitted against the kept notes apart, on the
 floor as it stood before the installed candidates' fit, so it is the row a
 judge that kept the same notes would read, and asking changes no note.
+
+A notes model may also say what plays each pitch, where the model's wave, voice
+and family heads say one thing a frame: three more heads of values a pitch
+(`ripmodel.HeadPitchFamily`, a score for each of `RipFamilies` but unknown,
+which is the absence of a name and no class; `HeadPitchWave`, one for each of
+`VoiceWaves`; `HeadPitchVoice`, the genes). Their planes are 45 values a pitch,
+3,105 a frame, so the front end keeps them at each frame's twelve most salient
+pitches alone (`RipVoiceCells`; `RipFrames.VoiceAt` names them, most salient
+first), a byte a value (`RipFrames.Voices`, `RipVoiceSize` a pitch, 255 a
+whole): each family's and each wave's share, a softmax over its head's scores
+at the pitch, and each gene. That is 552 bytes a frame, twice the salience
+plane's 276: a three-minute recording's 15,504 frames keep 8.6 MB of them
+beside the 32 MB of their other fields.
+
+Each note of the registers is then told its voice (`tell`, `RipNote.Voice`):
+the mean of its pitch's values over the frames it sounds and is among the
+twelve, each weighed by its salience there, and over every cell a note that
+moved sounded in. Its wave is the one of the highest mean share and its genes
+are a voice `VoiceFromGenes` plays, whatever instrument made the sound. Its
+family is the one of the highest mean share where that share passes the measure
+the weight file carries (`RipFrames.Sure`, the head `ripmodel.HeadSure`: the
+share the notes of a family the trainer was told no name of reach at their
+surest), and none otherwise; a file that carries no measure names no note. A
+line's voice (`Rip.MelodyVoice`, `UnderVoice`, `BassVoice`) is then its own
+notes' mean voice by length, on the wave of the highest mean share, the melody
+and the line under it each their own. A live rip's lines take their registers'
+notes' mean the same way, and its notes carry no voice yet.
 
 The model's input (`features`) is each band in dB less the frame's mean, over
 80, and the mean, so the bands are level-free and loudness is one input. A model

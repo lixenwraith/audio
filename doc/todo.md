@@ -182,6 +182,42 @@ step's bend cannot hold is heard and dropped:
   through a scoop's rise, the sound is not there. The cells a followed sound
   passed are in `ripNote.cells`, where the accounting already reads them.
 
+### Carry a note's voice further
+
+- Priority: P2
+- Affected files: `rip.go`, `ripstream.go`, `ripmodel/ripmodel.go`
+
+A notes model with the heads says what plays each pitch, and a note carries its
+voice ([Audio §9](audio.md#9-ripping-a-recording)). What is left:
+
+- The lines are still filed by register, so a line two instruments share takes
+  the mean of their genes, a voice neither plays. Lines by voice is the next
+  step ([Stapes' rip design
+  §7](https://github.com/lixenwraith/stapes/blob/main/doc/rip-design.md#7-plan)).
+- A live rip's notes carry no voice and its melody and under lines share their
+  register's mean: `freeze` lays its notes out without it. The smallest close:
+  the frozen notes keep `ripNote.said` and `Final` parts the register as
+  `Samples` does.
+- `Hear` holds the notes model's whole output while it reads it: 3,562 values a
+  frame with these heads against 456 without, 221 MB over three minutes against
+  28 MB, beside the stack's 212 MB, though the frames keep 552 bytes of it. The
+  smallest close: `Hear` in stretches of frames with the model's reach either
+  side, as the ear already hears; or a cell net that gives a head only at the
+  cells asked for, in `transformer`.
+- The measure is one number for every family, written in the weight file as a
+  frame head of no weights, and a measure a family fits the same head at eight
+  values. Not taken: a file version with named constants, which needs
+  `transformer`'s format, loader and both exporters changed and a file an older
+  audio refuses. What brings it is a constant that is not the notes model's
+  own, one on the frame model say, or one a caller needs before any frame is
+  heard.
+- A note keeps the name and not the share: `RipVoice` has no field for how far
+  past the measure its family was, or for the second family. A caller that
+  ranks notes by sureness needs one.
+- A frame's thirteenth most salient pitch and on are told nothing; a note is
+  read on its other frames. How many notes of a dense recording are told on
+  under half their frames is not counted yet.
+
 ## The bank's music
 
 ### Settle what a macro over a base does with a default that invokes

@@ -403,6 +403,23 @@ that a document now states, and link the document instead.
   notes sharpened, "a stretched string", before any note is judged: the ear
   reads a tuning offset as timbre. Render, play and fit at the recording's
   tuning (`SongDef.Tuning`, `SetTuning`, `RenderNoteAt`); the rip reads it.
+- A notes model's head of values a pitch is priced twice: by what the frames
+  keep, and by `Forward`'s output, which `Hear` holds whole while it reads it.
+  What plays each pitch is 3,105 floats a frame there, 193 MB over three
+  minutes, though the frames keep 552 bytes a frame of it. State both for a new
+  head, and read a wide one at the cells that need it, as `appendVoices` does.
+- What plays each pitch is checked against PyTorch as bytes as well as scores:
+  the cells kept a frame against `torch.argsort(pitch, descending=True,
+  stable=True)[:12]`, each byte within a half of 255 times its share. On a
+  corpus loop's 862 frames, a notes model of perturbed weights: no cell of
+  10,344 and no byte of 465,480 off, the scores within 1.9e-5 on outputs up to
+  16. The measure reads the same at every frame, its head's weights being zero.
+- A notes file with a head this audio does not know must still load in the
+  last tag: `git worktree add <dir> origin/main`, a scratch module that
+  replaces audio by it, `ripmodel.Load` and `Hear` on a second of a sine.
+- `RipNote` is compared with `==` (stapes' `truth` skips a note itself that
+  way), so a slice field breaks a caller's build: what a note carries beyond
+  scalars hangs off a pointer, as `Voice` does.
 
 ## The accounting
 
