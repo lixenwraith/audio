@@ -11,294 +11,635 @@ body = { name = "${name}", duration = 0.42, fixed_length = true, variants = 1, p
 ] }
 
 [[sound]]
-name = "error"
 duration = 0.08
 fixed_length = true
+name = "error"
 norm = 0.9
+
 [[sound.layer]]
-source = { kind = "sweep", wave = "saw", freq = 130, freq_end = 85 }
-chain = [
-  { kind = "lp", freq = 900, q = 0.9 },
-  { kind = "ar", attack = 0.005, release = 0.02 }
-]
+
+[[sound.layer.chain]]
+freq = 900.0
+kind = "lp"
+q = 0.9
+
+[[sound.layer.chain]]
+attack = 0.005
+kind = "ar"
+release = 0.02
+
+[sound.layer.source]
+freq = 130.0
+freq_end = 85.0
+kind = "sweep"
+wave = "saw"
 
 # Three partials, upper slightly stretched: the beating is the shimmer.
 [[sound]]
-name = "bell"
 duration = 0.35
+name = "bell"
 norm = 0.9
+
 [[sound.layer]]
-source = { kind = "osc", wave = "sine", freq = 880 }
-chain = [{ kind = "ar", attack = 0.004, release = 0.32 }]
+
+[[sound.layer.chain]]
+attack = 0.004
+kind = "ar"
+release = 0.32
+
+[sound.layer.source]
+freq = 880.0
+kind = "osc"
+wave = "sine"
+
 [[sound.layer]]
 gain = 0.35
-source = { kind = "osc", wave = "sine", freq = 1765.28 }
-chain = [{ kind = "ar", attack = 0.004, release = 0.14 }]
+
+[[sound.layer.chain]]
+attack = 0.004
+kind = "ar"
+release = 0.14
+
+[sound.layer.source]
+freq = 1765.28
+kind = "osc"
+wave = "sine"
+
 [[sound.layer]]
 gain = 0.18
-source = { kind = "osc", wave = "sine", freq = 2637 }
-chain = [{ kind = "decay", attack = 0.002, tau = 0.05 }]
+
+[[sound.layer.chain]]
+attack = 0.002
+kind = "decay"
+tau = 0.05
+
+[sound.layer.source]
+freq = 2637.0
+kind = "osc"
+wave = "sine"
 
 [[sound]]
-name = "whoosh"
 duration = 0.12
+name = "whoosh"
 norm = 0.8
+
 [[sound.layer]]
-source = { kind = "noise" }
-chain = [
-  { kind = "sweepbp", freq = 500, freq_end = 2600, q = 1.2, track_pitch = true },
-  { kind = "am", rate = 13.0, depth = 0.35 },
-  { kind = "ar", attack = 0.015, release = 0.07 }
-]
+
+[[sound.layer.chain]]
+freq = 500.0
+freq_end = 2600.0
+kind = "sweepbp"
+q = 1.2
+track_pitch = true
+
+[[sound.layer.chain]]
+depth = 0.35
+kind = "am"
+rate = 13.0
+
+[[sound.layer.chain]]
+attack = 0.015
+kind = "ar"
+release = 0.07
+
+[sound.layer.source]
+kind = "noise"
 
 # Two notes in sequence: offset replaces concatenation.
 [[sound]]
 name = "coin"
 norm = 0.85
-chain = [{ kind = "lp", freq = 6000, q = 0.707 }]
+
+[[sound.chain]]
+freq = 6000.0
+kind = "lp"
+q = 0.707
+
 [[sound.layer]]
 length = 0.08
-source = { kind = "osc", wave = "square", freq = 987.77 }
-chain = [{ kind = "ar", attack = 0.005, release = 0.04 }]
+
+[[sound.layer.chain]]
+attack = 0.005
+kind = "ar"
+release = 0.04
+
+[sound.layer.source]
+freq = 987.77
+kind = "osc"
+wave = "square"
+
 [[sound.layer]]
-offset = 0.08
 length = 0.16
-source = { kind = "osc", wave = "square", freq = 1318.51 }
-chain = [{ kind = "ar", attack = 0.005, release = 0.11 }]
+offset = 0.08
+
+[[sound.layer.chain]]
+attack = 0.005
+kind = "ar"
+release = 0.11
+
+[sound.layer.source]
+freq = 1318.51
+kind = "osc"
+wave = "square"
 
 # The one preset that needs a bus: overdrive is nonlinear and must see the
 # sweep+sub sum, but not the noise texture. Length walks with pitch across the
 # takes, as bullet's do, so a hit every cooldown does not repeat one thud.
 [[sound]]
+duration = 0.1
 name = "shield"
-duration = 0.10
 norm = 0.95
-chain = [{ kind = "ar", attack = 0.002, release = 0.08 }]
+
 [[sound.bus]]
 name = "body"
-chain = [
-  { kind = "clip", drive = 2.5 },
-  { kind = "lp", freq = 400, q = 1.0 }
-]
+
+[[sound.bus.chain]]
+drive = 2.5
+kind = "clip"
+
+[[sound.bus.chain]]
+freq = 400.0
+kind = "lp"
+q = 1.0
+
+[[sound.chain]]
+attack = 0.002
+kind = "ar"
+release = 0.08
+
 [[sound.layer]]
 bus = "body"
-source = { kind = "sweep", wave = "sine", freq = 160, freq_end = 40 }
+
+[sound.layer.source]
+freq = 160.0
+freq_end = 40.0
+kind = "sweep"
+wave = "sine"
+
 [[sound.layer]]
 bus = "body"
 gain = 0.6
-source = { kind = "sweep", wave = "sine", freq = 80, freq_end = 40 }
+
+[sound.layer.source]
+freq = 80.0
+freq_end = 40.0
+kind = "sweep"
+wave = "sine"
+
 [[sound.layer]]
 gain = 0.2
 length = 0.04
-source = { kind = "noise" }
-chain = [
-  { kind = "bp", freq = 800, q = 2.0 },
-  { kind = "ar", attack = 0.005, release = 0.03 }
-]
+
+[[sound.layer.chain]]
+freq = 800.0
+kind = "bp"
+q = 2.0
+
+[[sound.layer.chain]]
+attack = 0.005
+kind = "ar"
+release = 0.03
+
+[sound.layer.source]
+kind = "noise"
 
 [[sound]]
-name = "zap"
 duration = 0.18
+name = "zap"
 norm = 0.85
-chain = [
-  { kind = "shape", drive = 1.5 },
-  { kind = "ar", attack = 0.005, release = 0.03 }
-]
+
+[[sound.chain]]
+drive = 1.5
+kind = "shape"
+
+[[sound.chain]]
+attack = 0.005
+kind = "ar"
+release = 0.03
+
 [[sound.layer]]
-source = { kind = "noise" }
-chain = [
-  { kind = "bp", freq = 1200, q = 1.0, track_pitch = true },
-  { kind = "am", rate = 25.0, depth = 0.8 }
-]
+
+[[sound.layer.chain]]
+freq = 1200.0
+kind = "bp"
+q = 1.0
+track_pitch = true
+
+[[sound.layer.chain]]
+depth = 0.8
+kind = "am"
+rate = 25.0
+
+[sound.layer.source]
+kind = "noise"
+
 [[sound.layer]]
 gain = 0.6
-source = { kind = "fm", freq = 110, ratio = 0.5, index = 3.0 }
-chain = [{ kind = "am", rate = 12.5, depth = 0.4 }]
+
+[[sound.layer.chain]]
+depth = 0.4
+kind = "am"
+rate = 12.5
+
+[sound.layer.source]
+freq = 110.0
+index = 3.0
+kind = "fm"
+ratio = 0.5
 
 # The band-passed copy must be the same spark realization, not a redraw:
 # that is what ref is for.
 [[sound]]
-name = "crackle"
 duration = 0.08
+name = "crackle"
 norm = 0.9
-chain = [
-  { kind = "clip", drive = 5.0 },
-  { kind = "decay", attack = 0.001, tau = 0.03 }
-]
+
+[[sound.chain]]
+drive = 5.0
+kind = "clip"
+
+[[sound.chain]]
+attack = 0.001
+kind = "decay"
+tau = 0.03
+
 [[sound.layer]]
 name = "sparks"
-source = { kind = "impulse", density = 0.002 }
-chain = [{ kind = "hp", freq = 1500, q = 0.707 }]
+
+[[sound.layer.chain]]
+freq = 1500.0
+kind = "hp"
+q = 0.707
+
+[sound.layer.source]
+density = 0.002
+kind = "impulse"
+
 [[sound.layer]]
 gain = 0.8
-source = { kind = "ref", ref = "sparks" }
-chain = [{ kind = "bp", freq = 3500, q = 4.0, track_pitch = true }]
+
+[[sound.layer.chain]]
+freq = 3500.0
+kind = "bp"
+q = 4.0
+track_pitch = true
+
+[sound.layer.source]
+kind = "ref"
+ref = "sparks"
 
 # index_curve = "quad" is 5*(1-t^2): the inharmonic FM index decay that was a
 # hand-written per-sample loop.
 [[sound]]
-name = "metalhit"
 duration = 0.12
 fixed_length = true
+name = "metalhit"
 norm = 0.95
-chain = [{ kind = "decay", attack = 0.001, tau = 0.04 }]
+
+[[sound.chain]]
+attack = 0.001
+kind = "decay"
+tau = 0.04
+
 [[sound.layer]]
-source = { kind = "fm", freq = 800, mod_freq = 1143, index = 5.0, index_end = 0, index_curve = "quad" }
-chain = [{ kind = "hp", freq = 200, q = 0.707 }]
+
+[[sound.layer.chain]]
+freq = 200.0
+kind = "hp"
+q = 0.707
+
+[sound.layer.source]
+freq = 800.0
+index = 5.0
+index_curve = "quad"
+kind = "fm"
+mod_freq = 1143.0
+
 [[sound.layer]]
 gain = 0.5
 length = 0.004
-source = { kind = "noise" }
-chain = [
-  { kind = "lp", freq = 3000, q = 1.0 },
-  { kind = "ar", attack = 0.0005, release = 0.003 }
-]
+
+[[sound.layer.chain]]
+freq = 3000.0
+kind = "lp"
+q = 1.0
+
+[[sound.layer.chain]]
+attack = 0.0005
+kind = "ar"
+release = 0.003
+
+[sound.layer.source]
+kind = "noise"
 
 [[sound]]
-name = "explosion"
 duration = 0.28
+name = "explosion"
 norm = 0.8
-chain = [{ kind = "shape", drive = 1.6 }]
+
+[[sound.chain]]
+drive = 1.6
+kind = "shape"
+
 [[sound.layer]]
-source = { kind = "sweep", wave = "sine", freq = 110, freq_end = 34 }
-chain = [
-  { kind = "shape", drive = 3.0 },
-  { kind = "decay", attack = 0.002, tau = 0.10 }
-]
+
+[[sound.layer.chain]]
+drive = 3.0
+kind = "shape"
+
+[[sound.layer.chain]]
+attack = 0.002
+kind = "decay"
+tau = 0.1
+
+[sound.layer.source]
+freq = 110.0
+freq_end = 34.0
+kind = "sweep"
+wave = "sine"
+
 [[sound.layer]]
 gain = 0.8
-source = { kind = "noise" }
-chain = [
-  { kind = "lp", freq = 450, q = 0.9 },
-  { kind = "decay", attack = 0.004, tau = 0.09 }
-]
+
+[[sound.layer.chain]]
+freq = 450.0
+kind = "lp"
+q = 0.9
+
+[[sound.layer.chain]]
+attack = 0.004
+kind = "decay"
+tau = 0.09
+
+[sound.layer.source]
+kind = "noise"
+
 [[sound.layer]]
 gain = 0.7
 length = 0.05
-source = { kind = "noise" }
-chain = [
-  { kind = "bp", freq = 2800, q = 0.8, track_pitch = true },
-  { kind = "decay", attack = 0.001, tau = 0.012 }
-]
+
+[[sound.layer.chain]]
+freq = 2800.0
+kind = "bp"
+q = 0.8
+track_pitch = true
+
+[[sound.layer.chain]]
+attack = 0.001
+kind = "decay"
+tau = 0.012
+
+[sound.layer.source]
+kind = "noise"
 
 [[sound]]
-name = "bullet"
 duration = 0.07
+name = "bullet"
 norm = 0.85
-chain = [
-  { kind = "shape", drive = 1.8 },
-  { kind = "decay", attack = 0.001, tau = 0.02 }
-]
+
+[[sound.chain]]
+drive = 1.8
+kind = "shape"
+
+[[sound.chain]]
+attack = 0.001
+kind = "decay"
+tau = 0.02
+
 [[sound.layer]]
-source = { kind = "sweep", wave = "saw", freq = 1500, freq_end = 240 }
-chain = [{ kind = "lp", freq = 4200, q = 0.9, track_pitch = true }]
+
+[[sound.layer.chain]]
+freq = 4200.0
+kind = "lp"
+q = 0.9
+track_pitch = true
+
+[sound.layer.source]
+freq = 1500.0
+freq_end = 240.0
+kind = "sweep"
+wave = "saw"
+
 [[sound.layer]]
 gain = 0.6
 length = 0.005
-source = { kind = "noise" }
-chain = [
-  { kind = "hp", freq = 2000, q = 0.707 },
-  { kind = "ar", attack = 0.0003, release = 0.004 }
-]
+
+[[sound.layer.chain]]
+freq = 2000.0
+kind = "hp"
+q = 0.707
+
+[[sound.layer.chain]]
+attack = 0.0003
+kind = "ar"
+release = 0.004
+
+[sound.layer.source]
+kind = "noise"
 
 # Rotary cue. Pitch leads, amplitude trails by 90 degrees: vibrato phase 0.25
 # is cos, am phase 0.5 flips the sine. In-phase modulation reads as a flat
 # wobble. The two partials are two layers, which is what partials are.
 [[sound]]
-name = "ring"
 duration = 0.7
+name = "ring"
 norm = 0.85
-chain = [
-  { kind = "bp", freq = 1600, q = 0.8, track_pitch = true },
-  { kind = "ar", attack = 0.008, release = 0.26 }
-]
+
+[[sound.chain]]
+freq = 1600.0
+kind = "bp"
+q = 0.8
+track_pitch = true
+
+[[sound.chain]]
+attack = 0.008
+kind = "ar"
+release = 0.26
+
 [[sound.layer]]
-source = { kind = "osc", wave = "sine", freq = 660, vibrato = { rate = 2.5, depth = 0.06, phase = 0.25 } }
-chain = [{ kind = "am", rate = 2.5, depth = 0.55, phase = 0.5 }]
+
+[[sound.layer.chain]]
+depth = 0.55
+kind = "am"
+phase = 0.5
+rate = 2.5
+
+[sound.layer.source]
+freq = 660.0
+kind = "osc"
+wave = "sine"
+
+[sound.layer.source.vibrato]
+depth = 0.06
+phase = 0.25
+rate = 2.5
+
 [[sound.layer]]
 gain = 0.45
-source = { kind = "osc", wave = "sine", freq = 990, vibrato = { rate = 2.5, depth = 0.06, phase = 0.25 } }
-chain = [{ kind = "am", rate = 2.5, depth = 0.55, phase = 0.5 }]
 
+[[sound.layer.chain]]
+depth = 0.55
+kind = "am"
+phase = 0.5
+rate = 2.5
 
+[sound.layer.source]
+freq = 990.0
+kind = "osc"
+wave = "sine"
+
+[sound.layer.source.vibrato]
+depth = 0.06
+phase = 0.25
+rate = 2.5
 
 # Simon tones: one take at concert pitch. A zero pitch_walk means the 10% default,
 # which leaves a lone take 5% flat, so a negligible walk pins the pitch.
 [[sound]]
 macro = "Tone"
-name = "tone_cs4"
 freq = 277.18
+name = "tone_cs4"
 
 [[sound]]
 macro = "Tone"
-name = "tone_e4"
 freq = 329.63
+name = "tone_e4"
 
 [[sound]]
 macro = "Tone"
+freq = 440.0
 name = "tone_a4"
-freq = 440
 
 [[sound]]
 macro = "Tone"
-name = "tone_e5"
 freq = 659.26
+name = "tone_e5"
 
 # Level cleared: the tones' A major triad rising to the octave.
 [[sound]]
-name = "chime"
 fixed_length = true
-variants = 1
-pitch_walk = 0.0001
+name = "chime"
 norm = 0.8
+pitch_walk = 0.0001
+variants = 1
+
 [[sound.layer]]
 length = 0.3
-source = { kind = "osc", wave = "sine", freq = 440 }
-chain = [{ kind = "decay", attack = 0.004, tau = 0.12 }]
+
+[[sound.layer.chain]]
+attack = 0.004
+kind = "decay"
+tau = 0.12
+
+[sound.layer.source]
+freq = 440.0
+kind = "osc"
+wave = "sine"
+
 [[sound.layer]]
+length = 0.3
 offset = 0.09
-length = 0.3
-source = { kind = "osc", wave = "sine", freq = 554.37 }
-chain = [{ kind = "decay", attack = 0.004, tau = 0.12 }]
+
+[[sound.layer.chain]]
+attack = 0.004
+kind = "decay"
+tau = 0.12
+
+[sound.layer.source]
+freq = 554.37
+kind = "osc"
+wave = "sine"
+
 [[sound.layer]]
+length = 0.3
 offset = 0.18
-length = 0.3
-source = { kind = "osc", wave = "sine", freq = 659.26 }
-chain = [{ kind = "decay", attack = 0.004, tau = 0.12 }]
+
+[[sound.layer.chain]]
+attack = 0.004
+kind = "decay"
+tau = 0.12
+
+[sound.layer.source]
+freq = 659.26
+kind = "osc"
+wave = "sine"
+
 [[sound.layer]]
-offset = 0.27
 length = 0.45
-source = { kind = "osc", wave = "sine", freq = 880 }
-chain = [{ kind = "decay", attack = 0.004, tau = 0.18 }]
+offset = 0.27
+
+[[sound.layer.chain]]
+attack = 0.004
+kind = "decay"
+tau = 0.18
+
+[sound.layer.source]
+freq = 880.0
+kind = "osc"
+wave = "sine"
 
 # Wrong note: two detuned low saws, the beating is the razz. Short, so the note that
 # was due sounds clear of it.
 [[sound]]
-name = "buzz"
 duration = 0.4
 fixed_length = true
+name = "buzz"
 norm = 0.8
-chain = [
-  { kind = "lp", freq = 700, q = 0.9 },
-  { kind = "ar", attack = 0.01, release = 0.12 }
-]
+
+[[sound.chain]]
+freq = 700.0
+kind = "lp"
+q = 0.9
+
+[[sound.chain]]
+attack = 0.01
+kind = "ar"
+release = 0.12
+
 [[sound.layer]]
-source = { kind = "osc", wave = "saw", freq = 98 }
+
+[sound.layer.source]
+freq = 98.0
+kind = "osc"
+wave = "saw"
+
 [[sound.layer]]
 gain = 0.8
-source = { kind = "osc", wave = "saw", freq = 103.8 }
+
+[sound.layer.source]
+freq = 103.8
+kind = "osc"
+wave = "saw"
 
 # Your turn: a short rising blip pair, above every tone.
 [[sound]]
-name = "turn"
 fixed_length = true
+name = "turn"
 norm = 0.7
+
 [[sound.layer]]
 length = 0.05
-source = { kind = "osc", wave = "sine", freq = 1318.51 }
-chain = [{ kind = "ar", attack = 0.002, release = 0.03 }]
+
+[[sound.layer.chain]]
+attack = 0.002
+kind = "ar"
+release = 0.03
+
+[sound.layer.source]
+freq = 1318.51
+kind = "osc"
+wave = "sine"
+
 [[sound.layer]]
-offset = 0.06
 length = 0.06
-source = { kind = "osc", wave = "sine", freq = 1760 }
-chain = [{ kind = "ar", attack = 0.002, release = 0.04 }]
+offset = 0.06
+
+[[sound.layer.chain]]
+attack = 0.002
+kind = "ar"
+release = 0.04
+
+[sound.layer.source]
+freq = 1760.0
+kind = "osc"
+wave = "sine"
