@@ -784,7 +784,7 @@ func TestMatchNotesCountsANoteOnlyNearItsPlace(t *testing.T) {
 	const off = 30
 	a[off].Start += 0.5
 	slices.SortFunc(a, func(x, y RipNote) int { return cmpFloat(x.Start, y.Start) })
-	ag := MatchNotes(a, b)
+	ag := MatchNotes(a, b, false)
 	if l := ag.Lines[0]; ag.Shift != 0 || l.Matched != 59 || len(l.OnlyA) != 1 || len(l.OnlyB) != 1 || l.OnlyB[0].Start != b[off].Start {
 		t.Errorf("shift %d, %d matched, only a %v, only b %v", ag.Shift, l.Matched, l.OnlyA, l.OnlyB)
 	}
@@ -811,7 +811,7 @@ func TestMatchNotesAlignsTwoTranscripts(t *testing.T) {
 		b = append(b, n)
 	}
 	b = append(b, RipNote{Start: 2.05, End: 2.2, MIDI: 72, Vel: 0.5}) // and one it alone hears
-	ag := MatchNotes(a, b)
+	ag := MatchNotes(a, b, false)
 	m, u, bass := ag.Lines[0], ag.Lines[1], ag.Lines[2]
 	if ag.Shift != -3 || m.Matched != 8 || len(m.OnlyA) != 1 || len(m.OnlyB) != 1 || u.Matched != 3 || bass.Matched != 4 || ag.Register.Matched != 11 {
 		t.Errorf("shift %d, melody %d matched of %d and %d (only a %d, only b %d), under %d, bass %d, register %d", ag.Shift, m.Matched, m.A, m.B, len(m.OnlyA), len(m.OnlyB), u.Matched, bass.Matched, ag.Register.Matched)
@@ -843,7 +843,7 @@ func TestMatchNotesAlignsTwoTranscripts(t *testing.T) {
 			heard = append(heard, RipNote{Start: n.Start + 0.3, End: n.End, MIDI: 60})
 		}
 	}
-	rhythm := MatchNotes(heard, tab[:5])
+	rhythm := MatchNotes(heard, tab[:5], false)
 	if l := rhythm.Lines[0]; !l.Rhythm || l.Matched != 4 || len(l.OnlyB) != 1 || l.Split != 1 || len(l.OnlyA) != 1 {
 		t.Errorf("rhythm: matched %d of %d given, only given %d, only heard %d, split %d", l.Matched, l.B, len(l.OnlyB), len(l.OnlyA), l.Split)
 	}
@@ -864,12 +864,35 @@ func TestAgreementCountsEveryNoteWhateverItsLine(t *testing.T) {
 		n.Bass, n.Second = m < RipBassTop, m >= RipBassTop && i%3 == 0
 		a = append(a, n)
 	}
-	ag := MatchNotes(a, b)
+	ag := MatchNotes(a, b, false)
 	if all := ag.All; all.A != 16 || all.B != 16 || all.Matched != 16 || len(all.OnlyA)+len(all.OnlyB) != 0 {
 		t.Errorf("every note as one line: %d of a's %d and b's %d matched, only a %v, only b %v", all.Matched, all.A, all.B, all.OnlyA, all.OnlyB)
 	}
 	if ag.Lines[0].Matched != 5 || ag.Lines[1].Matched != 0 || ag.Lines[2].Matched != 0 || ag.Register.Matched != 9 {
 		t.Errorf("by line %d, %d and %d matched, the register %d: want 5, 0, 0 and 9, what the two filed alike", ag.Lines[0].Matched, ag.Lines[1].Matched, ag.Lines[2].Matched, ag.Register.Matched)
+	}
+}
+
+// TestATimedTruthFitsNoMap: a transcript 0.15 s late and a tone up matches
+// every note under the map and the transposition the search finds, and none
+// timed, its seconds and pitches read as given, where one on the same clock
+// matches every note.
+func TestATimedTruthFitsNoMap(t *testing.T) {
+	var a, late, on []RipNote
+	for i, m := range [...]int{67, 69, 62, 74, 75, 70, 72, 65, 76, 81, 73, 60} {
+		at := 0.3 * float64(i)
+		a = append(a, RipNote{Start: at, End: at + 0.2, MIDI: m})
+		late = append(late, RipNote{Start: at + 0.15, End: at + 0.35, MIDI: m + 2})
+		on = append(on, RipNote{Start: at + 0.02, End: at + 0.22, MIDI: m})
+	}
+	if ag := MatchNotes(a, late, false); ag.Shift != -2 || math.Abs(ag.Offset+0.15) > 0.02 || ag.All.Matched != len(a) {
+		t.Errorf("fitted: shift %d, offset %+.3f, %d of %d matched", ag.Shift, ag.Offset, ag.All.Matched, len(a))
+	}
+	if ag := MatchNotes(a, late, true); ag.Shift != 0 || ag.Stretch != 1 || ag.Offset != 0 || ag.At(3) != 3 || ag.All.Matched != 0 {
+		t.Errorf("timed: shift %d, map %.3f × b %+.3f, a second 3 placed at %.3f, %d matched; want no map and none", ag.Shift, ag.Stretch, ag.Offset, ag.At(3), ag.All.Matched)
+	}
+	if ag := MatchNotes(a, on, true); ag.All.Matched != len(a) || ag.Lines[0].Matched != len(a) {
+		t.Errorf("timed, on the clock: %d of %d matched, %d on the line", ag.All.Matched, len(a), ag.Lines[0].Matched)
 	}
 }
 
