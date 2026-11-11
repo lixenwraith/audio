@@ -209,9 +209,10 @@ type Rip struct {
 	Beats       []float64 // seconds of each beat of the meter, the first bar's downbeat through the last bar's end
 	Bars        []RipBar
 	Params      RipParams
-	// MelodyVoice, UnderVoice and BassVoice are the voices a front end with a
-	// voice head heard the melody, the line under it and the bass played with,
-	// nil otherwise; stapes fits every line's, a voice heard its first seed
+	// MelodyVoice, UnderVoice and BassVoice are the voices a front end heard the
+	// melody, the line under it and the bass played with: each line's notes' own
+	// (RipNote.Voice), their mean, where it tells them, else its voice head's over
+	// the register's notes; nil with neither. stapes fits every line's from it.
 	MelodyVoice, UnderVoice, BassVoice *VoiceDef
 	// Notes is the transcript before the grid: every note heard, in time
 	Notes []RipNote
@@ -264,6 +265,17 @@ type RipNote struct {
 	// Further marks a score's note of a part past its three lines, of none: in
 	// the melody register's match as one line, or the bass's under E3
 	Further bool
+	// Voice is what the front end heard playing it; nil where it tells no note's
+	// voice, for a note none of whose frames it told, and for one not heard
+	Voice *RipVoice
+}
+
+// RipVoice is what a front end heard playing a note, its pitch's say over the
+// frames it sounds weighed by its salience, and over the cells it moved through
+type RipVoice struct {
+	Family string    // of RipFamilies, where its share passes the front end's measure (RipFrames.Sure); "" where no name is sure
+	Wave   string    // of VoiceWaves
+	Genes  []float64 // VoiceFromGenes plays them
 }
 
 // RipUnmeasured is a RipNote's Bright where none was measured, never a share
@@ -619,7 +631,12 @@ func (rp Ripper) Samples(x []float64, rate int) (*Rip, error) {
 	// notes' median lag comes out before they are quantized
 	shift := int(math.Round(g.lag(slices.Concat(ev.melody, ev.bass)) * g.stepFrames()))
 	r := g.lay(f, x, ev, bpm, shift, [InstrClap]float64{}, p)
-	r.MelodyVoice, r.UnderVoice, r.BassVoice = voiceOf(ev.melody), voiceOf(ev.melody), voiceOf(ev.bass)
+	lead, under := ev.melody, ev.melody
+	if f.Voices != nil { // each line's own notes say what plays it
+		second := func(n ripNote) bool { return n.second }
+		lead, under = slices.DeleteFunc(slices.Clone(lead), second), slices.DeleteFunc(slices.Clone(under), func(n ripNote) bool { return !second(n) })
+	}
+	r.MelodyVoice, r.UnderVoice, r.BassVoice = voiceOf(lead), voiceOf(under), voiceOf(ev.bass)
 	r.Tone = drumTones(x, raw, rate, hitStarts(x, ev.seconds(f.Hop)))
 	r.Strikes = ev.strikes
 	return r, nil
@@ -643,7 +660,8 @@ func (ev *ripEvents) from(t int) {
 
 // events reads the hits, the key and the lines off the frames, x their samples
 // at RipRate: the registers' notes settled between them, their dynamics, held
-// to the recording, and the melody register parted into its lines
+// to the recording, each told its voice, and the melody register parted into
+// its lines
 func (rp Ripper) events(f *RipFrames, x []float64, p RipParams) ripEvents {
 	ev := ripEvents{hits: f.drumHits(p)}
 	ev.root, ev.scale = f.key()
@@ -653,8 +671,65 @@ func (rp Ripper) events(f *RipFrames, x []float64, p RipParams) ripEvents {
 		dynamics(x, f.Hop, ev.melody, ev.bass)
 	}
 	ev.bass, ev.melody, ev.strikes = f.account(x, p, accAsk{judge: rp.Judge, strikes: rp.Strikes, rows: rp.Rows}, ev.bass, ev.melody)
+	f.tell(ev.bass)
+	f.tell(ev.melody)
 	ev.melody = streams(ev.melody, f.Hop, rp.Lead)
 	return ev
+}
+
+// tell gives each note what the front end said plays it (ripNote.said): its
+// pitch's row of Voices on the frames it sounds and is among the pitches told,
+// each weighed by its salience there, over every cell a note that moved sounded
+// in. A note told on no frame keeps none.
+func (f *RipFrames) tell(notes []ripNote) {
+	if f.Voices == nil {
+		return
+	}
+	for i := range notes {
+		n := &notes[i]
+		cells := n.cells
+		if cells == nil {
+			cells = []ripVisit{{midi: n.midi, start: n.start, end: n.end}}
+		}
+		said, total := make([]float64, RipVoiceSize), 0.0
+		for _, v := range cells {
+			cell := v.midi - RipMinMIDI
+			for t := max(v.start, 0); t < min(v.end, f.frames()); t++ {
+				k := slices.Index(f.VoiceAt[t*RipVoiceCells:][:RipVoiceCells], uint8(cell))
+				if k < 0 {
+					continue
+				}
+				w := float64(f.Salience[t*RipPitches+cell])
+				for j, b := range f.Voices[(t*RipVoiceCells+k)*RipVoiceSize:][:RipVoiceSize] {
+					said[j] += w * float64(b) / 255
+				}
+				total += w
+			}
+		}
+		if total == 0 {
+			continue
+		}
+		for j := range said {
+			said[j] /= total
+		}
+		n.said = said
+	}
+}
+
+// voice is what a note was said to be played by as its RipNote carries it: the
+// family of the highest share where that passes f.Sure, the wave of the highest
+// share and the genes; nil for a note told none
+func (f *RipFrames) voice(said []float64) *RipVoice {
+	if said == nil {
+		return nil
+	}
+	names, waves := len(RipFamilies)-1, len(VoiceWaves)
+	top := func(v []float64) int { return slices.Index(v, slices.Max(v)) }
+	v := &RipVoice{Wave: VoiceWaves[top(said[names:names+waves])], Genes: slices.Clone(said[names+waves:])}
+	if k := top(said[:names]); f.Sure > 0 && said[k] > f.Sure {
+		v.Family = RipFamilies[k]
+	}
+	return v
 }
 
 // seconds is each drum's hits in seconds
@@ -754,7 +829,7 @@ func (g ripGrid) lay(f *RipFrames, x []float64, ev ripEvents, bpm float64, shift
 			if i == 1 {
 				n.bright = RipUnmeasured
 			}
-			r.Notes = append(r.Notes, RipNote{Start: float64(n.start) * f.Hop, End: float64(n.end) * f.Hop, MIDI: n.midi, Vel: n.vel, Bass: i == 1, Second: n.second, Bright: n.bright, Bend: n.bend, BendAt: n.bendAt, Program: -1})
+			r.Notes = append(r.Notes, RipNote{Start: float64(n.start) * f.Hop, End: float64(n.end) * f.Hop, MIDI: n.midi, Vel: n.vel, Bass: i == 1, Second: n.second, Bright: n.bright, Bend: n.bend, BendAt: n.bendAt, Program: -1, Voice: f.voice(n.said)})
 		}
 	}
 	slices.SortFunc(r.Notes, func(a, b RipNote) int { return cmp.Compare(a.Start, b.Start) })
@@ -904,35 +979,52 @@ func BarDistance(a, b *RipBar) float64 {
 	return float64(differ) / float64(union)
 }
 
-// voiceOf is the voice a register's notes were heard played with, each note's genes
-// weighed by its length; nil when the front end named none. It plays on a modal bank
-// whatever wave the head names, as the head names saw through a phone's narrow band.
+// voiceOf is the voice a line's notes were heard played with, their mean by
+// length: of what each was said to be played by where the front end told any, on
+// the wave of the highest share; else of the frames' genes over each, on a modal
+// bank whatever wave the frame's head names, as it names saw through a phone's
+// narrow band. Nil when the front end named none.
 func voiceOf(notes []ripNote) *VoiceDef {
-	var genes []float64
-	var total float64
-	for _, n := range notes {
-		if n.voice == nil {
-			continue
-		}
-		if genes == nil {
-			genes = make([]float64, len(n.voice))
-		}
-		w := float64(n.end - n.start)
-		for i, g := range n.voice {
-			genes[i] += g * w
-		}
-		total += w
-	}
-	if genes == nil || total == 0 {
+	wave, genes := "modal", lengthMean(notes, func(n ripNote) []float64 { return n.said })
+	if genes != nil {
+		names, waves := len(RipFamilies)-1, len(VoiceWaves)
+		shares := genes[names : names+waves]
+		wave, genes = VoiceWaves[slices.Index(shares, slices.Max(shares))], genes[names+waves:]
+	} else if genes = lengthMean(notes, func(n ripNote) []float64 { return n.voice }); genes == nil {
 		return nil
 	}
-	for i := range genes {
-		genes[i] /= total
-	}
-	v := VoiceFromGenes("modal", genes)
+	v := VoiceFromGenes(wave, genes)
 	v.Unison = 1 // the genes' mean lands on two, and two detuned oscillators beat as a slow swell
 	lasting(v, notes)
 	return v
+}
+
+// lengthMean is the mean of what of gives for each note, by the notes' lengths;
+// nil where it gives none
+func lengthMean(notes []ripNote, of func(ripNote) []float64) []float64 {
+	var sum []float64
+	var total float64
+	for _, n := range notes {
+		v := of(n)
+		if v == nil {
+			continue
+		}
+		if sum == nil {
+			sum = make([]float64, len(v))
+		}
+		w := float64(n.end - n.start)
+		for i, x := range v {
+			sum[i] += x * w
+		}
+		total += w
+	}
+	if total == 0 {
+		return nil
+	}
+	for i := range sum {
+		sum[i] /= total
+	}
+	return sum
 }
 
 // lasting raises a voice's natural fade to its line's long notes, still within 12 dB
@@ -2515,7 +2607,8 @@ func (g *ripGrid) hit(r *Rip, d InstrumentType, frame int, vel float64) {
 }
 
 // ripNote is a stretch of frames the pitch track held one pitch over, with the
-// voice genes the front end heard it played with when it hears those
+// voice genes the front end heard over its frames when it hears those, and what
+// it said plays the note's own pitch when it tells that (RipVoiceSize values)
 type ripNote struct {
 	start, end, midi int
 	vel              float64
@@ -2523,7 +2616,7 @@ type ripNote struct {
 	second           bool    // heard under another note of the register
 	bright           float64 // RipNote.Bright
 	bend, bendAt     float64 // RipNote.Bend and BendAt
-	voice            []float64
+	voice, said      []float64
 	cells            []ripVisit // the cells its sound passed through, when more than its own
 }
 
