@@ -3392,12 +3392,13 @@ func (g *ripGrid) place(r *Rip, n ripNote, part func(*RipBar) *[]Step) {
 }
 
 // RipEvent is one step of patterns placed in the slots as they would sound: a
-// drum's hit, or a note's pitch, length and instrument.
+// drum's hit, or a note's pitch, length, instrument and glide (Step.Bend).
 type RipEvent struct {
 	Bar, Step, Dur int
 	Instr          InstrumentType
 	MIDI           int // 0 for a drum
 	Vel            float64
+	Bend, BendAt   float64
 }
 
 // ExpectedEvents is what patterns placed in the slots and played for bars bars of
@@ -3426,6 +3427,7 @@ func ExpectedEvents(slots [MusicSlots]PatternID, m Meter, bars, root int, scale 
 						e := RipEvent{Bar: bar, Step: step, Dur: max(ev.Dur, 1), Instr: tr.Instr, Vel: ev.Vel}
 						if !tr.Instr.IsDrum() {
 							e.MIDI = h.resolve(ev.Deg, ev.Oct, ev.Acc, tr.FollowChord)
+							e.Bend, e.BendAt = ev.Bend, ev.BendAt
 						}
 						out = append(out, e)
 					}

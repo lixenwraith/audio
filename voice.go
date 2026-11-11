@@ -717,6 +717,26 @@ func (v *TonalVoice) Active() bool {
 	return v.active
 }
 
+// NoteCents is how far a note of the voice sits from its pitch t seconds after
+// its strike, in cents, as Sample plays it: a step's bend of bend semitones over
+// a note of dur seconds from bendAt of its length, and the vibrato an oscillator
+// wave sways by. The engine's tuning is not in it, nor a unison's wander.
+func (d *VoiceDef) NoteCents(bend, bendAt, dur, t float64) float64 {
+	var cents float64
+	if bend != 0 && dur > 0 {
+		wait := bendAt * dur
+		cents = 100 * bend * min(max((t-wait)/max(dur-wait, 1.0/AudioSampleRate), 0), 1)
+	}
+	if w := waveOf(d.Wave); d.VibratoHz > 0 && d.VibratoCents > 0 && w != waveModal && w != waveString {
+		depth := 1.0
+		if d.VibratoDelay > 0 {
+			depth = min(t/d.VibratoDelay, 1)
+		}
+		cents += 1200 * math.Log2(1+d.VibratoCents*depth*math.Ln2/1200*math.Sin(2*math.Pi*d.VibratoHz*t))
+	}
+	return cents
+}
+
 func (v *TonalVoice) Trigger(params VoiceParams) {
 	sp := v.kit.voice(params.Instrument)
 	v.spec = sp

@@ -1724,6 +1724,33 @@ func TestPairNeverCancelsAPartial(t *testing.T) {
 	}
 }
 
+// TestNoteCentsIsThePitchAVoicePlays: an oscillator's phase steps by the pitch
+// NoteCents gives through a note's bend and vibrato, to a twentieth of a cent,
+// and a string, which holds its pitch against vibrato, is given its bend alone.
+func TestNoteCentsIsThePitchAVoicePlays(t *testing.T) {
+	const dur, bend, at = 0.5, -3.0, 0.4
+	d := &VoiceDef{Name: "lead", Wave: "saw", Sustain: 1, VibratoHz: 5.5, VibratoCents: 40, VibratoDelay: 0.2}
+	k := &kit{voices: make([]*VoiceDef, InstrLead+1), tuning: 1}
+	k.voices[InstrLead] = d
+	tv := NewTonalVoice(k)
+	tv.Trigger(VoiceParams{Note: 60, Velocity: 1, Duration: dur * AudioSampleRate, Bend: bend, BendAt: at, Instrument: InstrLead})
+	var worst float64
+	for i := range int(dur * AudioSampleRate) {
+		was := tv.phase[0]
+		tv.Sample()
+		step := wrap(tv.phase[0] - was + 1)
+		played := 1200 * math.Log2(step*AudioSampleRate/NoteFreq(60))
+		worst = max(worst, math.Abs(played-d.NoteCents(bend, at, dur, float64(i)/AudioSampleRate)))
+	}
+	if worst > 0.05 {
+		t.Errorf("the voice plays up to %.3f cents from what NoteCents gives", worst)
+	}
+	pluck := VoiceDef{Wave: "string", VibratoHz: 5.5, VibratoCents: 40}
+	if got := pluck.NoteCents(bend, at, dur, 0.35); math.Abs(got-(-300*0.15/0.3)) > 1e-9 {
+		t.Errorf("a string's note sits %.2f cents off halfway through its bend, want -150", got)
+	}
+}
+
 // TestABentStepGlides: a step's bend takes every voice kind's pitch from the
 // step's own, resolved through the harmony, to it plus the bend, linear in
 // semitones from bend_at: the spectral peak of the note's first tenth sits at
