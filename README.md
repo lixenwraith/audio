@@ -46,6 +46,7 @@ stapes, the authoring tool, runs over this engine alone.
 ```go
 sounds, err := bank.Sounds()     // or audio.LoadSoundsFS(own, "sfx.toml", "voices.toml")
 patterns, err := bank.Patterns() // or audio.LoadPatternsTOML(ownMusic)
+written, err := bank.MusicTOML() // the music as written: what SavePatternFile saves it over
 
 cfg := audio.DefaultAudioConfig()
 cfg.Enabled = true

@@ -25,9 +25,16 @@ func Sounds() (*audio.SoundSpecFile, error) {
 // Patterns parses the shipped music, whose roles, groups and tiers are the drawn
 // arrangement; any pattern it drops is a broken build.
 func Patterns() ([]*audio.Pattern, error) {
-	data, err := files.ReadFile("music.toml")
+	data, err := MusicTOML()
 	if err != nil {
 		return nil, err
 	}
 	return audio.LoadPatternsTOML(data)
+}
+
+// MusicTOML is the shipped music document as written, its macros and comments
+// with it: what a document seeded from Patterns is saved over
+// (audio.SavePatternFile) to stay the bank's own. Each call returns a copy.
+func MusicTOML() ([]byte, error) {
+	return files.ReadFile("music.toml")
 }

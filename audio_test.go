@@ -1254,28 +1254,26 @@ func TestSavingASavedDocumentChangesNoByte(t *testing.T) {
 }
 
 // TestACommentThatEndsWhatStaysSettlesInOneSave is the rule that a comment
-// closing the source's own text under a blank line, the file's last or one
-// between the macros and the entries, is kept as the first entry's and the
-// save is a fixed point at once, whatever blank lines stood around it.
+// closing the source's own text under a blank line is kept and the save a
+// fixed point at once, whatever blank lines stood around it: the file's last
+// stays below the entries, one above them is the first entry's, and a source
+// of comments alone has no last.
 func TestACommentThatEndsWhatStaysSettlesInOneSave(t *testing.T) {
 	macros := authoredMusic[:strings.Index(authoredMusic, "# -----")]
 	entry := "[[pattern]]\nname = \"a\"\nsteps = 16\ntrack = []\n"
-	comments := func(doc string) int { return strings.Count("\n"+doc, "\n#") }
-	for name, src := range map[string]string{
-		"the file's last":   macros + "\n" + entry + "\n# the end\n",
-		"nearer the macros": macros + "\n# so much for the macros\n\n\n\n" + entry,
+	f := &PatternSpecFile{Pattern: []*PatternDef{{Name: "a", Steps: 16}}}
+	for name, c := range map[string]struct{ src, ends string }{
+		"the file's last":   {macros + "\n" + entry + "\n\n# kept for later\n\n\n# the end\n", entry + "\n# kept for later\n\n# the end\n"},
+		"nearer the macros": {macros + "\n# so much for the macros\n\n\n\n" + entry, "\n# so much for the macros\n\n" + entry},
+		"of comments alone": {"# a tune\n\n\n# and what it is for\n", "# a tune\n\n# and what it is for\n\n" + entry},
 	} {
-		f, err := LoadPatternFile([]byte(src))
-		if err != nil {
-			t.Fatal(err)
-		}
-		once, err := SavePatternFile([]byte(src), f)
+		once, err := SavePatternFile([]byte(c.src), f)
 		if err != nil {
 			t.Fatal(err)
 		}
 		twice, err := SavePatternFile(once, f)
-		if err != nil || !bytes.Equal(once, twice) || comments(string(once)) != comments(src) {
-			t.Errorf("%s: a second save moved the document, or a comment went (%v):\n%s\n%s", name, err, once, twice)
+		if err != nil || !bytes.Equal(once, twice) || !strings.HasSuffix(string(once), c.ends) {
+			t.Errorf("%s: want one save to end in %q and a second to change no byte (%v):\n%s\n%s", name, c.ends, err, once, twice)
 		}
 	}
 }

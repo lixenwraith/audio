@@ -1,6 +1,7 @@
 # Built-in sound effects. Times are seconds, frequencies Hz.
-# Table headers are flush-left deliberately; chains use inline tables, but the
-# block form ([[sound.layer.chain]]) parses to the same array.
+# The file is kept as a save writes it (audio.SaveSoundsFile): keys sorted, each
+# layer, chain and source a block, each tone a Tone invocation. After a hand
+# edit, go test ./bank -resave writes it so again.
 
 [macros.Tone]
 doc = "A Simon tone at freq: a sine under a low-passed square, one take at concert pitch"
