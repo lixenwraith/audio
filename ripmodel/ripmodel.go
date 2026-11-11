@@ -68,6 +68,10 @@ var notesHeads = []string{HeadPitch, HeadVoicing, HeadStrike, HeadRelease, HeadV
 type FrontEnd struct {
 	Model *transformer.Model
 	Notes *transformer.Model
+	// Ahead is the seconds a frame of an Ear waits for those after it before the
+	// model hears it, when under the model's reach: its blocks share the wait,
+	// and its heads are no longer Hear's. Zero waits the reach.
+	Ahead float64
 }
 
 // Load reads a weight file, and a notes model's from notes when it is not nil,
@@ -219,60 +223,63 @@ func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 	return f
 }
 
-// earAhead is the seconds a frame waits for the frames after it before the
-// models hear it, earStep the seconds of frames they hear at a time
-const (
-	earAhead = 0.5
-	earStep  = 0.5
-)
+// earStep is the seconds of frames the ear gives at a time
+const earStep = 0.5
 
-// Ear hears a recording as it plays: each earStep of frames once earAhead, or the
-// notes model's reach, follows them, with the frames before them that reach or the
-// model's attention window reads, all against the loudest sample heard by then. Its
-// frames are the same whatever the blocks, and once the recording's loudest is
-// heard the notes model hears each frame as in the whole, to rounding. Asked for
-// the spectrum, it gives each frame's mel bands, the samples as they are.
+// Ear hears a recording as it plays, each frame through each model once
+// (transformer's Stream): a step of frames is given once the frames the models
+// read after them are in, the model's reach or fe.Ahead, and the notes model's
+// at least, each scaled by the loudest sample heard when it came. Its frames
+// are the same whatever the blocks; asked for the spectrum, each has its bands.
 func (fe *FrontEnd) Ear(_ audio.RipParams, spectrum bool) (audio.RipEar, error) {
-	e := &ear{fe: fe, spectrum: spectrum, mel: audio.NewMelStream(), ahead: int(math.Round(earAhead / audio.RipFrameSec)),
-		step: int(math.Round(earStep / audio.RipFrameSec)), left: fe.Model.Config().Window}
+	e := &ear{fe: fe, spectrum: spectrum, mel: audio.NewMelStream(), step: int(math.Round(earStep / audio.RipFrameSec)), ahead: fe.Model.Reach()}
+	if fe.Ahead > 0 {
+		e.ahead = min(e.ahead, int(math.Round(fe.Ahead/audio.RipFrameSec)))
+	}
 	if fe.Notes != nil {
-		r := reach(fe.Notes.Config().Cells)
-		e.ahead, e.notesLeft = max(e.ahead, r), r
+		e.ahead = max(e.ahead, fe.Notes.Reach())
+		e.notes = &heard{s: fe.Notes.Stream(fe.Notes.Reach())}
 	}
+	e.model = &heard{s: fe.Model.Stream(e.ahead)}
 	return e, nil
-}
-
-// reach is how many frames either side of its own a cell net's output reads, as
-// transformer's Cells lays out its layers: the convolutions over the cells, a
-// long one's three frames its distance apart, then the cell convolution's or the
-// frame path's, whichever is longer, and the wide convolution's
-func reach(c *transformer.Cells) int {
-	cells := c.Depth * (c.NearTime / 2)
-	for _, d := range c.Long {
-		cells += d
-	}
-	pooled := c.Dilation*(c.AgainTime/2) + c.FrameTime/2
-	return max(cells+c.CellTime/2, pooled) + c.WideTime/2
 }
 
 // ear is a FrontEnd hearing as a recording plays
 type ear struct {
-	fe   *FrontEnd
-	mel  *audio.MelStream
-	n    int         // samples heard
-	peak float64     // the loudest of them
-	e    [][]float64 // each band's energy per frame, the samples as they are, from frame e0 on
-	e0   int
-	avg  []float64 // the bands' PCEN average before frame e0, against avgPeak; nil at the start
-	// the loudest sample avg is against, and the next frame to hear
+	fe      *FrontEnd
+	mel     *audio.MelStream
+	n       int         // samples heard
+	peak    float64     // the loudest of them
+	fresh   [][]float64 // the frames no model has taken: each band's energy, the samples as they are
+	avg     []float64   // the bands' PCEN average before them, against avgPeak; nil at the start
 	avgPeak float64
-	next    int
-	// frames a frame waits for before it is heard, frames heard at once, and the
-	// frames before them the model and the notes model read
-	ahead, step, left, notesLeft int
-	// the frames heard and not yet given, their bands' energies, when asked
+	// frames the models have taken, the next to give, the frames a frame waits
+	// for before it is given, and the frames given at once
+	taken, next, ahead, step int
+	model, notes             *heard
+	// the bands' energies of the frames taken and not yet given, when asked
 	spectrum bool
-	given    []float32
+	bands    []float32
+}
+
+// heard is a model's stream and its outputs not yet given
+type heard struct {
+	s   *transformer.Stream
+	out [][]float32
+}
+
+// take runs frames through the stream, the last of the recording when end
+func (h *heard) take(frames [][]float32, end bool) {
+	if h.out = append(h.out, h.s.Write(frames)...); end {
+		h.out = append(h.out, h.s.Close()...)
+	}
+}
+
+// give hands over the outputs of the next n frames
+func (h *heard) give(n int) [][]float32 {
+	out := h.out[:n:n]
+	h.out = h.out[n:]
+	return out
 }
 
 // Hear takes the next samples at RipRate and returns the frames heard, each step
@@ -285,21 +292,24 @@ func (e *ear) Hear(x []float64) (*audio.RipFrames, error) {
 		if x = x[k:]; e.n < e.ready() {
 			return e.give(out, notes), nil
 		}
-		o, n := e.hear(e.next + e.step)
+		o, n := e.hear(e.next+e.step, false)
 		out, notes = append(out, o...), append(notes, n...)
 	}
 }
 
 // Close hears the frames left, the recording's end after them
 func (e *ear) Close() (*audio.RipFrames, error) {
-	e.e = append(e.e, e.mel.Close()...)
-	return e.give(e.hear(e.e0 + len(e.e))), nil
+	e.fresh = append(e.fresh, e.mel.Close()...)
+	return e.give(e.hear(e.taken+len(e.fresh), true)), nil
 }
 
 // give is the frames the models' outputs say, with their spectrum when asked
 func (e *ear) give(out, notes [][]float32) *audio.RipFrames {
 	f := e.fe.read(out, notes)
-	f.Spectrum, e.given = e.given, nil
+	if e.spectrum {
+		n := len(out) * audio.RipMelBands
+		f.Spectrum, e.bands = e.bands[:n:n], e.bands[n:]
+	}
 	return f
 }
 
@@ -312,7 +322,7 @@ func (e *ear) write(x []float64) {
 		e.peak = max(e.peak, math.Abs(v))
 	}
 	e.n += len(x)
-	e.e = append(e.e, e.mel.Write(x)...)
+	e.fresh = append(e.fresh, e.mel.Write(x)...)
 }
 
 // mel is energies as MelFrames gives them, their samples against peak
@@ -331,53 +341,33 @@ func mel(e [][]float64, peak float64) [][]float32 {
 	return out
 }
 
-// window is the features of the frames held, from frame e0, against the loudest
-// sample heard
-func (e *ear) window() [][]float32 {
-	avg := slices.Clone(e.avg)
-	if c := e.avgPeak / e.peak; c < 1 {
-		for b := range avg {
-			avg[b] *= c * c
-		}
-	}
-	in, _ := featuresFrom(mel(e.e, e.peak), e.fe.pcen(), avg)
-	return in
-}
-
-// hear runs the models over the frames held, against the loudest sample heard,
-// and gives their outputs for frames next to upto; it then lets go of the frames
-// no later run reads
-func (e *ear) hear(upto int) (out, notes [][]float32) {
-	if upto <= e.next {
-		return nil, nil
-	}
+// hear runs the fresh frames through the models, against the loudest sample
+// heard, the recording's last when end, and gives their outputs for frames next
+// to upto
+func (e *ear) hear(upto int, end bool) (out, notes [][]float32) {
 	if c := e.avgPeak / e.peak; c < 1 { // the average against the loudest sample now
 		for b := range e.avg {
 			e.avg[b] *= c * c
 		}
 	}
 	e.avgPeak = e.peak
-	in := e.window()
-	a := max(e.next-e.left, e.e0)
-	out = e.fe.Model.Forward(e.fe.planes(in[a-e.e0:]))[e.next-a : upto-a]
-	if e.fe.Notes != nil {
-		b := max(e.next-e.notesLeft, e.e0)
-		notes = e.fe.Notes.Forward(stacked(in[b-e.e0:]))[e.next-b : upto-b]
-	}
+	var in [][]float32
+	in, e.avg = featuresFrom(mel(e.fresh, e.peak), e.fe.pcen(), e.avg)
 	if e.spectrum {
-		for _, row := range e.e[e.next-e.e0 : upto-e.e0] {
+		for _, row := range e.fresh {
 			for _, v := range row {
-				e.given = append(e.given, float32(v))
+				e.bands = append(e.bands, float32(v))
 			}
 		}
 	}
-	e.next = upto
-	if drop := e.next - max(e.left, e.notesLeft) - e.e0; drop > 0 {
-		if e.fe.pcen() {
-			_, e.avg = featuresFrom(mel(e.e[:drop], e.peak), true, e.avg)
-		}
-		e.e, e.e0 = e.e[:copy(e.e, e.e[drop:])], e.e0+drop
+	e.taken, e.fresh = e.taken+len(e.fresh), e.fresh[:0]
+	e.model.take(e.fe.planes(in), end)
+	out = e.model.give(upto - e.next)
+	if e.notes != nil {
+		e.notes.take(stacked(in), end)
+		notes = e.notes.give(upto - e.next)
 	}
+	e.next = upto
 	return out, notes
 }
 

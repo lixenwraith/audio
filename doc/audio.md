@@ -760,20 +760,41 @@ samples at any rate go in (`Write`), resampled as `Resample` would and heard
 through the front end's ear (`RipLiveFrontEnd`, a `RipEar`), each frame once and
 the same frames whatever the blocks. The analysis's ear gives the whole's frames
 but for the tuning, read over the first eight seconds and held, and the onset
-strength, against the loudest onsets heard so far. `ripmodel`'s runs the models
-over each half second of frames once half a second, or the notes model's reach,
-follows it, with the frames before it that the attention window or that reach
-reads, its mel frames (`MelStream`) and their PCEN average against the loudest
-sample heard by then: once the recording's loudest is heard, the notes model
-hears each frame as in the whole, to rounding; the model's attention, which
-offline reaches across the recording through its layers, reads that window
-alone. Every half second of frames the decoders read what is held. Once six bars
+strength, against the loudest onsets heard so far. `ripmodel`'s runs each frame
+through each model once (`transformer`'s `Stream`), its mel frames
+(`MelStream`) and their PCEN average against the loudest sample heard when the
+frame came, and gives the frames in half-second steps once the frames a model
+reads after them are in. The wait, and whose heads are then the whole's:
+
+```
+                                frames  seconds
+the default: the frame model's reach, read from its shapes
+  the frame model (Spec)          256     2.97   the whole's
+  the notes model                 256     2.97   the whole's; its reach is 46
+FrontEnd.Ahead of 0.5: each frame still once
+  the frame model                  46     0.53   not the whole's
+  the notes model                  46     0.53   the whole's
+```
+
+A step's first frame waits 42 frames, 0.49 s, more, and each 46 ms for its mel
+window. The notes model's reach, 46 frames, 0.53 s, is the trainer's with long
+convolutions (11, 0.13 s, without), and no wait is under it; both models'
+frames come in one step, so under the default the notes model's wait for the
+frame model's ([todo](todo.md#the-live-rip)). A frame is not heard again when a
+louder sample comes: a model's heads are the whole's, to rounding, from its
+reach past the recording's loudest sample, and before it as the loudest by
+then scaled them. Under the shorter wait the frame model's blocks share it
+evenly, the first taking what does not divide: `Spec`'s four attend 12, 12, 11
+and 11 frames past a frame where the whole's attend 64.
+
+Every half second of frames the decoders read what is held. Once six bars
 of 4/4 are tracked, as the other meters need, the grid is decoded as offline and
 its beat, reading, tempo, meter and key hold; each later bar is decoded on from
 the last frozen one's line at that beat and reading, the notes' lag the median
 of the frozen notes' and the open bars'. A bar freezes once two follow it, laid
 out as `RipSamples` lays it out (`Bars`), under a second past those two through
-the analysis and up to a second more through a model. The decoders read the open
+the analysis and about three seconds more through a model, up to a second more
+at the shorter wait. The decoders read the open
 bars and the two before them, against each drum's loudest onset and each
 register's reference loudness over all the recording heard, and the frames
 before go, half a minute at most staying until the first bars freeze: a stream
@@ -796,8 +817,9 @@ samples as they are, the same through either ear: the analysis reduces the
 transform it makes and a model's ear hands on its own bands, so none is made
 twice, and none is made or held unasked. The frames come as the ear finishes
 them: through the analysis a third of a second behind the sound, none before
-the eight seconds its tuning reads; through a model half a second to a second
-behind, in its half-second steps. `Open` gives the bars after the frozen ones,
+the eight seconds its tuning reads; through a model three to three and a half
+seconds behind, in its half-second steps, half a second to a second at the
+shorter wait. `Open` gives the bars after the frozen ones,
 each on the frames it spans (`RipOpenBar`), as they were laid out when the last
 bar froze, since the read that freezes a bar lays out those after it:
 provisional, renewed about once a bar, and on the engine's loop each is the bar

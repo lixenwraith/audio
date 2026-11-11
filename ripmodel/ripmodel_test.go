@@ -2,8 +2,12 @@ package ripmodel
 
 import (
 	"bytes"
+	"flag"
+	"io"
+	"maps"
 	"math"
 	"math/rand/v2"
+	"os"
 	"slices"
 	"testing"
 
@@ -238,88 +242,209 @@ func TestPCENHoldsWhatIsSteadyAndLiftsAStrike(t *testing.T) {
 	}
 }
 
-// TestTheEarHearsAsTheWholeRecording: the ear gives a recording's frames alike in
-// 50 ms blocks and in blocks of any size, each with the bands MelStream gives it,
-// and once its loudest sample is heard, every frame it holds has the whole's
-// features, PCEN included, and the notes model's heads as heard whole, to
-// float32's rounding.
-func TestTheEarHearsAsTheWholeRecording(t *testing.T) {
-	cfg := Spec()
-	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window, cfg.Channels = 16, 2, 1, 32, 8, 2
-	m, _ := transformer.NewRandom(cfg, 1)
-	notes := NotesSpec()
-	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
-	notes.Cells.Long = []int{3, 9, 27} // the trainer's, reaching past the half second the ear waits otherwise
-	nm, _ := transformer.NewRandom(notes, 2)
-	fe := &FrontEnd{Model: m, Notes: nm}
-	x := make([]float64, 10*audio.RipRate)
-	loudest := 0
-	for i := range x { // a struck tone each half second, its level rising for four
+var (
+	trained      = flag.String("model", "", "a trained model's weight file, for TestTheEarHearsAsTheWholeRecording to read its distances on")
+	trainedNotes = flag.String("notes", "", "its notes model's weight file")
+	recording    = flag.String("wav", "", "the recording to read them over")
+)
+
+// struck is sec seconds of a struck tone each half second, its level rising for
+// four and a half and lower from there, and its loudest sample
+func struck(sec int) (x []float64, loudest int) {
+	x = make([]float64, sec*audio.RipRate)
+	for i := range x {
 		s := float64(i) / audio.RipRate
-		f0 := 220 * math.Pow(2, float64(int(2*s)%5)/12)
-		x[i] = 0.5 * math.Sin(2*math.Pi*f0*s) * math.Exp(-6*math.Mod(s, 0.5)) * min(0.1+0.225*s, 1)
+		f0, level := 220*math.Pow(2, float64(int(2*s)%5)/12), 0.8
+		if s < 4.5 {
+			level = min(0.1+0.225*s, 1)
+		}
+		x[i] = 0.5 * math.Sin(2*math.Pi*f0*s) * math.Exp(-6*math.Mod(s, 0.5)) * level
 		if math.Abs(x[i]) > math.Abs(x[loudest]) {
 			loudest = i
 		}
 	}
-	want := features(audio.MelFrames(x, audio.RipRate), true)
+	return x, loudest
+}
+
+// modelHeads are the heads a notes model leaves the model, as the rip reads them
+var modelHeads = []string{HeadOnset, HeadDrums, HeadWave, HeadVoice, HeadFamily}
+
+// byHead appends frames' values to to, by the head each is read from, a frame's
+// after another's, and the spectrum under its own name
+func byHead(to map[string][]float32, f *audio.RipFrames) {
+	for t, v := range f.Flux {
+		to[HeadOnset] = append(to[HeadOnset], float32(v))
+		for d := range f.Onset {
+			to[HeadDrums] = append(to[HeadDrums], float32(f.Onset[d][t]))
+		}
+	}
+	for head, v := range map[string][]float32{HeadPitch: f.Salience, HeadStrike: f.Strike, HeadRelease: f.Release, HeadVelocity: f.Velocity,
+		HeadWave: f.Wave, HeadVoice: f.Voice, HeadFamily: f.Family, "spectrum": f.Spectrum} {
+		to[head] = append(to[head], v...)
+	}
+}
+
+// through is x through an ear of fe in blocks of block's sizes: every frame it
+// gives, by head, each step given as soon as wait frames follow it
+func through(t *testing.T, fe *FrontEnd, x []float64, wait int, block func() int) map[string][]float32 {
+	e, _ := fe.Ear(audio.DefaultRipParams(), true)
+	heard, step := map[string][]float32{}, int(math.Round(earStep/audio.RipFrameSec))
+	for i := 0; i < len(x); {
+		k := min(block(), len(x)-i)
+		f, _ := e.Hear(x[i : i+k])
+		byHead(heard, f)
+		i += k
+		if want := max((i-audio.RipN/2)/audio.RipHop+1-wait, 0) / step * step; len(heard[HeadOnset]) != want {
+			t.Fatalf("%d frames given after %d samples, waiting %d frames: want %d", len(heard[HeadOnset]), i, wait, want)
+		}
+	}
+	f, _ := e.Close()
+	byHead(heard, f)
+	return heard
+}
+
+// apart is how far a's values lie from b's from frame from on, rms and worst,
+// and b's rms there
+func apart(a, b []float32, frames, from int) (rms, worst, of float64) {
+	per := len(b) / frames
+	for i := from * per; i < len(b); i++ {
+		d := float64(a[i]) - float64(b[i])
+		rms, worst, of = rms+d*d, max(worst, math.Abs(d)), of+float64(b[i])*float64(b[i])
+	}
+	n := float64(len(b) - from*per)
+	return math.Sqrt(rms / n), worst, math.Sqrt(of / n)
+}
+
+// TestTheEarHearsAsTheWholeRecording: an ear gives a recording's frames alike
+// whatever the blocks, each with MelStream's bands, a step once the model's
+// reach follows it, and from a model's reach past the loudest sample each of its
+// heads as heard whole, to rounding. Waiting half a second it holds the notes
+// model's so and logs how far the model's lie; -model, -notes, -wav log both.
+func TestTheEarHearsAsTheWholeRecording(t *testing.T) {
+	cfg := Spec()
+	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window, cfg.Channels = 16, 2, 2, 32, 32, 2
+	m, _ := transformer.NewRandom(cfg, 1)
+	notes := NotesSpec()
+	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
+	notes.Cells.Long = []int{3, 9, 27} // the trainer's
+	nm, _ := transformer.NewRandom(notes, 2)
+	fe := &FrontEnd{Model: m, Notes: nm}
+	x, loudest := struck(10)
+	if *trained != "" {
+		fe, x, loudest = trainedEar(t)
+	}
 	whole, _ := fe.Hear(x, audio.RipRate, audio.DefaultRipParams())
-	var bands []float32
+	want, frames := map[string][]float32{}, len(whole.Flux)
+	byHead(want, whole)
 	ms := audio.NewMelStream()
 	for _, row := range append(ms.Write(x), ms.Close()...) {
 		for _, v := range row {
-			bands = append(bands, float32(v))
+			want["spectrum"] = append(want["spectrum"], float32(v))
 		}
 	}
 	rng := rand.New(rand.NewPCG(1, 2))
-	var first [8][]float32
-	var firstFlux []float64
-	for _, block := range []func() int{func() int { return audio.RipRate / 20 }, func() int { return rng.IntN(audio.RipRate) + 1 }} {
-		ea, _ := fe.Ear(audio.DefaultRipParams(), true)
-		e := ea.(*ear)
-		var flux []float64
-		var heard [8][]float32 // the strikes, then each other field of every frame heard
-		take := func(f *audio.RipFrames) {
-			flux = append(flux, f.Flux...)
-			for i, v := range [...][]float32{f.Strike, f.Salience, f.Release, f.Velocity, f.Wave, f.Voice, f.Family, f.Spectrum} {
-				heard[i] = append(heard[i], v...)
-			}
+	fixed, random := func() int { return audio.RipHop }, func() int { return rng.IntN(audio.RipRate) + 1 }
+	reach, notesReach, half := fe.Model.Reach(), fe.Notes.Reach(), int(math.Round(0.5/audio.RipFrameSec))
+	for _, wait := range []int{reach, max(half, notesReach)} {
+		fe.Ahead = 0
+		if wait < reach {
+			fe.Ahead = 0.5
 		}
-		var worst float64
-		for i := 0; i < len(x); {
-			k := min(block(), len(x)-i)
-			f, _ := e.Hear(x[i : i+k])
-			take(f)
-			if i += k; i <= loudest {
-				continue
-			}
-			for k, row := range e.window() {
-				for b, v := range row {
-					worst = max(worst, math.Abs(float64(v-want[e.e0+k][b]))/max(math.Abs(float64(want[e.e0+k][b])), 1e-3))
-				}
-			}
+		heard := through(t, fe, x, wait, fixed)
+		if !slices.Equal(heard["spectrum"], want["spectrum"]) {
+			t.Errorf("waiting %d frames, the spectrum given, %d bands, is not MelStream's %d", wait, len(heard["spectrum"]), len(want["spectrum"]))
 		}
-		f, _ := e.Close()
-		take(f)
-		from := 0 // the first frame of the first step heard once the loudest sample is in
-		for (from+e.step+e.ahead-1)*audio.RipHop+audio.RipN/2 <= loudest {
-			from += e.step
-		}
-		var off float64
-		strikes := heard[0]
-		for i := from * audio.RipPitches; i < len(whole.Strike) && i < len(strikes); i++ {
-			off = max(off, math.Abs(float64(strikes[i]-whole.Strike[i])))
-		}
-		if worst > 1e-6 || off > 1e-5 || len(strikes) != len(whole.Strike) {
-			t.Errorf("once the loudest is heard, features off by %.3g and strikes by %.3g; %d strikes heard of %d", worst, off, len(strikes), len(whole.Strike))
-		}
-		if !slices.Equal(heard[7], bands) {
-			t.Errorf("the spectrum given, %d bands, is not MelStream's %d", len(heard[7]), len(bands))
-		}
-		if firstFlux == nil {
-			firstFlux, first = flux, heard
-		} else if !slices.Equal(firstFlux, flux) || !slices.EqualFunc(first[:], heard[:], slices.Equal) {
+		if wait == reach && *trained == "" && !maps.EqualFunc(heard, through(t, fe, x, wait, random), slices.Equal[[]float32]) {
 			t.Error("the frames heard depend on the blocks")
 		}
+		for head, v := range want {
+			from, exact := loudest/audio.RipHop+1+notesReach, true
+			if slices.Contains(modelHeads, head) {
+				from, exact = loudest/audio.RipHop+1+reach, wait == reach
+			}
+			if head == "spectrum" || len(v) == 0 {
+				continue
+			}
+			if len(heard[head]) != len(v) || from >= frames {
+				t.Fatalf("waiting %d frames, %d values of %s heard of %d, read from frame %d of %d", wait, len(heard[head]), head, len(v), from, frames)
+			}
+			switch rms, worst, of := apart(heard[head], v, frames, from); {
+			case !exact || *trained != "":
+				t.Logf("waiting %d frames, %s lies %.3g rms and %.3g at worst from the whole's, of rms %.3g", wait, head, rms, worst, of)
+			case worst > 1e-5:
+				t.Errorf("waiting %d frames, %s lies %.3g from the whole's from frame %d on", wait, head, worst, from)
+			}
+		}
+	}
+}
+
+// trainedEar is the front end of the -model and -notes files and the -wav
+// recording at RipRate, with its loudest sample
+func trainedEar(t *testing.T) (*FrontEnd, []float64, int) {
+	var files [2]io.Reader
+	for i, path := range []string{*trained, *trainedNotes} {
+		if path == "" {
+			continue
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[i] = bytes.NewReader(b)
+	}
+	fe, err := Load(files[0], files[1])
+	if err != nil || fe.Notes == nil {
+		t.Fatalf("-model and -notes: %v", err)
+	}
+	f, err := os.Open(*recording)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	x, rate, err := audio.ReadWAV(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	x, loudest := audio.Resample(x, rate, audio.RipRate), 0
+	for i, v := range x {
+		if math.Abs(v) > math.Abs(x[loudest]) {
+			loudest = i
+		}
+	}
+	return fe, x, loudest
+}
+
+// BenchmarkEar is a core's seconds a second of audio (-cpu 1) through Spec's
+// models over two channels, the notes model with the trainer's long
+// convolutions: thirty seconds heard whole, and through an ear in 50 ms blocks
+// waiting the model's reach and waiting half a second.
+func BenchmarkEar(b *testing.B) {
+	cfg := Spec()
+	cfg.Channels = 2
+	m, _ := transformer.NewRandom(cfg, 1)
+	notes := NotesSpec()
+	notes.Cells.Long = []int{3, 9, 27}
+	nm, _ := transformer.NewRandom(notes, 2)
+	const sec = 30
+	x, _ := struck(sec)
+	for _, c := range []struct {
+		name  string
+		ahead float64
+	}{{"whole", 0}, {"reach", 0}, {"half", 0.5}} {
+		b.Run(c.name, func(b *testing.B) {
+			fe := &FrontEnd{Model: m, Notes: nm, Ahead: c.ahead}
+			for b.Loop() {
+				if c.name == "whole" {
+					fe.Hear(x, audio.RipRate, audio.DefaultRipParams())
+					continue
+				}
+				e, _ := fe.Ear(audio.DefaultRipParams(), false)
+				for i, block := 0, audio.RipRate/20; i < len(x); i += block {
+					e.Hear(x[i:min(i+block, len(x))])
+				}
+				e.Close()
+			}
+			b.ReportMetric(b.Elapsed().Seconds()/float64(b.N)/sec, "s/s")
+		})
 	}
 }
