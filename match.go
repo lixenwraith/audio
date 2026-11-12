@@ -198,8 +198,8 @@ func align(a, b []RipNote, shift int, timed bool) Agreement {
 }
 
 // Where a match may fall, in seconds: within matchWindow of the note's place on
-// the map, whose points read the offsets of the matches within mapSpan of them,
-// mapMatches of them at least, as a single false match must not drag its neighbours
+// the map, whose points read the matches within mapSpan of them and mapMatches
+// at least, as a single false match must not drag its neighbours
 const (
 	matchWindow = 0.1
 	mapSpan     = 0.7
@@ -207,13 +207,13 @@ const (
 )
 
 // smoothed is the map through pairs of b's and a's seconds, in order: each second
-// of b on the median of the offsets around it
+// of b at the median of the pairs around it carried to it along a slope, one where
+// as many stand either side, so a steady tempo, its offsets in order, keeps each
+// its own pair, and near an end, where they run out, the median of their slopes
+// when mapMatches give it, as two pairs by chance make a line of any slope
 func smoothed(p [][2]float64) [][2]float64 {
-	if len(p) == 0 {
-		return nil
-	}
 	out := make([][2]float64, len(p))
-	near := make([]float64, 0, len(p))
+	var near, slopes []float64
 	lo, hi := 0, 0
 	for i, q := range p {
 		for p[lo][0] < q[0]-mapSpan {
@@ -230,12 +230,29 @@ func smoothed(p [][2]float64) [][2]float64 {
 				to++
 			}
 		}
+		slope := 1.0
+		if k := max(i-from, to-1-i); i-k >= 0 && i+k < len(p) {
+			from, to = i-k, i+k+1
+		} else if to-from >= mapMatches {
+			slopes = slopes[:0]
+			for j := from; j < to; j++ {
+				for _, r := range p[j+1 : to] {
+					if dx := r[0] - p[j][0]; dx > 0 {
+						slopes = append(slopes, (r[1]-p[j][1])/dx)
+					}
+				}
+			}
+			if len(slopes) > 0 {
+				slices.Sort(slopes)
+				slope = slopes[len(slopes)/2]
+			}
+		}
 		near = near[:0]
 		for _, r := range p[from:to] {
-			near = append(near, r[1]-r[0])
+			near = append(near, r[1]+slope*(q[0]-r[0]))
 		}
 		slices.Sort(near)
-		out[i] = [2]float64{q[0], q[0] + near[len(near)/2]}
+		out[i] = [2]float64{q[0], near[len(near)/2]}
 	}
 	return out
 }

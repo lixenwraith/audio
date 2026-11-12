@@ -580,8 +580,9 @@ continues, the one whose nearest other note is nearer in pitch, so a bass line
 that climbs over E3 is not cut and a melody that dips keeps its note.
 
 Two transcripts of one piece are compared by `MatchNotes`: the pitches in order,
-under the transposition that matches most, find a time map, a local median of
-the offsets that follows a tempo, and each line's notes then pair with notes of
+under the transposition that matches most, find a time map, each point the
+median of the matches around it with as many either side, so it lies on any
+steady tempo and follows one that drifts, and each line's notes then pair with notes of
 their pitch within 0.1 s of their place, the most pairs there are and of those
 the nearest, so a note far from its place does not count, the melody register's
 also as one line (`Agreement.Register`), and every note as one line

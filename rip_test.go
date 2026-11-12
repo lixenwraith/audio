@@ -1129,6 +1129,27 @@ func TestEveryNoteWithinTheWindowIsPaired(t *testing.T) {
 	}
 }
 
+// TestANotePerfectRipMatchesWhateverItsTempo: a sparse line played at nine
+// tenths of its seconds, and played slowing from its tempo to 0.7 of it,
+// matches every note: the map lies on a steady tempo, however far from the
+// given, and follows one that drifts.
+func TestANotePerfectRipMatchesWhateverItsTempo(t *testing.T) {
+	for name, played := range map[string]func(float64) float64{
+		"steady":     func(s float64) float64 { return 0.9 * s },
+		"ritardando": func(s float64) float64 { return s + (1/0.7-1)*s*s/30 },
+	} {
+		var truth, rip []RipNote
+		for i, at := range [...]float64{0, 1, 2, 3, 5, 6, 8, 9, 10, 12, 13, 15} {
+			m := 60 + []int{0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19}[i]
+			truth = append(truth, RipNote{Start: at, End: at + 0.5, MIDI: m})
+			rip = append(rip, RipNote{Start: played(at), End: played(at) + 0.45, MIDI: m})
+		}
+		if ag := MatchNotes(rip, truth, false); ag.All.Matched != len(truth) {
+			t.Errorf("%s: stretch %.3f, All %d of %d, only given %v", name, ag.Stretch, ag.All.Matched, len(truth), ag.All.OnlyB)
+		}
+	}
+}
+
 // TestATimedTruthFitsNoMap: a transcript 0.15 s late and a tone up matches
 // every note under the map and the transposition the search finds, and none
 // timed, its seconds and pitches read as given, where one on the same clock
