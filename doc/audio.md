@@ -896,7 +896,8 @@ beside the 32 MB of their other fields.
 Each note of the registers is then told its voice (`tell`, `RipNote.Voice`):
 the mean of its pitch's values over the frames it sounds and is among the
 twelve, each weighed by its salience there, and over every cell a note that
-moved sounded in. Its wave is the one of the highest mean share and its genes
+moved sounded in, the cell beside its pitch where one is written there from the
+cents. Its wave is the one of the highest mean share and its genes
 are a voice `VoiceFromGenes` plays, whatever instrument made the sound. Its
 family is the one of the highest mean share where that share passes the measure
 the weight file carries (`RipFrames.Sure`, the head `ripmodel.HeadSure`: the

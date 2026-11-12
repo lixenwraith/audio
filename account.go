@@ -1224,7 +1224,7 @@ func (f *RipFrames) accInput(n *accNote, ev accEvidence, notes []*accNote, refs 
 		}
 		// a note's glide through the pitch's cell is that note sounding there
 		for _, v := range o.cells {
-			if v.midi == n.midi && v.start-accDup <= n.start && n.start < v.end {
+			if len(o.cells) > 1 && v.midi == n.midi && v.start-accDup <= n.start && n.start < v.end {
 				in.ringing = true
 			}
 		}

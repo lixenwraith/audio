@@ -2872,7 +2872,7 @@ type ripNote struct {
 	bright           float64 // RipNote.Bright
 	bend, bendAt     float64 // RipNote.Bend and BendAt
 	voice, said      []float64
-	cells            []ripVisit // the cells its sound passed through, when more than its own
+	cells            []ripVisit // the cells its sound passed through, when other than its own
 }
 
 // notes tracks a register's lines: the bass as one path, the melody as two
@@ -3236,7 +3236,7 @@ func (r register) glided(struck ripNote, g []ripVisit, short int) ripNote {
 			n.midi = min(max(int(math.Round(level/100)), RipMinMIDI), RipMaxMIDI-1)
 		}
 	}
-	if len(g) > 1 {
+	if len(g) > 1 || n.midi != g[0].midi {
 		n.cells = slices.Clone(g)
 	}
 	last := g[len(g)-1]

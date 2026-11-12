@@ -984,6 +984,42 @@ func TestANoteCarriesTheVoiceItsPitchWasTold(t *testing.T) {
 	}
 }
 
+// TestANoteWrittenBesideItsCellIsToldFromIt: a sound in cell 60 that the cents
+// head reads 70 cents sharp is written as a 61; it is told from cell 60, where it
+// sounds, a piano on a modal bank, not from the silent 61 beside it, a guitar's saw
+func TestANoteWrittenBesideItsCellIsToldFromIt(t *testing.T) {
+	const n = 120
+	f := &RipFrames{Hop: RipFrameSec, Flux: make([]float64, n), Sure: 0.5,
+		VoiceAt: slices.Repeat([]uint8{255}, n*RipVoiceCells), Voices: make([]uint8, n*RipVoiceCells*RipVoiceSize)}
+	for _, h := range [...]*[]float32{&f.Salience, &f.Strike, &f.Cents, &f.CentsError} {
+		*h = make([]float32, n*RipPitches)
+	}
+	names := len(RipFamilies) - 1
+	for u := range n {
+		for m := range RipPitches {
+			f.CentsError[u*RipPitches+m] = 5
+		}
+		for k, c := range [...]struct{ midi, family, wave int }{{60, 0, 4}, {61, 1, 1}} {
+			f.VoiceAt[u*RipVoiceCells+k] = uint8(c.midi - RipMinMIDI)
+			row := f.Voices[(u*RipVoiceCells+k)*RipVoiceSize:][:RipVoiceSize]
+			row[c.family], row[names+c.wave] = 255, 255
+		}
+	}
+	for u := 10; u < 80; u++ {
+		f.Salience[u*RipPitches+60-RipMinMIDI], f.Cents[u*RipPitches+60-RipMinMIDI] = 0.9, 70
+		f.Salience[u*RipPitches+61-RipMinMIDI] = 0.01
+	}
+	f.Strike[10*RipPitches+60-RipMinMIDI] = 0.99
+	notes := f.strikes(RipBassTop, RipMaxMIDI, DefaultRipParams())
+	if len(notes) != 1 || notes[0].midi != 61 {
+		t.Fatalf("notes %+v, want one written at 61", notes)
+	}
+	f.tell(notes)
+	if v := f.voice(notes[0].said); v == nil || v.Family != "piano" || v.Wave != "modal" {
+		t.Errorf("the note's voice %+v, want the piano on a modal bank its own cell says", v)
+	}
+}
+
 // TestALinesVoiceIsItsNotesMeanVoice: where the front end told a line's notes
 // their voices the line plays their mean by length, on the wave of the highest
 // share, and not the frames' genes on a modal bank; a note told none adds none.
