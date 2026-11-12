@@ -454,6 +454,12 @@ that a document now states, and link the document instead.
 - A notes file with a head this audio does not know must still load in the
   last tag: `git worktree add <dir> origin/main`, a scratch module that
   replaces audio by it, `ripmodels.Load` and `Hear` on a second of a sine.
+- The package's tests write the weights they read, from `FrameSpec` and
+  `NotesSpec` as they stand, so a head renamed there passes them while every
+  trained file is refused. A change that must leave the files alone is held the
+  other way round: random weights of both specs (the sure row zeroed, as
+  `exported` writes it) saved by a scratch module on main, loaded on the branch,
+  each `RipFrames` from `Hear` and from an `Ear` in 50 ms blocks hashed as JSON.
 - `RipNote` is compared with `==` (stapes' `truth` skips a note itself that
   way), so a slice field breaks a caller's build: what a note carries beyond
   scalars hangs off a pointer, as `Voice` does.
