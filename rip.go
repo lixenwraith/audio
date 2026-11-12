@@ -728,7 +728,9 @@ func (f *RipFrames) tell(notes []ripNote) {
 
 // voice is what a note was said to be played by as its RipNote carries it: the
 // family of the highest share where that passes f.Sure, the wave of the highest
-// share and the genes; nil for a note told none
+// share and the genes; nil for a note told none. A share kept in bytes lies up
+// to half a byte over the head's, so it passes the measure where the least the
+// head's could be does, and names no note the unrounded share would not.
 func (f *RipFrames) voice(said []float64) *RipVoice {
 	if said == nil {
 		return nil
@@ -736,7 +738,7 @@ func (f *RipFrames) voice(said []float64) *RipVoice {
 	names, waves := len(RipFamilies)-1, len(VoiceWaves)
 	top := func(v []float64) int { return slices.Index(v, slices.Max(v)) }
 	v := &RipVoice{Wave: VoiceWaves[top(said[names:names+waves])], Genes: slices.Clone(said[names+waves:])}
-	if k := top(said[:names]); f.Sure > 0 && said[k] > f.Sure {
+	if k := top(said[:names]); f.Sure > 0 && said[k]-0.5/255 > f.Sure {
 		v.Family = RipFamilies[k]
 	}
 	return v

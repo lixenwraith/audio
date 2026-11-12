@@ -1020,6 +1020,23 @@ func TestANoteWrittenBesideItsCellIsToldFromIt(t *testing.T) {
 	}
 }
 
+// TestAFamilyIsNamedWhereItsShareSurelyPassesTheMeasure: a piano's share of
+// 0.9985 kept as the byte 255 reads back whole, where the head's lay anywhere
+// from half a byte under; under a measure of 0.999 it names nothing, as the
+// unrounded share would not, and under 0.99 the piano
+func TestAFamilyIsNamedWhereItsShareSurelyPassesTheMeasure(t *testing.T) {
+	said := make([]float64, RipVoiceSize)
+	said[slices.Index(RipFamilies[:], "piano")] = float64(uint8(math.Round(255*0.9985))) / 255
+	for _, c := range []struct {
+		sure   float64
+		family string
+	}{{0.999, ""}, {0.99, "piano"}} {
+		if v := (&RipFrames{Sure: c.sure}).voice(said); v.Family != c.family {
+			t.Errorf("a share kept as %.5f under a measure of %v names %q, want %q", said[0], c.sure, v.Family, c.family)
+		}
+	}
+}
+
 // TestALinesVoiceIsItsNotesMeanVoice: where the front end told a line's notes
 // their voices the line plays their mean by length, on the wave of the highest
 // share, and not the frames' genes on a modal bank; a note told none adds none.
