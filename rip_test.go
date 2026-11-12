@@ -1112,6 +1112,23 @@ func TestAPitchedLineMatchesByPitchBesideATappedOne(t *testing.T) {
 	}
 }
 
+// TestEveryNoteWithinTheWindowIsPaired: two notes of one pitch 150 ms apart,
+// heard 80 and 90 ms early, both pair though the second heard is nearer the first
+// given, and a note heard twice pairs with the nearer; filed on two lines, every
+// note as one line counts no fewer than the lines.
+func TestEveryNoteWithinTheWindowIsPaired(t *testing.T) {
+	note := func(at float64) RipNote { return RipNote{Start: at, End: at + 0.1, MIDI: 60} }
+	truth := []RipNote{note(1), note(1.15), note(2)}
+	rip := []RipNote{note(0.92), note(1.06), note(1.93), note(2.01)}
+	for _, apart := range []bool{false, true} {
+		truth[1].Second, rip[1].Second = apart, apart
+		ag := MatchNotes(rip, truth, true)
+		if lines := ag.Lines[0].Matched + ag.Lines[1].Matched; ag.All.Matched != 3 || lines != 3 || len(ag.All.OnlyA) != 1 || ag.All.OnlyA[0].Start != 1.93 {
+			t.Errorf("second notes on another line %v: All %d of %d, the lines %d, only heard %v", apart, ag.All.Matched, ag.All.B, lines, ag.All.OnlyA)
+		}
+	}
+}
+
 // TestATimedTruthFitsNoMap: a transcript 0.15 s late and a tone up matches
 // every note under the map and the transposition the search finds, and none
 // timed, its seconds and pitches read as given, where one on the same clock

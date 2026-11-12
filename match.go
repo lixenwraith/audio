@@ -2,6 +2,7 @@ package audio
 
 import (
 	"bufio"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -239,29 +240,83 @@ func smoothed(p [][2]float64) [][2]float64 {
 	return out
 }
 
-// nearPlace pairs each note of b with a pitch, in time order, with the nearest
-// note of a not yet taken, of its pitch and within matchWindow of where at places
-// it, as index pairs in b's order; a is in time order
+// nearPlace pairs b's notes that have a pitch with a's of that pitch within
+// matchWindow of where at places them, as index pairs in b's order: the most
+// pairs there are, and of those the nearest in sum. Of one pitch both are points
+// on one line and every window one width, so two pairs that cross can be
+// uncrossed: an alignment finds the best, run by run where no window bridges a gap
 func nearPlace(a, b []RipNote, shift int, at func(float64) float64) [][2]int {
-	taken := make([]bool, len(a))
-	var pairs [][2]int
+	type point struct {
+		pitch int
+		t     float64
+		k     int // a's index, or b's j as -1-j
+	}
+	ps := make([]point, 0, len(a)+len(b))
+	for i, x := range a {
+		ps = append(ps, point{x.MIDI, x.Start, i})
+	}
 	for j, n := range b {
-		if n.MIDI < 0 {
-			continue
-		}
-		place := at(n.Start)
-		i, _ := slices.BinarySearchFunc(a, place-matchWindow, func(x RipNote, t float64) int { return cmpFloat(x.Start, t) })
-		best, away := -1, matchWindow
-		for ; i < len(a) && a[i].Start <= place+matchWindow; i++ {
-			if d := math.Abs(a[i].Start - place); !taken[i] && a[i].MIDI == n.MIDI+shift && d <= away {
-				best, away = i, d
-			}
-		}
-		if best >= 0 {
-			taken[best] = true
-			pairs = append(pairs, [2]int{best, j})
+		if n.MIDI >= 0 {
+			ps = append(ps, point{n.MIDI + shift, at(n.Start), -1 - j})
 		}
 	}
+	slices.SortFunc(ps, func(x, y point) int { return cmp.Or(x.pitch-y.pitch, cmpFloat(x.t, y.t), x.k-y.k) })
+	// f(i, j) is the best pairing of a run's xs[i:] with its ys[j:]
+	type score struct {
+		n int
+		d float64
+	}
+	better := func(x, y score) bool { return x.n > y.n || x.n == y.n && x.d < y.d }
+	var pairs [][2]int
+	var xs, ys []point
+	var f []score
+	for lo, hi := 0, 1; lo < len(ps); lo, hi = hi, hi+1 {
+		for hi < len(ps) && ps[hi].pitch == ps[lo].pitch && ps[hi].t-ps[hi-1].t <= matchWindow {
+			hi++
+		}
+		xs, ys = xs[:0], ys[:0]
+		for _, p := range ps[lo:hi] {
+			if p.k >= 0 {
+				xs = append(xs, p)
+			} else {
+				ys = append(ys, p)
+			}
+		}
+		n, m := len(xs), len(ys)
+		if n == 0 || m == 0 {
+			continue
+		}
+		f = append(f[:0], make([]score, (n+1)*(m+1))...)
+		best := func(i, j int) score { return f[i*(m+1)+j] }
+		paired := func(i, j int) (score, bool) {
+			d, s := math.Abs(xs[i].t-ys[j].t), best(i+1, j+1)
+			return score{s.n + 1, s.d + d}, d <= matchWindow
+		}
+		for i := n - 1; i >= 0; i-- {
+			for j := m - 1; j >= 0; j-- {
+				s := best(i+1, j)
+				if o := best(i, j+1); better(o, s) {
+					s = o
+				}
+				if p, ok := paired(i, j); ok && better(p, s) {
+					s = p
+				}
+				f[i*(m+1)+j] = s
+			}
+		}
+		for i, j := 0, 0; i < n && j < m; {
+			switch p, ok := paired(i, j); {
+			case ok && p == best(i, j):
+				pairs = append(pairs, [2]int{xs[i].k, -1 - ys[j].k})
+				i, j = i+1, j+1
+			case best(i+1, j) == best(i, j):
+				i++
+			default:
+				j++
+			}
+		}
+	}
+	slices.SortFunc(pairs, func(p, q [2]int) int { return p[1] - q[1] })
 	return pairs
 }
 

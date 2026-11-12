@@ -148,6 +148,20 @@ stream through the analysis gives one of two rips, its lead and its under line
 exchanged, from one binary. The smallest close: walk each state's keys in
 order, then hash that corpus's rips ten times.
 
+### Pair a tapped rhythm as the notes with pitches are
+
+- Priority: P3
+- Affected files: `match.go`
+
+`onsets` gives each note given with no pitch, in time order, the nearest note
+within its tolerance, so a fast rhythm loses a tap it could pair (taps 60 ms
+apart against notes at -50 and +20 ms pair one of two); and where a transcript
+mixes a tapped line with lines given with pitches, every note as one line pairs
+the pitched first, so one can take across lines the note a tap took within its
+line and `All` reads under the lines. The smallest close: the taps paired by
+`nearPlace`'s alignment with pitch aside (a run is then every note within the
+tolerance, long in a dense rip), the two kinds together where they meet.
+
 ### The misses and extras the ear still hears
 
 - Priority: P1
