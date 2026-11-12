@@ -662,7 +662,9 @@ that a document now states, and link the document instead.
   blocks of window 32 share a 46-frame wait as 23 and 23 where `Spec`'s four
   of 64 get 12, 12, 11 and 11. For the distances at the shapes in use, save
   random weights of `Spec` and `NotesSpec` (`transformer.NewRandom`, `Save`)
-  and pass them to the test's `-model`, `-notes` and `-wav`.
+  and pass them to the test's `-model`, `-notes` and `-wav`, the notes model's
+  sure row zeroed first as `exported` writes it: `New` refuses a sure head with
+  weights, which is what `NewRandom` makes.
 - **A median taken as the notes come rounds at an edge the whole's does not.**
   The loop at 175 bpm reads at 88, where the notes' lag sat at 3.50 frames: in
   five early bars the stream placed one note a step later than `RipSamples`.

@@ -902,7 +902,9 @@ are a voice `VoiceFromGenes` plays, whatever instrument made the sound. Its
 family is the one of the highest mean share where that share passes the measure
 the weight file carries (`RipFrames.Sure`, the head `ripmodel.HeadSure`: the
 share the notes of a family the trainer was told no name of reach at their
-surest), and none otherwise; a file that carries no measure names no note. A
+surest, its row of weights zero and its bias the measure, so a file whose head
+says another number as what it hears changes is refused at load), and none
+otherwise; a file that carries no measure names no note. A
 line's voice (`Rip.MelodyVoice`, `UnderVoice`, `BassVoice`) is then its own
 notes' mean voice by length, on the wave of the highest mean share, the melody
 and the line under it each their own. A live rip's lines take their registers'

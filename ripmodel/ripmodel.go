@@ -185,7 +185,34 @@ func New(m, notes *transformer.Model) (*FrontEnd, error) {
 			return nil, fmt.Errorf("ripmodel: notes model has no head %q of %d", h.name, head.Size)
 		}
 	}
+	if lo, hi := sureSpread(notes); lo != hi {
+		return nil, fmt.Errorf("ripmodel: notes model's %q head says %g to %g as what it hears changes; the trainer's export writes its row zero, the measure its bias", HeadSure, lo, hi)
+	}
 	return &FrontEnd{Model: m, Notes: notes}, nil
+}
+
+// sureSpread is the least and the most a notes model's sure head says over a
+// probe of frames unlike each other, one number where its row is zero as the
+// export writes it, and zero for a model without the head
+func sureSpread(notes *transformer.Model) (lo, hi float32) {
+	if !slices.ContainsFunc(notes.Config().Outputs, func(o transformer.Head) bool { return o.Name == HeadSure }) {
+		return 0, 0
+	}
+	probe := make([][]float32, 4)
+	for t := range probe {
+		probe[t] = make([]float32, stackChannels*(stackBins+1))
+		for i := range probe[t] {
+			probe[t][i] = float32(math.Sin(float64((t + 1) * (i + 1))))
+		}
+	}
+	for t, out := range notes.Forward(probe) {
+		v := notes.Slice(out, HeadSure)[0]
+		if t == 0 {
+			lo, hi = v, v
+		}
+		lo, hi = min(lo, v), max(hi, v)
+	}
+	return lo, hi
 }
 
 // Hear runs the recording's log-mel frames through the model, and the notes
