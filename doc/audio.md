@@ -506,9 +506,9 @@ quarter. Für Elise reads 3/8 at 73, the tempo a player reads being eighth 147
 half tempo too, one with sixteenth runs 3/4, and the pin overrides either.
 
 Where the frames carry a beat and a downbeat head (`RipFrames.Beat`,
-`Downbeat`: a model's posterior that a beat of the meter, and a bar line, falls
-within a frame; `heard`), the beat and the line are read from them and none of
-the above decides. Every decision there is by the head's ranks, never its
+`Downbeat`: a frame model's posterior that a beat of the meter, and a bar line,
+falls within a frame; `heard`), the beat and the line are read from them and
+none of the above decides. Every decision there is by the head's ranks, never its
 level, so neither how loud it is nor a stretch where it is quiet chooses: the
 beat's by how often the head is higher at a frame a reading claims than at one
 it leaves, a tie counting half (`above`), a half being chance; the bar's by
@@ -692,16 +692,17 @@ averaged, each one where they sound alike.
 The front end is a seam (`RipFrontEnd`): whatever hears the recording into
 `RipFrames`, the onset strengths, the pitch salience and the chroma per frame,
 feeds the same decoders. The analysis above is one front end; `ripmodels` is the
-other, a transformer over the log-mel frames `MelFrames` makes, whose heads say
-per frame what struck, what sounds, which pitch is struck or let go and how hard
-(`RipFrames.Strike`, `Release`, `Velocity`), the wave and voice genes
-(`VoiceDef.Genes`) the note is played with, so a rip through it also names the
-voices its registers were played with (`Rip.Voices`), the family playing the
+other: a frame model, a transformer over the log-mel frames `MelFrames` makes,
+whose heads say per frame what struck, what sounds, which pitch is struck or let
+go and how hard (`RipFrames.Strike`, `Release`, `Velocity`), the wave and voice
+genes (`VoiceDef.Genes`) the note is played with, so a rip through it also names
+the voices its registers were played with (`Rip.Voices`), the family playing the
 highest note (`RipFrames.Family`, shares over `RipFamilies`: piano, guitar,
 voice, bass, strings, winds, synth, drums or unknown), which no decoder reads
 yet, and the beat and the bar line (`ripmodels.HeadBeat`, `HeadDownbeat`, after
-the family in `Spec`; a model without them loads as before, and a library from
-before them refuses a file that has them, its heads no prefix of its `Spec`'s).
+the family in `FrameSpec`; a frame model without them loads as before, and a
+library from before them refuses a file that has them, its heads no prefix of
+that library's).
 From strikes both registers' notes start where a pitch is struck, as hard
 as it was, and last while
 it sounds or until it is let go (`Release`, the pitch ringing on as far as a new
@@ -769,19 +770,18 @@ head names, as it names saw through a phone's narrow band; where a notes model
 says what plays each pitch (below), a line's voice is its own notes' instead.
 Either plays with one oscillator, as that mean of two would beat, and a fade
 that keeps the line's long notes within 12 dB to their end (`lasting`).
-`ripmodels.Load` reads
-a weight file into a front end; rip-train, stapes' trainer, writes one from loops
-the engine renders.
+`ripmodels.Load` reads the frame model's weight file into a front end;
+rip-train, stapes' trainer, writes one from loops the engine renders.
 
 A second file may give the notes: a notes model (`ripmodels.NotesSpec`, the
 trainer's PitchNet), a transformer module cell net of convolutions alone with
 the same weights at every pitch, gives the pitch, voicing, strike, release and
-velocity heads, and the model the onsets, drums, wave, voice and family. It
-reads the harmonic stack (`stacked`): both planes interpolated onto a
+velocity heads, and the frame model the onsets, drums, wave, voice and family.
+It reads the harmonic stack (`stacked`): both planes interpolated onto a
 log-frequency axis of three bins a semitone from MIDI 27, each a channel for
 each harmonic of a half and one to seven, shifted so a pitch's harmonics lie at
 its own bin, 16 channels of 213 bins, each ending in its plane's scalar. Without
-it the model gives every head, as before.
+it the frame model gives every head.
 
 A notes model trained with one has a cents head too (`ripmodels.HeadCents`, two
 values a pitch): how far each pitch's sound sits from its cell's centre, and the
@@ -886,8 +886,8 @@ fitted against the kept notes apart, from its activation as measured, on the
 floor as it stood before the installed candidates' fit, so it is the row a
 judge that kept the same notes would read, and asking changes no note.
 
-A notes model may also say what plays each pitch, where the model's wave, voice
-and family heads say one thing a frame: three more heads of values a pitch
+A notes model may also say what plays each pitch, where the frame model's wave,
+voice and family heads say one thing a frame: three more heads of values a pitch
 (`ripmodels.HeadPitchFamily`, a score for each of `RipFamilies` but unknown,
 which is the absence of a name and no class; `HeadPitchWave`, one for each of
 `VoiceWaves`; `HeadPitchVoice`, the genes). Their planes are 45 values a pitch,
@@ -917,17 +917,17 @@ notes' mean voice by length, on the wave of the highest mean share, the melody
 and the line under it each their own. A live rip's lines take their registers'
 notes' mean the same way, and its notes carry no voice yet.
 
-The model's input (`features`) is each band in dB less the frame's mean, over
-80, and the mean, so the bands are level-free and loudness is one input. A model
-of two channels (`transformer.Config.Channels`) reads a second plane: each
-band's PCEN, per-channel energy normalization (Wang et al. 2017), and their
-mean. No band looks at another: PCEN divides a band's energy e by its own leaky
-average M of about the last 0.4 s, M(t) = (1 - s)·M(t-1) + s·e(t) with s = 1 -
-exp(-11.6 ms / 400 ms), and compresses it, (e / (ε + M)^α + δ)^r - δ^r with α
-0.98, δ 2, r 0.5 and ε 1e-6, librosa's values. A steady band reads 0.31 at -6
-dB and 0.25 at -46 dB, while a strike multiplies it, 0.29 to 0.90 for one 6 dB
-over a band already sounding and 0.27 to 3.5 for one from -40 to -20 dB: a fan
-or a room's hum holds near 0.3 and a note over it still stands out. It is a
+The frame model's input (`features`) is each band in dB less the frame's mean,
+over 80, and the mean, so the bands are level-free and loudness is one input. A
+frame model of two channels (`transformer.Config.Channels`) reads a second
+plane: each band's PCEN, per-channel energy normalization (Wang et al. 2017),
+and their mean. No band looks at another: PCEN divides a band's energy e by its
+own leaky average M of about the last 0.4 s, M(t) = (1 - s)·M(t-1) + s·e(t) with
+s = 1 - exp(-11.6 ms / 400 ms), and compresses it, (e / (ε + M)^α + δ)^r - δ^r
+with α 0.98, δ 2, r 0.5 and ε 1e-6, librosa's values. A steady band reads 0.31
+at -6 dB and 0.25 at -46 dB, while a strike multiplies it, 0.29 to 0.90 for one
+6 dB over a band already sounding and 0.27 to 3.5 for one from -40 to -20 dB: a
+fan or a room's hum holds near 0.3 and a note over it still stands out. It is a
 second plane, not a replacement, because a note still ringing fades towards zero
 in it (a band falling 60 dB over 5 s reads 0.08 after a second), so PCEN alone
 cannot say what is sounding; the first convolution reads both planes at once. M
@@ -993,7 +993,7 @@ reads after them are in. The wait, and whose heads are then the whole's:
 ```
                                 frames  seconds
 the default: the frame model's reach, read from its shapes
-  the frame model (Spec)          256     2.97   the whole's
+  the frame model (FrameSpec)     256     2.97   the whole's
   the notes model                 256     2.97   the whole's; its reach is 46
 FrontEnd.Ahead of 0.5: each frame still once
   the frame model                  46     0.53   not the whole's
@@ -1008,8 +1008,8 @@ frame model's ([todo](todo.md#the-live-rip)). A frame is not heard again when a
 louder sample comes: a model's heads are the whole's, to rounding, from its
 reach past the recording's loudest sample, and before it as the loudest by
 then scaled them. Under the shorter wait the frame model's blocks share it
-evenly, the first taking what does not divide: `Spec`'s four attend 12, 12, 11
-and 11 frames past a frame where the whole's attend 64.
+evenly, the first taking what does not divide: `FrameSpec`'s four attend 12, 12,
+11 and 11 frames past a frame where the whole's attend 64.
 
 Every half second of frames the decoders read what is held. Once six bars
 of 4/4 are tracked, as the other meters need, the grid is decoded as offline and

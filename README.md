@@ -28,7 +28,7 @@ the harmony resolves at play time.
 - `audio/model` holds the identifiers an embedder's protocol carries, sound,
   instrument, pattern, scale and tier, with no mixer, backend or synthesis
   dependency, for builds that leave the engine out.
-- `audio/ripmodels` is the rip's learned front end, a transformer
+- `audio/ripmodels` is the rip's learned front end: a frame model, a transformer
   (`github.com/lixenwraith/transformer`) over mel frames, with a notes model, a
   cell net over their harmonic stack, beside it when one is given.
 - `audio/bank` is the set vif and stapes ship, embedded: the sound effects, the

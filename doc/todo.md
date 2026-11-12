@@ -377,12 +377,12 @@ What is left here, each to settle on trained weights:
 
 On the exact-clock renders of Für Elise the bar path puts three quarters of
 the lines within a sixteenth of the render's and on the clean take half; on
-the three phone takes a fifth, as on main. Their onset head (the model's, 12a)
-smears a note over 50-80 ms and fires between notes at a third of a strike's
-strength, so the comb cannot tell a sixteenth from the gap beside it and the
-tracker lays a pulse or two too many through a ritardando. A sharper onset
-head, trained on the phone channel (`rip-train --channel`), is the lever; the
-decoders need no change to use it.
+the three phone takes a fifth, as on main. Their onset head (the frame model's,
+12a) smears a note over 50-80 ms and fires between notes at a third of a
+strike's strength, so the comb cannot tell a sixteenth from the gap beside it
+and the tracker lays a pulse or two too many through a ritardando. A sharper
+onset head, trained on the phone channel (`rip-train --channel`), is the lever;
+the decoders need no change to use it.
 
 ## The live rip
 
@@ -393,11 +393,11 @@ decoders need no change to use it.
 
 `RipStream` ([Audio §9](audio.md#9-ripping-a-recording)) cost a desktop core
 0.08 s a second of audio through the analysis and 0.34 s through a model of the
-trainer's shapes (`Spec`, and PitchNet with dilations 3, 9 and 27), 0.30 s of it
-the model's ear, which ran `Forward` over a window around each half second.
-The ear now runs each frame through each model once: `BenchmarkEar`, 30 s
-through those shapes on one core of a 4-vCPU Xeon with AVX2, medians of five,
-in seconds a second of audio:
+trainer's shapes (`FrameSpec`, and PitchNet with dilations 3, 9 and 27), 0.30 s
+of it the model's ear, which ran `Forward` over a window around each half
+second. The ear now runs each frame through each model once: `BenchmarkEar`,
+30 s through those shapes on one core of a 4-vCPU Xeon with AVX2, medians of
+five, in seconds a second of audio:
 
 ```
                                       heard    the ear waiting
@@ -413,8 +413,8 @@ where it took 0.034: a stream's writes spread less over the cores than
 
 What is left: the cost on the phone, where the NEON GELU is untimed; the frame
 model's heads under the shorter wait (`FrontEnd.Ahead`), which on random
-weights of `Spec`'s shape lie from the whole's, as the rip reads them, by 0.09
-rms for the onset (0.16 at worst), 0.04 for the drums (0.16), 0.19 for the
+weights of `FrameSpec`'s shape lie from the whole's, as the rip reads them, by
+0.09 rms for the onset (0.16 at worst), 0.04 for the drums (0.16), 0.19 for the
 wave (0.69, of rms 1.45), 0.05 for the voice (0.20) and 0.03 for the family
 (0.17), and on trained weights are unmeasured: `go test ./ripmodels -run
 TestTheEarHearsAsTheWholeRecording -v -args -model <file> -notes <file> -wav
@@ -422,8 +422,8 @@ TestTheEarHearsAsTheWholeRecording -v -args -model <file> -notes <file> -wav
 the first six bars, so a recording that changes meter or key reads on in the
 first until `Final`; and the notes' lag, a median taken as they come, which
 moved one note a bar a step in five early bars of the loop at 175 bpm. The
-smallest close: measure on the phone, and score a trained model's stream at
-each wait against its offline rip (`MatchBars`, `BarDistance`).
+smallest close: measure on the phone, and score a trained model's stream at each
+wait against its offline rip (`MatchBars`, `BarDistance`).
 
 ### Give each model's frames at its own reach
 

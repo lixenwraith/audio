@@ -161,9 +161,9 @@ that a document now states, and link the document instead.
   rebuilding it every sample. Read a glide's artifacts as each 5 ms frame's third
   difference over its energy, beside the unbent note's.
 - **A voice-like trait that is not a gene rides beside the genes, not in them.**
-  Vibrato and a vowel's formants went on `VoiceDef` as plain fields, kept by
-  the augmentation after `VoiceFromGenes`, rather than as new genes: a gene
-  changes the model's voice head and every shipped weight file's shape, and the
+  Vibrato and a vowel's formants went on `VoiceDef` as plain fields, kept by the
+  augmentation after `VoiceFromGenes`, rather than as new genes: a gene changes
+  the frame model's voice head and every shipped weight file's shape, and the
   fit would search a space the recording rarely needs. Add a gene when a corpus
   with the trait has trained and the fit wants it, not before.
 
@@ -368,13 +368,13 @@ that a document now states, and link the document instead.
   the loud stretch's other beats, and any marked bar put it over chance. A line
   topping its own bar is level-free and local. `peak` reads a beat at the
   head's highest within a frame, so a head that dips at its lines marks none.
-- **A change that must not move the rip is held by a digest of rips.** A
-  scratch program: every WAV of a rendered corpus ripped through the analysis
-  and through random weights of `Spec` cut to the heads before the change,
+- **A change that must not move the rip is held by a digest of rips.** A scratch
+  program: every WAV of a rendered corpus ripped through the analysis and
+  through random weights of `FrameSpec` cut to the heads before the change,
   offline and streamed, each rip's JSON hashed; 240 rips of stapes' `corpus
   <dir> 48 8 aug gen meters` gave one digest before and after the heads. Ten
-  runs of its 96 rips through the analysis give one digest each, and two
-  through random weights of `Spec` cut to ten heads (`NewRandom` seed 1), so a
+  runs of its 96 rips through the analysis give one digest each, and two through
+  random weights of `FrameSpec` cut to ten heads (`NewRandom` seed 1), so a
   differing line is the change's.
 
 ## The matched kit
@@ -673,20 +673,21 @@ that a document now states, and link the document instead.
   `ripmodels`' ear test compare the rips and the frames in fixed and in random
   blocks; a new ear goes through both. The ear test feeds a hop a block and
   counts the frames given after each: at 50 ms a step given a hop late passed.
-- **A model's ear is the whole's to rounding, never bit for bit, and only from
-  a reach past the loudest sample.** `MelFrames` divides the samples by the
-  peak before the transform and the ear scales the energies after, so the
-  features differ in their last bits (heads within 6e-7 on the test's models,
-  5e-7 at `Spec`'s shapes). A frame is run once, scaled by the loudest sample
-  heard when it came: a test recording whose loudest sample falls near its end
+- **A model's ear is the whole's to rounding, never bit for bit, and only from a
+  reach past the loudest sample.** `MelFrames` divides the samples by the peak
+  before the transform and the ear scales the energies after, so the features
+  differ in their last bits (heads within 6e-7 on the test's models, 5e-7 at
+  `FrameSpec`'s shapes). A frame is run once, scaled by the loudest sample heard
+  when it came: a test recording whose loudest sample falls near its end
   compares nothing, so `struck` drops its level after four and a half seconds.
-- **The ear test's model is small, so its distances are not `Spec`'s.** Two
-  blocks of window 32 share a 46-frame wait as 23 and 23 where `Spec`'s four
-  of 64 get 12, 12, 11 and 11. For the distances at the shapes in use, save
-  random weights of `Spec` and `NotesSpec` (`transformer.NewRandom`, `Save`)
-  and pass them to the test's `-model`, `-notes` and `-wav`, the notes model's
-  sure row zeroed first as `exported` writes it: `New` refuses a sure head with
-  weights, which is what `NewRandom` makes.
+- **The ear test's frame model is small, so its distances are not
+  `FrameSpec`'s.** Two blocks of window 32 share a 46-frame wait as 23 and 23
+  where `FrameSpec`'s four of 64 get 12, 12, 11 and 11. For the distances at the
+  shapes in use, save random weights of `FrameSpec` and `NotesSpec`
+  (`transformer.NewRandom`, `Save`) and pass them to the test's `-model`,
+  `-notes` and `-wav`, the notes model's sure row zeroed first as `exported`
+  writes it: `New` refuses a sure head with weights, which is what `NewRandom`
+  makes.
 - **A median taken as the notes come rounds at an edge the whole's does not.**
   The loop at 175 bpm reads at 88, where the notes' lag sat at 3.50 frames: in
   five early bars the stream placed one note a step later than `RipSamples`.

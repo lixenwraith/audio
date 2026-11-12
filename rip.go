@@ -349,8 +349,8 @@ const (
 	ripBrightSpread   = 0.03
 )
 
-// RipFamilies names the instrument families a model's family head scores, in
-// its order: what plays a frame's highest sounding note, unknown for a sound of
+// RipFamilies names the instrument families a frame model's family head scores,
+// in its order: what plays a frame's highest sounding note, unknown for a sound of
 // none of the others. A note is named one of the others or none: unknown is the
 // absence of a name.
 var RipFamilies = [...]string{"piano", "guitar", "voice", "bass", "strings", "winds", "synth", "drums", "unknown"}
@@ -366,9 +366,8 @@ var RipVoiceSize = len(RipFamilies) - 1 + len(VoiceWaves) + VoiceGeneCount
 // RipFrames is a recording as the rip's decoders read it, a value per frame every
 // Hop seconds: onset strength, each drum's (kick, snare, hihat), each pitch's
 // salience from E1 to C7 (the bass's by its first partials, the melody's with the
-// bass cancelled) and each register's chroma, as a front end fills it: the analysis,
-// or a model (ripmodels), which may also say what plays the frame and its pitches
-// and where its beats and bar lines fall.
+// bass cancelled) and each register's chroma, as the analysis or the rip's models
+// (ripmodels) fill it; the models may also say what plays, the beats and bar lines.
 type RipFrames struct {
 	Hop                float64
 	Tuning             float64 // cents the recording's pitches sit off A440, as the front end heard them
