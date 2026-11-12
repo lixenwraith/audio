@@ -692,6 +692,10 @@ that a document now states, and link the document instead.
   there is neither frozen again nor open. `Strikes` keeps a frozen strike
   until the `Write` after its frames went, as `Frames` keeps a late frame.
   The stream test holds the strikes kept to the notes frozen, one to one.
+- **An ear's step that completes no frame still returns frames, empty, their
+  scalars zero.** `extend` takes `Hop`, `Tuning` and `Sure` only from frames
+  that hold some, or a stream's frames lost the measure after such a `Write`; a
+  new scalar on `RipFrames` goes through it the same way.
 - **`Final` rips the samples a stream kept, float32.** A test that compares it
   with `Samples` rounds the recording to float32 first.
 - **`BenchmarkRip` and the stream's `struck` ways are mostly the analysis.**

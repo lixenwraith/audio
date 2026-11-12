@@ -253,6 +253,36 @@ func TestANotesModelsMeasureIsOneNumber(t *testing.T) {
 	}
 }
 
+// TestAStreamsFramesCarryTheMeasureWhateverTheBlocks: a stream through a notes
+// model whose measure is 0.7 gives frames carrying it after every Write, in
+// blocks of a second and of 1,024 samples, many of which complete no step
+func TestAStreamsFramesCarryTheMeasureWhateverTheBlocks(t *testing.T) {
+	cfg := Spec()
+	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window, cfg.Channels = 16, 2, 2, 32, 32, 2
+	m, _ := transformer.NewRandom(cfg, 1)
+	notes := NotesSpec()
+	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
+	fe, err := New(m, exported(t, notes, 2, 0.7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	x, _ := struck(10)
+	for _, block := range []int{audio.RipRate, 1024} {
+		s, err := audio.NewRipStream(audio.Ripper{Params: audio.DefaultRipParams(), FrontEnd: fe})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < len(x); i += block {
+			if err := s.Write(x[i:min(i+block, len(x))], audio.RipRate); err != nil {
+				t.Fatal(err)
+			}
+			if f, _ := s.Frames(0); len(f.Flux) > 0 && f.Sure != float64(float32(0.7)) {
+				t.Fatalf("blocks of %d samples: after write %d the frames' measure is %v, want 0.7", block, i/block, f.Sure)
+			}
+		}
+	}
+}
+
 // TestTheStackLaysAPitchsHarmonicsOnItsBin: a plane reading each band's log
 // frequency, which the interpolation keeps exact, reads in the channel of
 // harmonic h at a pitch's bin that pitch's frequency 2^(shift/36) times, each

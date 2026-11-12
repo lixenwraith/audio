@@ -438,12 +438,15 @@ func (f *RipFrames) fields(visit func(field any, per int)) {
 	}
 }
 
-// extend appends g's frames to f's
+// extend appends g's frames to f's, and takes its hop, tuning and measure where
+// it holds frames: an ear's step that gave none says nothing of them
 func (f *RipFrames) extend(g *RipFrames) {
 	if g == nil {
 		return
 	}
-	f.Hop, f.Tuning, f.Sure = g.Hop, g.Tuning, g.Sure
+	if g.frames() > 0 {
+		f.Hop, f.Tuning, f.Sure = g.Hop, g.Tuning, g.Sure
+	}
 	from := make([]any, 0, 24) // every field's, at one allocation
 	g.fields(func(field any, _ int) { from = append(from, field) })
 	i := 0
