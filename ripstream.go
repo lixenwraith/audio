@@ -357,6 +357,9 @@ func (s *RipStream) decode(upto int, end bool) error {
 	}
 	f := *s.f
 	f.cut(0, upto-s.w0)
+	if s.held && !s.track.heard { // first bars the cues read, as the heads gave none
+		f.Beat, f.Downbeat = nil, nil
+	}
 	x := s.x
 	if !end {
 		x = x[:min(len(x), (upto-s.w0)*RipHop+RipN/2)]

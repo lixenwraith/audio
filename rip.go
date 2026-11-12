@@ -750,14 +750,15 @@ func (ev ripEvents) seconds(hop float64) (at [InstrClap][]float64) {
 }
 
 // ripTrack is how a grid was decoded: the tracked beat's tempo and period in
-// frames, the pulses a beat, the pulses tracked and the reading its bars are
-// of; zero for a grid pinned
+// frames, the pulses a beat, the pulses tracked, the reading its bars are of
+// and whether the beats were heard; zero for a grid pinned
 type ripTrack struct {
 	bpm    float64
 	period float64
 	k      int
 	pulses []int
 	rd     ripReading
+	heard  bool
 }
 
 // grid is the bars the Ripper pins, or decodes from the frames and events, and
@@ -774,12 +775,19 @@ func (rp Ripper) grid(f *RipFrames, ev ripEvents, p RipParams) (ripGrid, float64
 		}
 	} else {
 		bpm, tr = rp.track(f, p)
-		if len(tr.pulses) < (BeatsPerBar+1)*tr.k {
-			return g, 0, tr, errors.New("rip: no full bar found")
+		if len(tr.pulses) >= (BeatsPerBar+1)*tr.k {
+			var err error
+			if g, bpm, tr.rd, err = f.meter(tr.pulses, tr.k, bpm, ev.hits, ev.root%12, ev.bass, ev.melody, rp.Meter, rp.Grid != nil); err != nil {
+				return g, 0, tr, err
+			}
 		}
-		var err error
-		if g, bpm, tr.rd, err = f.meter(tr.pulses, tr.k, bpm, ev.hits, ev.root%12, ev.bass, ev.melody, rp.Meter, rp.Grid != nil); err != nil {
-			return g, 0, tr, err
+		if g.bars() < 1 && tr.heard { // the heads give no reading: the cues', as before them
+			plain := *f
+			plain.Beat, plain.Downbeat = nil, nil
+			return rp.grid(&plain, ev, p)
+		}
+		if g.bars() < 1 {
+			return g, 0, tr, errors.New("rip: no full bar found")
 		}
 		g = g.pickup(slices.Concat(ev.melody, ev.bass), ev.hits)
 	}
@@ -800,7 +808,7 @@ func (rp Ripper) track(f *RipFrames, p RipParams) (bpm float64, tr ripTrack) {
 		bpm, tr.period = f.tempo(p)
 	}
 	beats := f.beats(tr.period, p, -1)
-	if rp.Grid == nil && f.heard() {
+	if tr.heard = f.heard(); tr.heard && rp.Grid == nil {
 		tr.period, beats = f.level(tr.period, beats, p)
 		bpm = 60 / (tr.period * f.Hop)
 	}
@@ -809,10 +817,13 @@ func (rp Ripper) track(f *RipFrames, p RipParams) (bpm float64, tr ripTrack) {
 	return bpm, tr
 }
 
-// heard is whether the frames carry a beat and a downbeat head, which the
-// tempo, the beats and the bar lines are then read from
+// heard is whether the frames carry a beat and a downbeat head, a posterior at
+// every frame, which the tempo, the beats and the bar lines are then read from
 func (f *RipFrames) heard() bool {
-	return f.Beat != nil && len(f.Beat) == f.frames() && len(f.Downbeat) == f.frames()
+	posterior := func(head []float64) bool {
+		return len(head) == f.frames() && !slices.ContainsFunc(head, func(v float64) bool { return !(v >= 0 && v <= 1) })
+	}
+	return f.Beat != nil && posterior(f.Beat) && posterior(f.Downbeat)
 }
 
 // pulses are the k pulses a beat the bars are read over, from frame from when it
@@ -1991,6 +2002,9 @@ func (f *RipFrames) meter(pulses []int, k int, bpm float64, hits [InstrClap][]ri
 			continue
 		}
 		best, bestRd, bestTempo, bestScore, bestUnlike, bestNear, bestFelt = g, rd, rd.tempo, score, unlike, near, felt
+	}
+	if best.bars() < 1 { // heard beats that no reading holds
+		return best, 0, ripReading{}, nil
 	}
 	if pin == nil { // a drum part has a snare every other bar or a hat every bar; kicks alone are a bass's attacks, fewer hits a front end's doubts
 		drums := len(hits[InstrSnare]) >= best.bars()/2 || len(hits[InstrHihat]) >= best.bars()

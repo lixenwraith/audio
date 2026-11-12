@@ -504,8 +504,11 @@ half tempo too, one with sixteenth runs 3/4, and the pin overrides either.
 Where the frames carry a beat and a downbeat head (`RipFrames.Beat`,
 `Downbeat`: a model's posterior that a beat of the meter, and a bar line, falls
 within a frame; `heard`), the beat and the line are read from them and none of
-the above decides. With one head alone, or neither, every decision is the
-above's.
+the above decides. With one head alone, or neither, or a head that is no
+posterior at some frame (a NaN), every decision is the above's, and so is the
+grid where the heads give no reading, as a pinned bar longer than the beats
+heard: the rip is that of the frames without them. A stream whose first bars
+are read so reads on so; one whose first bars the heads gave reads on by them.
 
 - **The tempo and the beats.** The tempo is how the beat head repeats: the same
   autocorrelation, prior and fold, over the head on the onsets' scale (above

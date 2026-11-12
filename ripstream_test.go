@@ -461,12 +461,10 @@ func (e *headEar) Hear(x []float64) (*RipFrames, error) {
 
 func (e *headEar) Close() (*RipFrames, error) { return nil, nil }
 
-// TestRipStreamReadsTheHeads: a stream through an ear whose frames carry the
-// heads holds the head's tempo and meter, and every bar it freezes, the first
-// and those it follows on with, starts on a line the downbeat head marks
-func TestRipStreamReadsTheHeads(t *testing.T) {
-	const n, beat, per = 4000, 40, 3
-	f := headFrames(n, 43, beat, 0, per, 1)
+// headRip rips frames built by hand through headFront, offline or streamed in
+// blocks of 50 ms, over a sine as long as the frames
+func headRip(rp Ripper, f *RipFrames, stream bool) (*Rip, error) {
+	n := f.frames()
 	for d := range f.Onset {
 		f.Onset[d] = make([]float64, n)
 	}
@@ -475,29 +473,46 @@ func TestRipStreamReadsTheHeads(t *testing.T) {
 	for i := range x {
 		x[i] = 0.3 * math.Sin(float64(i)*2*math.Pi*220/RipRate)
 	}
+	rp.Params, rp.FrontEnd = DefaultRipParams(), headFront{f}
+	if !stream {
+		return rp.Samples(x, RipRate)
+	}
+	s, err := NewRipStream(rp)
+	if err != nil {
+		return nil, err
+	}
+	for i, block := 0, RipRate/20; i < len(x); i += block {
+		if err := s.Write(x[i:min(i+block, len(x))], RipRate); err != nil {
+			return nil, err
+		}
+	}
+	return s.Close()
+}
+
+// headLines are a rip's bar lines in frames
+func headLines(r *Rip) (lines []int) {
+	for i := 0; i < len(r.Beats); i += r.Meter.Beats() {
+		lines = append(lines, int(math.Round(r.Beats[i]/RipFrameSec)))
+	}
+	return lines
+}
+
+// TestRipStreamReadsTheHeads: a stream through an ear whose frames carry the
+// heads holds the head's tempo and meter, and every bar it freezes, the first
+// and those it follows on with, starts on a line the downbeat head marks
+func TestRipStreamReadsTheHeads(t *testing.T) {
+	const n, beat, per = 4000, 40, 3
+	f := headFrames(n, 43, beat, 0, per, 1)
 	for _, m := range []*Meter{nil, {3, 4}} {
-		rp := Ripper{Params: DefaultRipParams(), FrontEnd: headFront{f}, Meter: m}
-		off, err := rp.Samples(x, RipRate)
+		off, err := headRip(Ripper{Meter: m}, f, false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		s, err := NewRipStream(rp)
+		r, err := headRip(Ripper{Meter: m}, f, true)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for i, block := 0, RipRate/20; i < len(x); i += block {
-			if err := s.Write(x[i:min(i+block, len(x))], RipRate); err != nil {
-				t.Fatal(err)
-			}
-		}
-		r, err := s.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-		var lines []int
-		for i := 0; i < len(r.Beats); i += r.Meter.Beats() {
-			lines = append(lines, int(math.Round(r.Beats[i]/f.Hop)))
-		}
+		lines := headLines(r)
 		want := Meter{3, 8} // three heard beats with no drum and no sixteenth are written in eighths
 		if m != nil {
 			want = *m
@@ -505,6 +520,31 @@ func TestRipStreamReadsTheHeads(t *testing.T) {
 		if r.Meter != want || r.Meter != off.Meter || r.BPM != off.BPM || len(r.Bars) < n/(per*beat)-2 || !every(lines, beat, per*beat) {
 			t.Errorf("pinned %v: %d bars in %s at %d bpm, the offline rip in %s at %d, lines %v: want %s on the head's lines, every %d frames from %d",
 				m != nil, len(r.Bars), r.Meter, r.BPM, off.Meter, off.BPM, lines[:min(len(lines), 6)], want, per*beat, beat)
+		}
+	}
+}
+
+// TestHeadsThatGiveNoReadingLeaveTheGridToTheCues: a pinned bar longer than the
+// beats heard, or a head that is no posterior at a frame, gives no reading, and
+// the rip is that of the same frames without the heads, offline and streamed
+func TestHeadsThatGiveNoReadingLeaveTheGridToTheCues(t *testing.T) {
+	down, beat := headFrames(3000, 40, 40, 0, 4, 0), headFrames(3000, 40, 40, 0, 4, 0)
+	down.Downbeat[100], beat.Beat[100] = math.NaN(), math.NaN()
+	for _, c := range []struct {
+		name string
+		f    *RipFrames
+		pin  *Meter
+	}{{"12/8 pinned over ten beats", headFrames(430, 40, 40, 0, 4, 0), &Meter{12, 8}}, {"a NaN in the downbeat head", down, nil}, {"a NaN in the beat head", beat, nil}} {
+		for _, stream := range []bool{false, true} {
+			plain := *c.f
+			plain.Beat, plain.Downbeat = nil, nil
+			want, err := headRip(Ripper{Meter: c.pin}, &plain, stream)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if r, err := headRip(Ripper{Meter: c.pin}, c.f, stream); err != nil || !reflect.DeepEqual(r, want) {
+				t.Errorf("%s, streamed %v: %v, want the rip without the heads, %d bars of %s at %d", c.name, stream, err, len(want.Bars), want.Meter, want.BPM)
+			}
 		}
 	}
 }
