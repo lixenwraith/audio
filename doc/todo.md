@@ -346,20 +346,23 @@ heads, the loss and the run that is this change's evidence, is [stapes'
 todo](https://github.com/lixenwraith/stapes/blob/main/doc/todo.md#teach-the-frame-model-the-beat-and-the-bar-line).
 What is left here, each to settle on trained weights:
 
-- **Read against truths.** GuitarSet's 120 unmet clips (37 right through the
-  cues, 58 under perfect beats), the Für Elise takes against their score, and
-  the stream's twelve recordings; with the heads and with the same weights'
-  heads left out (a `FrontEnd` whose frames have `Beat` set nil).
-- **A noisy or an ambiguous head.** The decoders read ranks, so no level and
-  no positive weight moves them, and on hand-built heads (lines at 0.1 to 0.9
-  over 0.01 to 0.3, quiet over up to 60% of a clip, in 3/4, 4/4 and 6/8) a rip
-  reads its bar where the lines stand over the rest, and the cues where not or
-  where most of the clip is quiet. Noise is read as a head: clips 95 or 98%
-  noise read a wrong bar in 3 of 12 draws, and a stream whose first eleven
-  seconds are noise reads its first bars by chance (3/4 and 4/4 in 3 draws of
-  7, 6/8 in 1) and holds them. A 6/8 whose head marks its second dotted
-  quarter over every other beat reads 3/4, both readings topping all their
-  bars.
+- **Read against truths.** GuitarSet's 120 unmet clips: 40a's heads read 24
+  right through the rank decode, 39 through a plain tracker, 32 with the heads
+  left out (12a's cues 37); under perfect beats its downbeat head's sum by
+  place names 89, the cues 58. The Für Elise takes against their score, and the
+  stream's twelve recordings, with the heads and with the same weights' heads
+  left out (a `FrontEnd` whose frames have `Beat` set nil).
+- **The weights the heads are read by.** `ripBarHead` (1) puts the downbeat
+  head's lines standing out over its mean beat on the cues' scale, and the
+  beat head's comb is a plain tracker's: both set by reason, to be fitted on
+  trained heads against those truths. Under the default prior a beat head
+  marking quarters at 0.98 and eighths at 0.3 reads a loop at 70 as 140; the
+  plain tracker's prior (110 over 0.9 octaves) holds 70 there and turns at
+  0.35. `tempo_prior` and `tempo_width` are tune's genes.
+- **A fast beat.** A head marking every beat alike over 170 a minute is
+  tracked at half by the prior, as a plain tracker's is, and its bars then hold
+  two of the music's. What else tells the two apart (the head halfway between
+  the tracked beats against at them) is to be measured on trained heads first.
 - **A bar that slips.** A bar holds its beats exactly, so a beat the tracker
   adds or loses in a ritardando moves every line after it; the cues' path
   absorbs one at `ripBarMove`. A cost in the head's own units is to be fitted

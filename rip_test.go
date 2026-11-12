@@ -1757,6 +1757,25 @@ func TestRipParamsAreData(t *testing.T) {
 	}
 }
 
+// TestARipDocumentReachesPastTheSearch is the rule a front end's own bar is held
+// by: a document sets onset_min up to 0.9, past the range the search moves it in.
+func TestARipDocumentReachesPastTheSearch(t *testing.T) {
+	p, err := LoadRipParams([]byte("[rip]\nonset_min = 0.7\n"))
+	if err != nil || p.OnsetMin != 0.7 {
+		t.Fatalf("onset_min 0.7: %v, %v", err, p.OnsetMin)
+	}
+	if _, err := LoadRipParams([]byte("[rip]\nonset_min = 0.95\n")); err == nil {
+		t.Error("onset_min 0.95 was accepted")
+	}
+	at := slices.Index(RipParams{OnsetMin: -1}.Genes(), -1)
+	if r := RipGeneRanges()[at]; r != [2]float64{0.02, 0.3} {
+		t.Errorf("the search moves onset_min over %v", r)
+	}
+	if q := RipParamsFromGenes(p.Genes()); q.OnsetMin != 0.3 {
+		t.Errorf("a gene vector holds onset_min %v", q.OnsetMin)
+	}
+}
+
 // TestRipPatternsWindowTheBars is the rule Patterns writes by: a pattern per part
 // per window of up to four bars, the last window as long as what is left.
 func TestRipPatternsWindowTheBars(t *testing.T) {
@@ -2651,25 +2670,69 @@ func (tr ripTrack) beats() (beats []int) {
 	return beats
 }
 
-// TestTheTrackedBeatIsTheOneTheHeadMarks: a head's beat the prior reads at half
-// or a third of its rate is tracked at its own where the head marks the halves
-// or thirds between, and one folded to double at its own where the head marks
-// every other beat alone, though it marks none over the clip's second half; a
-// tempo given stands
-func TestTheTrackedBeatIsTheOneTheHeadMarks(t *testing.T) {
-	for _, c := range []struct{ beat, first, unmarkedFrom int }{{30, 0, 4000}, {15, 7, 4000}, {74, 30, 4000}, {43, 0, 4000}, {74, 30, 2000}, {30, 0, 2000}} {
-		f := headFrames(4000, 20, c.beat, c.first, 4, 0)
-		for t := c.unmarkedFrom; t < 4000; t++ {
-			f.Beat[t] = 0.01
+// heardLoop is a loop the engine renders, at RipRate, and its frames through
+// the analysis with heads written by hand: at(i) the beat and downbeat heads'
+// marks on the i-th of beats a minute, a frame either side as the trainer's
+// target is, over 0.01 elsewhere
+func heardLoop(t *testing.T, ae *AudioEngine, slots [MusicSlots]PatternID, bpm, beats, bars int, at func(i int) (beat, down float64)) ([]float64, *RipFrames) {
+	t.Helper()
+	buf, err := ae.RenderMusic(slots, bpm, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	x := resample(buf, AudioSampleRate, RipRate)
+	f, err := analysis{}.Hear(x, RipRate, DefaultRipParams())
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := f.frames()
+	f.Beat, f.Downbeat = make([]float64, n), make([]float64, n)
+	for k := range n {
+		f.Beat[k], f.Downbeat[k] = 0.01, 0.01
+	}
+	for i := 0; ; i++ {
+		c := int(math.Round(float64(i)*60/float64(beats)/f.Hop)) - ripOnsetLead
+		if c > n {
+			break
 		}
-		bpm, tr := Ripper{}.track(f, DefaultRipParams())
-		if math.Abs(tr.period-float64(c.beat)) > 0.5 || math.Abs(bpm-60/(float64(c.beat)*f.Hop)) > 2 || !every(tr.beats(), c.first, c.beat) {
-			t.Errorf("a head beat of %d frames, marked to frame %d, tracked at %.1f, %.1f bpm, beats %v", c.beat, c.unmarkedFrom, tr.period, bpm, tr.beats()[:4])
+		b, d := at(i)
+		for k := max(c-1, 0); k <= c+1 && k < n; k++ {
+			f.Beat[k], f.Downbeat[k] = max(f.Beat[k], b), max(f.Downbeat[k], d)
 		}
 	}
-	f := headFrames(4000, 20, 30, 0, 4, 0)
-	if bpm, tr := (Ripper{Grid: &RipGrid{BPM: 86, Downbeat: -1}}).track(f, DefaultRipParams()); bpm != 86 || math.Abs(tr.period-60) > 0.5 {
-		t.Errorf("a tempo given as 86 tracked at %.1f bpm, a period of %.1f frames", bpm, tr.period)
+	return x, f
+}
+
+// ripHeard rips x through the frames given, f.plain() for the cues' rip,
+// offline or streamed
+func ripHeard(t *testing.T, x []float64, f *RipFrames, stream bool) *Rip {
+	t.Helper()
+	r, err := framesRip(Ripper{}, f, x, stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+// TestTheTempoIsTheBeatHeadsWhereTheOnsetsMisleadIt: a loop at 70 whose eighths
+// the onsets read as the beat, at 140, and one at 162 whose half notes they read
+// as the beat, at 81, rip at 70 and 162 from a beat head marking the quarters, a
+// tenth as high on the eighths
+func TestTheTempoIsTheBeatHeadsWhereTheOnsetsMisleadIt(t *testing.T) {
+	ae, slots := startLoopEngine(t)
+	half, err := ae.DefinePattern(&Pattern{Name: "halftime", Steps: 16, Tracks: []Track{
+		{Instr: InstrKick, Events: []Step{{Pos: 0, Vel: 1}}}, {Instr: InstrSnare, Events: []Step{{Pos: 8, Vel: 0.9}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		slots      [MusicSlots]PatternID
+		bpm, onset int
+	}{{slots, 70, 140}, {[MusicSlots]PatternID{half}, 162, 81}} {
+		x, f := heardLoop(t, ae, c.slots, c.bpm, 2*c.bpm, 8, func(i int) (float64, float64) { return 0.98 - 0.88*float64(i%2), 0.01 })
+		if plain, heard := ripHeard(t, x, f.plain(), false), ripHeard(t, x, f, false); plain.BPM != c.onset || heard.BPM != c.bpm {
+			t.Errorf("a loop at %d: the onsets read %d, want %d; the head %d", c.bpm, plain.BPM, c.onset, heard.BPM)
+		}
 	}
 }
 
@@ -2693,29 +2756,88 @@ func hitsEvery(n, beat, per, first int) (hits []ripHit) {
 	return hits
 }
 
-// TestTheBarLineIsWhereTheDownbeatHeadIsLikeliest: a kick on every fourth beat
-// and a snare two after it cue the line on the kick; a downbeat head that marks
-// the beat after the kick puts every line there
-func TestTheBarLineIsWhereTheDownbeatHeadIsLikeliest(t *testing.T) {
-	const n, beat = 3000, 40
-	f := headFrames(n, beat, beat, 0, 4, 1)
-	hits := [InstrClap][]ripHit{InstrKick: hitsEvery(n, beat, 4, 0), InstrSnare: hitsEvery(n, beat, 4, 2)}
-	g, bpm := barsOf(t, f, hits)
-	if g.m != (Meter{}) || math.Abs(bpm-60/(beat*f.Hop)) > 1 || !every(g.lines, beat, 4*beat) || g.bars() < 16 {
-		t.Errorf("%s at %.1f bpm, %d bars, lines %v: want 4/4 on the head's lines, every %d frames from %d", g.m, bpm, g.bars(), g.lines[:min(len(g.lines), 6)], 4*beat, beat)
+// TestTheBarLineIsWhereTheDownbeatHeadSumsHighest: over a loop of a hihat on
+// every beat, which cues no line, a head marking the first beat loud on every
+// third bar and a hair under the third on the others puts every line on the
+// first, offline and streamed, where most single bars rank the third first
+func TestTheBarLineIsWhereTheDownbeatHeadSumsHighest(t *testing.T) {
+	ae, _ := startLoopEngine(t)
+	hats, err := ae.DefinePattern(&Pattern{Name: "hats", Steps: 16, Tracks: []Track{{Instr: InstrHihat, Events: []Step{{Pos: 0, Vel: 0.6}, {Pos: 4, Vel: 0.6}, {Pos: 8, Vel: 0.6}, {Pos: 12, Vel: 0.6}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const bpm = 136 // a beat of 38 frames
+	x, f := heardLoop(t, ae, [MusicSlots]PatternID{hats}, bpm, bpm, 12, func(i int) (float64, float64) {
+		loud := i/4%3 == 0
+		switch {
+		case i%4 == 0 && loud:
+			return 0.9, 0.95
+		case i%4 == 0:
+			return 0.9, 0.45
+		case i%4 == 2 && !loud:
+			return 0.9, 0.5
+		}
+		return 0.9, 0.03
+	})
+	for _, stream := range []bool{false, true} {
+		r := ripHeard(t, x, f, stream)
+		if lines := headLines(r); r.Meter != (Meter{}) || len(lines) < 11 || !every(lines[1:len(lines)-1], -ripOnsetLead, 152) {
+			t.Errorf("streamed %v: %s, lines %v: want 4/4 on the first beats, every 152 frames", stream, r.Meter, lines)
+		}
 	}
 }
 
-// TestAMeterIsTheBeatsHeardToItsBar: the reading whose lines the downbeat head
-// scores highest is taken with no margin, and its bar holds the meter's own
-// beats: three heard beats 3/4 and four 4/4 at the beats' tempo, six 6/8 at half
-// of it, the quarter two of its eighths
+// TestAHeadOfSmallMarginLeavesTheBarLineToTheCues: over a loop with the kick and
+// the bass's root on the first beat and the snare on the backbeats, a head
+// marking the third beat a little over the first leaves the lines on the kick,
+// where the cues alone put them, and one marking it far over moves them there
+func TestAHeadOfSmallMarginLeavesTheBarLineToTheCues(t *testing.T) {
+	ae, _ := startLoopEngine(t)
+	define := func(p *Pattern) PatternID {
+		id, err := ae.DefinePattern(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	slots := [MusicSlots]PatternID{
+		define(&Pattern{Name: "rock", Steps: 16, Tracks: []Track{
+			{Instr: InstrKick, Events: []Step{{Pos: 0, Vel: 1}}}, {Instr: InstrSnare, Events: []Step{{Pos: 4, Vel: 0.9}, {Pos: 12, Vel: 0.9}}},
+			{Instr: InstrHihat, Events: []Step{{Pos: 2, Vel: 0.5}, {Pos: 6, Vel: 0.5}, {Pos: 10, Vel: 0.5}, {Pos: 14, Vel: 0.5}}}}}),
+		PatternSilence, PatternSilence,
+		define(&Pattern{Name: "rock_low", Steps: 16, Tracks: []Track{{Instr: InstrBass, Events: []Step{{Pos: 0, Vel: 0.9, Dur: 6}}}}}),
+	}
+	const bpm = 136 // a beat of 38 frames
+	for _, c := range []struct {
+		first, third float64
+		at           int
+	}{{0.27, 0.33, 0}, {0.05, 0.9, 76}} {
+		x, f := heardLoop(t, ae, slots, bpm, bpm, 12, func(i int) (float64, float64) {
+			switch i % 4 {
+			case 0:
+				return 0.9, c.first
+			case 2:
+				return 0.9, c.third
+			}
+			return 0.9, 0.25
+		})
+		cues, lines := headLines(ripHeard(t, x, f.plain(), false)), headLines(ripHeard(t, x, f, false))
+		if len(cues) < 11 || len(lines) < 11 || !every(cues[1:len(cues)-1], -ripOnsetLead, 152) || !every(lines[1:len(lines)-1], c.at-ripOnsetLead, 152) {
+			t.Errorf("the head %.2f on the first beat, %.2f on the third: lines %v, the cues' %v; want them every 152 frames from beat %d", c.first, c.third, lines, cues, c.at/38)
+		}
+	}
+}
+
+// TestAMeterIsTheBeatsHeardToItsBar: heard beats take a meter by the margins the
+// cues' readings do, and its bar holds the meter's own beats: three heard beats
+// 3/4 and four 4/4 at the beats' tempo, six 6/8 at half of it, the quarter two
+// of its eighths
 func TestAMeterIsTheBeatsHeardToItsBar(t *testing.T) {
 	for _, c := range []struct {
 		beat, per int
 		want      Meter
 		tempo     float64
-	}{{40, 4, Meter{}, 129.2}, {30, 3, Meter{3, 4}, 172.3}, {15, 6, Meter{6, 8}, 172.3}, {40, 3, Meter{3, 4}, 129.2}, {20, 6, Meter{6, 8}, 129.2}} {
+	}{{40, 4, Meter{}, 129.2}, {40, 3, Meter{3, 4}, 129.2}, {36, 6, Meter{6, 8}, 71.8}} {
 		const n = 3000
 		f := headFrames(n, c.beat, c.beat, 0, c.per, 2)
 		g, bpm := barsOf(t, f, [InstrClap][]ripHit{InstrHihat: hitsEvery(n, c.beat, 1, 0)})
@@ -2752,34 +2874,6 @@ func TestFiveHeardBeatsHoldABarWhateverTheOnsetsInsideThem(t *testing.T) {
 		g, _, tr, err := Ripper{}.grid(headFrames(380, on, 80, 0, 4, 0), ripEvents{}, DefaultRipParams())
 		if err != nil || !tr.heard || g.bars() != 1 || !every(g.lines, 0, 320) {
 			t.Errorf("an onset every %d frames, %d pulses a beat: %v, heard %v, lines %v, want one bar from the heads, lines 320 frames apart", on, tr.k, err, tr.heard, g.lines)
-		}
-	}
-}
-
-// TestABarIsReadWhereItsLinesTopMostOfItsBars: a waltz's lines marked at 0.55 or
-// 0.45 over beats at 0.01, or at 0.8 with the last three tenths of the clip
-// unmarked, and a 4/4's at 0.1 over 0.02 top most of their bars however loud the
-// head, and are read so, not as twice their beats; a 4/4 marked over its first
-// third alone tops no majority, and the cues read it
-func TestABarIsReadWhereItsLinesTopMostOfItsBars(t *testing.T) {
-	for _, c := range []struct {
-		per          int
-		line, rest   float64
-		unmarkedFrom int
-	}{{3, 0.55, 0.01, 3000}, {3, 0.45, 0.01, 3000}, {3, 0.8, 0.01, 2100}, {4, 0.1, 0.02, 3000}, {4, 0.8, 0.02, 1000}} {
-		f := headFrames(3000, 40, 40, 0, c.per, 1)
-		for t, v := range f.Downbeat {
-			if f.Downbeat[t] = c.rest; v > 0.5 && t < c.unmarkedFrom {
-				f.Downbeat[t] = c.line
-			}
-		}
-		g, bpm := barsOf(t, f, [InstrClap][]ripHit{})
-		if c.unmarkedFrom < 1500 {
-			if cues, _ := barsOf(t, f.plain(), [InstrClap][]ripHit{}); !reflect.DeepEqual(g, cues) {
-				t.Errorf("lines marked to frame %d alone: %s, lines %v, want the cues' %s, lines %v", c.unmarkedFrom, g.m, g.lines[:5], cues.m, cues.lines[:5])
-			}
-		} else if g.m.Beats() != c.per || !every(g.lines, 40, c.per*40) {
-			t.Errorf("lines marked at %.2f over %.2f to frame %d: %s at %.1f, lines %v, want %d beats a bar, a line every %d frames from 40", c.line, c.rest, c.unmarkedFrom, g.m, bpm, g.lines[:min(len(g.lines), 5)], c.per, c.per*40)
 		}
 	}
 }

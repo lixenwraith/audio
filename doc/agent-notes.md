@@ -360,14 +360,23 @@ that a document now states, and link the document instead.
   either way (`heardReadings`' `given`), and then 3/4 and 6/8 are one bar: a
   score averaged over 6/8's twice as many pulses took every waltz, so only the
   beat head, marking the quarters or their halves, parts them.
-- **A head's level must not choose; its ranks do, and locally.** Summed
-  log-odds read a downbeat head under a half, or one quiet over a stretch, as a
-  word against every line there, and over the same beats 6/8's lines are every
-  other of 3/4's, so a quiet waltz read 6/8 at half tempo. One rank over the
-  whole clip still failed where most of it was quiet: its quiet lines lost to
-  the loud stretch's other beats, and any marked bar put it over chance. A line
-  topping its own bar is level-free and local. `peak` reads a beat at the
-  head's highest within a frame, so a head that dips at its lines marks none.
+- **A head is read by its level, summed by place, beside the cues.** Ranks lost
+  on trained heads (40a's bars right on 24 of GuitarSet's 120, a plain
+  tracker's on 39): a
+  rank within each bar counts a quiet bar's noise as a full vote, and ranks of
+  the beat head's spans (`level`, gone) took eighths it marks at a third of its
+  quarters for the beat. Summed log-odds stay out too, as they read a quiet head
+  as a word against its lines: the sum is of posteriors, as a ratio to the mean
+  beat's, added to the cues' bar scores, and the meter takes the cues' margins,
+  which keep a waltz from 6/8's every other line. A heard bar's score leaves
+  the comb out (6/8's steps over heard beats are eighths, 4/4's sixteenths, and
+  a coarser grid's mean onset is higher) and counts the head at every line, the
+  last bar's end too, or one bar reads 3/4 and 4/4 alike.
+- **A head written by hand marks every beat alike**, so its beat and its half
+  tie on the comb and the prior parts them: a test's beats run 85 to 170 a
+  minute, the eighths marked low (at 0.3 of the quarters 70 reads as 140). A
+  rendered loop at 136 has a 38-frame beat, so `every`'s whole-frame step
+  holds; at 120 a bar is 172.3 frames and twelve bars drift off it.
 - **A change that must not move the rip is held by a digest of rips.** A scratch
   program: every WAV of a rendered corpus ripped through the analysis and
   through random weights of `FrameSpec` cut to the heads before the change,
