@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"math/rand"
 	"reflect"
 	"slices"
 	"strings"
@@ -1157,6 +1158,127 @@ func TestAgreementCountsEveryNoteWhateverItsLine(t *testing.T) {
 	}
 	if ag.Lines[0].Matched != 5 || ag.Lines[1].Matched != 0 || ag.Lines[2].Matched != 0 || ag.Register.Matched != 9 {
 		t.Errorf("by line %d, %d and %d matched, the register %d: want 5, 0, 0 and 9, what the two filed alike", ag.Lines[0].Matched, ag.Lines[1].Matched, ag.Lines[2].Matched, ag.Register.Matched)
+	}
+}
+
+// TestAPitchedLineMatchesByPitchBesideATappedOne: a transcript of a tapped melody
+// and a bass with pitches, against a rip whose bass is all another pitch: every
+// note as one line counts the taps by onset and the bass by pitch, timed and
+// fitted, so the bass's wrong notes are not heard.
+func TestAPitchedLineMatchesByPitchBesideATappedOne(t *testing.T) {
+	text := "at 120 bpm\nunit quarter\nstart 0s\nmelody aaaaaaaa\n"
+	var rip []RipNote
+	for i := range 8 {
+		at := 0.5 * float64(i)
+		text += fmt.Sprintf("bass %.2fs %s 0.2s\n", at+0.25, []string{"G2", "A2", "B2", "C3"}[i%4])
+		rip = append(rip, RipNote{Start: at, End: at + 0.4, MIDI: 72}, RipNote{Start: at + 0.25, End: at + 0.45, MIDI: 40, Bass: true})
+	}
+	truth, err := ParseTranscript(text, 120, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, timed := range []bool{true, false} {
+		ag := MatchNotes(rip, truth, timed)
+		melody, bass := ag.Lines[0], ag.Lines[2]
+		if ag.All.Matched != melody.Matched+bass.Matched || ag.All.Rhythm || melody.Matched != 8 || timed && bass.Matched != 0 {
+			t.Errorf("timed %v, shift %d: melody %d of %d by onset, bass %d of %d by pitch, All %d of %d (rhythm %v)",
+				timed, ag.Shift, melody.Matched, melody.B, bass.Matched, bass.B, ag.All.Matched, ag.All.B, ag.All.Rhythm)
+		}
+	}
+}
+
+// TestEveryNoteWithinTheWindowIsPaired: two notes of one pitch 150 ms apart,
+// heard 80 and 90 ms early, both pair though the second heard is nearer the first
+// given, and a note heard twice pairs with the nearer; filed on two lines, every
+// note as one line counts no fewer than the lines.
+func TestEveryNoteWithinTheWindowIsPaired(t *testing.T) {
+	note := func(at float64) RipNote { return RipNote{Start: at, End: at + 0.1, MIDI: 60} }
+	truth := []RipNote{note(1), note(1.15), note(2)}
+	rip := []RipNote{note(0.92), note(1.06), note(1.93), note(2.01)}
+	for _, apart := range []bool{false, true} {
+		truth[1].Second, rip[1].Second = apart, apart
+		ag := MatchNotes(rip, truth, true)
+		if lines := ag.Lines[0].Matched + ag.Lines[1].Matched; ag.All.Matched != 3 || lines != 3 || len(ag.All.OnlyA) != 1 || ag.All.OnlyA[0].Start != 1.93 {
+			t.Errorf("second notes on another line %v: All %d of %d, the lines %d, only heard %v", apart, ag.All.Matched, ag.All.B, lines, ag.All.OnlyA)
+		}
+	}
+}
+
+// TestANotePerfectRipMatchesWhateverItsTempo: a sparse line played at nine
+// tenths of its seconds, and played slowing from its tempo to 0.7 of it,
+// matches every note: the map lies on a steady tempo, however far from the
+// given, and follows one that drifts.
+func TestANotePerfectRipMatchesWhateverItsTempo(t *testing.T) {
+	for name, played := range map[string]func(float64) float64{
+		"steady":     func(s float64) float64 { return 0.9 * s },
+		"ritardando": func(s float64) float64 { return s + (1/0.7-1)*s*s/30 },
+	} {
+		var truth, rip []RipNote
+		for i, at := range [...]float64{0, 1, 2, 3, 5, 6, 8, 9, 10, 12, 13, 15} {
+			m := 60 + []int{0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19}[i]
+			truth = append(truth, RipNote{Start: at, End: at + 0.5, MIDI: m})
+			rip = append(rip, RipNote{Start: played(at), End: played(at) + 0.45, MIDI: m})
+		}
+		if ag := MatchNotes(rip, truth, false); ag.All.Matched != len(truth) {
+			t.Errorf("%s: stretch %.3f, All %d of %d, only given %v", name, ag.Stretch, ag.All.Matched, len(truth), ag.All.OnlyB)
+		}
+	}
+}
+
+// TestTheRegisterLeadsTheMapWhereItHasThePairs: sixty bass notes and three melody
+// notes given, against a rip of them all with a chord a second besides, match all
+// 63 fitted, the bass's map placing more; and an ensemble's rip on the truth's
+// clock, with misses, octave errors and extras filed on lines of its own, holds
+// the timed count within two notes under the register's map.
+func TestTheRegisterLeadsTheMapWhereItHasThePairs(t *testing.T) {
+	var truth, rip []RipNote
+	for i := range 60 {
+		at := float64(i)
+		n := RipNote{Start: at, End: at + 0.8, MIDI: 36 + (i*i+3*i)%11, Bass: true}
+		truth, rip = append(truth, n), append(rip, n)
+		for k, m := range [...]int{72, 76, 79} {
+			rip = append(rip, RipNote{Start: at + 0.3*float64(k), End: at + 0.3*float64(k) + 0.25, MIDI: m})
+		}
+	}
+	for k, at := range [...]float64{20, 40.3, 50.6} {
+		truth = append(truth, RipNote{Start: at, End: at + 0.25, MIDI: 72 + []int{0, 4, 7}[k]})
+	}
+	if ag := MatchNotes(rip, truth, false); ag.Shift != 0 || ag.All.Matched != len(truth) {
+		t.Errorf("a few melody notes: shift %d, bass %d of %d, melody %d of %d, All %d of %d",
+			ag.Shift, ag.Lines[2].Matched, ag.Lines[2].B, ag.Lines[0].Matched, ag.Lines[0].B, ag.All.Matched, ag.All.B)
+	}
+	scale := [...]int{0, 2, 4, 5, 7, 9, 11}
+	for seed := range int64(3) {
+		rng := rand.New(rand.NewSource(seed + 1))
+		truth, rip = nil, nil
+		for at := 0.0; at < 30; at += 0.5 { // a bass a beat, a chord a bar, a melody in eighths
+			root := [...]int{0, 9, 5, 7}[int(at/2)%4]
+			truth = append(truth, RipNote{Start: at, End: at + 0.45, MIDI: 36 + root, Bass: true})
+			for _, iv := range [...]int{0, 4, 7} {
+				if int(at*2)%2 == 0 {
+					truth = append(truth, RipNote{Start: at, End: at + 0.9, MIDI: 60 + (root+iv)%12, Second: true})
+				}
+			}
+			for _, off := range [...]float64{0, 0.25} {
+				truth = append(truth, RipNote{Start: at + off, End: at + off + 0.2, MIDI: 72 + scale[rng.Intn(7)]})
+			}
+		}
+		heard := func(n RipNote, sd float64, up int) RipNote {
+			n.Start, n.MIDI = n.Start+rng.NormFloat64()*sd, n.MIDI+up
+			n.Bass, n.Second = n.MIDI < RipBassTop, n.MIDI >= RipBassTop && rng.Intn(3) == 0
+			return n
+		}
+		for _, n := range truth { // a note in five missed, one in six an octave off, an extra in four
+			if rng.Float64() < 0.8 {
+				rip = append(rip, heard(n, 0.025, [...]int{0, 0, 0, 0, 0, 12}[rng.Intn(6)]))
+			}
+			if rng.Float64() < 0.25 {
+				rip = append(rip, heard(n, 0.03, [...]int{-12, 12, 7, 19}[rng.Intn(4)]))
+			}
+		}
+		if timed, fitted := MatchNotes(rip, truth, true).All.Matched, MatchNotes(rip, truth, false).All.Matched; fitted < timed-2 || fitted > timed+2 {
+			t.Errorf("ensemble %d: fitted All %d, timed %d, of %d given", seed+1, fitted, timed, len(truth))
+		}
 	}
 }
 

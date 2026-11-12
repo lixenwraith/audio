@@ -150,6 +150,33 @@ a shared start parts 45 of the 96 rips otherwise and a stable sort 39, 1 to 71
 notes changing line. The smallest close: an order the notes alone set, chosen
 by the lines' agreement with the corpus labels (`MatchNotes`).
 
+### Read the takes again through the mended map
+
+- Priority: P2
+- Affected files: `match.go`
+
+The takes were graded through a map that held only the given's own tempo ([agent
+notes](agent-notes.md#the-accounting)): the clean Für Elise take's bar lines
+read 0.4 within a sixteenth, its bass about 100 ms off at the B section. The
+audit's count of the takes through the map as it stands rose 14 to 32 notes a
+take; their bar score and the B section's bass are not read again. The smallest
+close: both through the map as it stands, beside the exact-clock renders, and
+the agent notes' advice kept or dropped by them.
+
+### Pair a tapped rhythm as the notes with pitches are
+
+- Priority: P3
+- Affected files: `match.go`
+
+`onsets` gives each note given with no pitch, in time order, the nearest note
+within its tolerance, so a fast rhythm loses a tap it could pair (taps 60 ms
+apart against notes at -50 and +20 ms pair one of two); and where a transcript
+mixes a tapped line with lines given with pitches, every note as one line pairs
+the pitched first, so one can take across lines the note a tap took within its
+line and `All` reads under the lines. The smallest close: the taps paired by
+`nearPlace`'s alignment with pitch aside (a run is then every note within the
+tolerance, long in a dense rip), the two kinds together where they meet.
+
 ### The misses and extras the ear still hears
 
 - Priority: P1
