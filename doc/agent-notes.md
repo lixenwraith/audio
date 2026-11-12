@@ -401,7 +401,7 @@ that a document now states, and link the document instead.
   change a slot's pattern at a bar line; the cut a changed bar line once made to
   ringing notes (forty silent gaps in a ripped Für Elise) showed in songs alone.
   Count a song render's silent runs (5 ms frames under -80 dBFS, four or more,
-  none touching an end) before blaming the model for a gap.
+  none touching an end) before blaming the rip's models for a gap.
 
 - The rip's front end is a seam: `analysis` and `ripmodels` both fill `RipFrames`,
   and the decoders read nothing else, so a front end is checked by the frames it
@@ -410,7 +410,7 @@ that a document now states, and link the document instead.
   `PitchNet.stack` does in float32, so a third of the floats differ in the last
   bit (up to 4.8e-7); through PitchNet at the trainer's shape the heads differ
   from PyTorch's by up to 4.8e-6 on outputs up to 11, rounding. Dump
-  `model.stack(x)` beside the outputs to tell the stack from the model.
+  `model.stack(x)` beside the outputs to tell the stack from the notes model.
 - The trainer's `features` and `ripmodels`' agree bit for bit on the
   PCEN plane, but on a piano recording 63 of the dB plane's 534,520 floats
   differed in the last bits (up to 1.4e-14, all near zero): numpy's `mean` sums
@@ -420,7 +420,7 @@ that a document now states, and link the document instead.
   `train.py`) scores a posterior p as wp/(wp + 1 - p): the strike head's
   (w 20) half-sure is 0.95 and the pitch head's (w 12) 0.92. Sweep a
   decoder's threshold on that scale against the truths; 0.5 floods.
-- Under a pedal the model's pitch output sits at its ceiling for every ringing
+- Under a pedal the pitch head's output sits at its ceiling for every ringing
   note, and it rises a few frames before a strike: a "was it sounding" test on
   the frames before a strike reads nearly every note as ringing. Ask the
   decoder's own state (a note still open) instead, and print a window's strikes
@@ -430,7 +430,7 @@ that a document now states, and link the document instead.
   the wrong transcript. `Fidelity` compares the render's frames with the
   recording's through one front end; a render a semitone sharp scores 0.56 in
   pitch against 1.0 for itself, with its onsets still at 1.0.
-- Silence past a recording's ends is the right guess for the model: on 110
+- Silence past a recording's ends is the rip's models' right guess: on 110
   GuitarSet test cuts, half 150 ms into a held strum and half 5 ms before one,
   mirroring a second of the recording past each end found one note more at a
   mid-sound start, four fewer at an attack, and added sixteen extras at a
@@ -674,7 +674,7 @@ that a document now states, and link the document instead.
 - **What an ear reads over "what has arrived" makes the rip depend on the
   blocks.** The analysis's tuning, read over the samples in by the first block
   past eight seconds, moved with the block size; it reads exactly the first
-  eight seconds now, and the model's ear hears on a fixed frame grid against the
+  eight seconds now, and the models' ear hears on a fixed frame grid against the
   loudest sample up to it. `TestRipStreamBarsAreTheSameWhateverTheBlocks` and
   `ripmodels`' ear test compare the rips and the frames in fixed and in random
   blocks; a new ear goes through both. The ear test feeds a hop a block and

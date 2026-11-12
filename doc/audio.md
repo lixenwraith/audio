@@ -412,8 +412,21 @@ the program of the shipped voice nearest it, its wave first, then its genes
 would need to play it: the tempo, the meter and where the bars fall, the key, the
 chord root each bar leans on, and per bar the kick, snare and hihat hits, the
 melody and the bass line as steps of the sixteenth grid (`Rip`), a line holding
-every pitch struck at a step, so a chord keeps its notes. `Patterns`
-writes them as patterns of up to four bars, named `<name>_beat_<n>`,
+every pitch struck at a step, so a chord keeps its notes. A front end
+(`RipFrontEnd`), the analysis below or `ripmodels`' frame model and any notes
+model beside it, hears the recording into frames (`RipFrames`): per frame the
+onset strengths, each pitch's salience and the chroma, and what else the models'
+heads say. The decoders read the frames alone into the grid, the hits and the
+notes; where the front end hears strikes, the accounting holds the notes to the
+recording under the installed scores or a judge (`Ripper.Judge`), and where the
+notes model says what plays each pitch, each note is told its voice. A stream
+(`RipStream`) does the same as the recording plays. A caller compresses a rip
+into patterns and a song, fits voices to its transcript through the engine's
+renders and hears a render against the recording (`Fidelity`). The whole is
+drawn, with the searches stapes runs over it, in stapes' [rip design
+§2](https://github.com/lixenwraith/stapes/blob/main/doc/rip-design.md#2-stages).
+
+`Patterns` writes a rip as patterns of up to four bars, named `<name>_beat_<n>`,
 `<name>_melody_<n>` and `<name>_bass_<n>` in a group of their own and no tier.
 `ReadWAV` reads the file, any PCM or float width. A `Ripper` with a `Grid` pins
 the tempo and the downbeat, as a render's are known, in bars of its `Meter` or
@@ -516,9 +529,7 @@ how many of a reading's bars its line tops. With one head alone, or neither,
 or a head that is no posterior at some frame (a NaN), every decision is the
 above's, and so is the grid where the heads give no reading, as a pinned bar
 longer than the beats heard: offline the rip is that of the frames without
-them. A stream holds its first bars once its heard beats fill six bars of 4/4,
-and reads on by the cues where they gave none then, by the heads where they
-did.
+them.
 
 - **The tempo and the beats.** The tempo is how the beat head repeats: the same
   autocorrelation, prior and fold, over the head on the onsets' scale (above
@@ -569,10 +580,10 @@ did.
   note carries a beat nobody divides is no sound, so a drumless bar of three
   or five with no sixteenth is still written in eighths at half the tempo,
   Für Elise 3/8.
-- **The stream** reads the heads through the same functions: its first bars as
-  offline, each later bar counted on from the last frozen line on beats
-  tracked on the head, so it consults the downbeat head for its first bars
-  alone.
+- **The stream** holds its first bars once its heard beats fill six bars of
+  4/4, read as offline, and counts each later bar on from the last frozen line
+  on beats tracked on the head, or by the cues where its first bars' heads gave
+  no reading: it consults the downbeat head for its first bars alone.
 
 Pitch salience sums a candidate's partials, the bass register's from its first
 three, read from a window four times longer as well as the rip's own, the two
@@ -600,12 +611,12 @@ compared from the last note back by the last note so far of the line each note
 is not on: at the first note where that differs, the earlier in time order wins,
 a line not yet begun before any, so one input gives one parting every run. The
 lead is the line a rule names (`Ripper.Lead`): the busier by default, the one
-with the most notes for its sounding time, or the higher, lower, louder or
-softer. The bass line is decoded up to A3, over the melody's lowest rows: a
-reached note the bass line does not continue is not the bass's, and a note both
-registers hear goes to the line it continues, the one whose nearest other note
-is nearer in pitch, so a bass line that climbs over E3 is not cut and a melody
-that dips keeps its note.
+with the most notes for its sounding time, or the higher, lower, louder, softer,
+longer or shorter in its notes. The bass line is decoded up to A3, over the
+melody's lowest rows: a reached note the bass line does not continue is not the
+bass's, and a note both registers hear goes to the line it continues, the one
+whose nearest other note is nearer in pitch, so a bass line that climbs over E3
+is not cut and a melody that dips keeps its note.
 
 Two transcripts of one piece are compared by `MatchNotes`: the pitches in order,
 under the transposition that matches most, find a time map, the melody
@@ -689,20 +700,17 @@ grid's), paired bar by bar on each one's own beats, and the cosine of their pitc
 salience, of their mel bands and of their onset strength over each beat is
 averaged, each one where they sound alike.
 
-The front end is a seam (`RipFrontEnd`): whatever hears the recording into
-`RipFrames`, the onset strengths, the pitch salience and the chroma per frame,
-feeds the same decoders. The analysis above is one front end; `ripmodels` is the
-other: a frame model, a transformer over the log-mel frames `MelFrames` makes,
-whose heads say per frame what struck, what sounds, which pitch is struck or let
-go and how hard (`RipFrames.Strike`, `Release`, `Velocity`), the wave and voice
-genes (`VoiceDef.Genes`) the note is played with, so a rip through it also names
-the voices its registers were played with (`Rip.Voices`), the family playing the
-highest note (`RipFrames.Family`, shares over `RipFamilies`: piano, guitar,
-voice, bass, strings, winds, synth, drums or unknown), which no decoder reads
-yet, and the beat and the bar line (`ripmodels.HeadBeat`, `HeadDownbeat`, after
-the family in `FrameSpec`; a frame model without them loads as before, and a
-library from before them refuses a file that has them, its heads no prefix of
-that library's).
+The other front end, `ripmodels`, hears with a frame model: a transformer over
+the log-mel frames `MelFrames` makes, whose heads say per frame what struck,
+what sounds, which pitch is struck or let go and how hard (`RipFrames.Strike`,
+`Release`, `Velocity`), the wave and voice genes (`VoiceDef.Genes`) the note is
+played with, so a rip through it also names the voices its registers were played
+with (`Rip.Voices`), the family playing the highest note (`RipFrames.Family`,
+shares over `RipFamilies`: piano, guitar, voice, bass, strings, winds, synth,
+drums or unknown), which no decoder reads yet, and the beat and the bar line
+(`ripmodels.HeadBeat`, `HeadDownbeat`, after the family in `FrameSpec`; a frame
+model without them loads as before, and a library from before them refuses a
+file that has them, its heads no prefix of that library's).
 From strikes both registers' notes start where a pitch is struck, as hard
 as it was, and last while
 it sounds or until it is let go (`Release`, the pitch ringing on as far as a new
@@ -770,18 +778,18 @@ head names, as it names saw through a phone's narrow band; where a notes model
 says what plays each pitch (below), a line's voice is its own notes' instead.
 Either plays with one oscillator, as that mean of two would beat, and a fade
 that keeps the line's long notes within 12 dB to their end (`lasting`).
-`ripmodels.Load` reads the frame model's weight file into a front end;
-rip-train, stapes' trainer, writes one from loops the engine renders.
 
-A second file may give the notes: a notes model (`ripmodels.NotesSpec`, the
-trainer's PitchNet), a transformer module cell net of convolutions alone with
-the same weights at every pitch, gives the pitch, voicing, strike, release and
-velocity heads, and the frame model the onsets, drums, wave, voice and family.
-It reads the harmonic stack (`stacked`): both planes interpolated onto a
-log-frequency axis of three bins a semitone from MIDI 27, each a channel for
-each harmonic of a half and one to seven, shifted so a pitch's harmonics lie at
-its own bin, 16 channels of 213 bins, each ending in its plane's scalar. Without
-it the frame model gives every head.
+`ripmodels.Load` reads the frame model's weight file into a front end, and a
+second file may give the notes (rip-train, stapes' trainer, writes both): a
+notes model (`ripmodels.NotesSpec`, the trainer's PitchNet), a cell net
+(`transformer.Cells`) of convolutions alone with the same weights at every
+pitch, gives the pitch, voicing, strike, release and velocity heads, and the
+frame model the onsets, the drums, the wave and voice genes, the family, the
+beat and the bar line. It reads the harmonic stack (`stacked`): both planes
+interpolated onto a log-frequency axis of three bins a semitone from MIDI 27,
+each a channel for each harmonic of a half and one to seven, shifted so a
+pitch's harmonics lie at its own bin, 16 channels of 213 bins, each ending in
+its plane's scalar. Without it the frame model gives those five heads too.
 
 A notes model trained with one has a cents head too (`ripmodels.HeadCents`, two
 values a pitch): how far each pitch's sound sits from its cell's centre, and the
@@ -1057,9 +1065,9 @@ register's reference and the flux's, are read over what the stream has heard,
 as the accounting's references are, the flux's as the ear gave it.
 
 What it does not yet tell apart: a bass note's attack from a kick, a plucked
-chord's attack from a snare, two voices in one register, a note off the key
-from a change of key, and one meter from another within a recording. What it
-writes is the engine's grid and scale, an estimate to edit, not a transcription.
+chord's attack from a snare, more voices in a register than it has lines, a note
+off the key from a change of key, and one meter from another within a recording.
+It writes the engine's grid and scale: an estimate to edit, not a transcription.
 
 ## 10. Extension checklist
 
