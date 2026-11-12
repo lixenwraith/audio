@@ -77,9 +77,9 @@ func lineOf(n RipNote) int {
 
 // MatchNotes aligns two transcripts under the transposition within an octave
 // that matches most notes line by line, nearer to none when two tie: the longest
-// common subsequence of each line's pitches finds the time map, every note then
-// matched near its place finds it again, and a note matches one of its pitch
-// within matchWindow of its place. Timed, b is on a's own clock: seconds as given.
+// common subsequence of the pitches in time order finds the time map, and a note
+// then matches one of its pitch within matchWindow of its place. Timed, b is on
+// a's own clock, as a truth annotated on the recording is: seconds as given.
 func MatchNotes(a, b []RipNote, timed bool) Agreement {
 	a, b = slices.Clone(a), slices.Clone(b)
 	byStart := func(x, y RipNote) int { return cmpFloat(x.Start, y.Start) }
@@ -137,7 +137,6 @@ func align(a, b []RipNote, shift int, timed bool) Agreement {
 		return func(n RipNote) bool { return lineOf(n) == line && (line == 2 || !n.Further) }
 	}
 	register := func(n RipNote) bool { return !n.Bass }
-	every := func(RipNote) bool { return true }
 	seconds := func(keep func(RipNote) bool, pairs func(la, lb []RipNote) [][2]int) [][2]float64 {
 		la, lb := split(keep)
 		var p [][2]float64
@@ -148,18 +147,20 @@ func align(a, b []RipNote, shift int, timed bool) Agreement {
 		return p
 	}
 	if !timed {
-		// the map reads every line, so a register of a few pairs leads no bass of
-		// many; the second round reads every note near its place and refits the
-		// line, as pitches in order alone may pair a note with one seconds away
-		var p [][2]float64
+		var xs, ys []float64
 		for line := range ag.Lines {
-			p = append(p, seconds(inLine(line), ordered)...)
+			for _, q := range seconds(inLine(line), ordered) {
+				xs, ys = append(xs, q[0]), append(ys, q[1])
+			}
 		}
-		slices.SortStableFunc(p, func(x, y [2]float64) int { return cmpFloat(x[0], y[0]) })
-		ag.Stretch, ag.Offset = fitLine(p)
-		ag.paired = smoothed(p)
-		if p := seconds(every, inPlace); len(p) >= 2 {
-			ag.Stretch, ag.Offset = fitLine(p)
+		ag.Stretch, ag.Offset = fitLine(xs, ys)
+		// the register leads, as a low note's reported start is often its partial's;
+		// the second round's map has lost the first's pairs in the wrong place
+		ag.paired = smoothed(seconds(register, ordered))
+		if len(ag.paired) < 2 {
+			ag.paired = smoothed(seconds(inLine(2), ordered))
+		}
+		if p := seconds(register, inPlace); len(p) >= 2 {
 			ag.paired = smoothed(p)
 		}
 	}
@@ -192,7 +193,7 @@ func align(a, b []RipNote, shift int, timed bool) Agreement {
 		ag.Lines[line] = part(inLine(line))
 	}
 	ag.Register = part(register)
-	ag.All = part(every)
+	ag.All = part(func(RipNote) bool { return true })
 	return ag
 }
 
@@ -500,16 +501,16 @@ func NoteLevels(x []float64, rate int, notes []RipNote, at func(float64) float64
 	return out
 }
 
-// fitLine is the least-squares line through pairs of x and y, y ≈ stretch*x +
-// offset, one and zero without two points
-func fitLine(p [][2]float64) (stretch, offset float64) {
-	n := float64(len(p))
+// fitLine is the least-squares line y ≈ stretch*x + offset, one and zero
+// without two points
+func fitLine(xs, ys []float64) (stretch, offset float64) {
+	n := float64(len(xs))
 	if n < 2 {
 		return 1, 0
 	}
 	var sx, sy, sxx, sxy float64
-	for _, q := range p {
-		sx, sy, sxx, sxy = sx+q[0], sy+q[1], sxx+q[0]*q[0], sxy+q[0]*q[1]
+	for i := range xs {
+		sx, sy, sxx, sxy = sx+xs[i], sy+ys[i], sxx+xs[i]*xs[i], sxy+xs[i]*ys[i]
 	}
 	den := n*sxx - sx*sx
 	if den <= 0 {

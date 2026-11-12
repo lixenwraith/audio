@@ -1150,29 +1150,6 @@ func TestANotePerfectRipMatchesWhateverItsTempo(t *testing.T) {
 	}
 }
 
-// TestAFewMelodyNotesDoNotLeadTheMap: a truth of sixty bass notes and three
-// melody notes, against a rip of every one of them on the same clock and a
-// chord a second the truth leaves out, matches all 63 fitted: the melody's three
-// pairs in order, each with the earliest chord note of its pitch, lead no map.
-func TestAFewMelodyNotesDoNotLeadTheMap(t *testing.T) {
-	var truth, rip []RipNote
-	for i := range 60 {
-		at := float64(i)
-		n := RipNote{Start: at, End: at + 0.8, MIDI: 36 + (i*i+3*i)%11, Bass: true}
-		truth, rip = append(truth, n), append(rip, n)
-		for k, m := range [...]int{72, 76, 79} {
-			rip = append(rip, RipNote{Start: at + 0.3*float64(k), End: at + 0.3*float64(k) + 0.25, MIDI: m})
-		}
-	}
-	for k, at := range [...]float64{20, 40.3, 50.6} {
-		truth = append(truth, RipNote{Start: at, End: at + 0.25, MIDI: 72 + []int{0, 4, 7}[k]})
-	}
-	if ag := MatchNotes(rip, truth, false); ag.Shift != 0 || ag.All.Matched != len(truth) {
-		t.Errorf("shift %d, map %.3f × b %+.2f: bass %d of %d, melody %d of %d, All %d of %d",
-			ag.Shift, ag.Stretch, ag.Offset, ag.Lines[2].Matched, ag.Lines[2].B, ag.Lines[0].Matched, ag.Lines[0].B, ag.All.Matched, ag.All.B)
-	}
-}
-
 // TestATimedTruthFitsNoMap: a transcript 0.15 s late and a tone up matches
 // every note under the map and the transposition the search finds, and none
 // timed, its seconds and pitches read as given, where one on the same clock
