@@ -413,6 +413,34 @@ func TestTheStrikesReadChangesNoNote(t *testing.T) {
 	}
 }
 
+// TestEveryNoteTheInstalledScoresKeepIsAStrikeRead: with no judge, a strike over
+// the decoder's bar of 0.4 but under a half, the D4's at 0.45, that the installed
+// scores weigh and return is a note of the rip, and the read lists it kept with
+// its row
+func TestEveryNoteTheInstalledScoresKeepIsAStrikeRead(t *testing.T) {
+	const frames = 400
+	x := make([]float64, frames*RipHop)
+	accTone(x, 57, 50, 350, 0.3, 8)
+	accTone(x, 62, 150, 350, 0.3, 8)
+	reported := []ripNote{{start: 50, end: 350, midi: 57, vel: 0.5}}
+	f := accFrames(frames, slices.Concat(reported, []ripNote{{start: 150, end: 350, midi: 62}}), nil)
+	f.Strike[150*RipPitches+62-RipMinMIDI] = 0.45
+	p := DefaultRipParams()
+	p.Strike = 0.4
+	bass, melody, strikes := f.account(x, p, accAsk{strikes: true, rows: true}, nil, slices.Clone(reported))
+	notes := slices.Concat(bass, melody)
+	if got := accPitches(notes); !slices.Equal(got, []int{57, 62}) {
+		t.Fatalf("notes kept %v, want the A3 and the D4", got)
+	}
+	for _, n := range notes {
+		if !slices.ContainsFunc(strikes, func(st RipStrike) bool {
+			return st.Kept && st.MIDI == n.midi && st.Frame == n.start && len(st.Row) == RipRowSize
+		}) {
+			t.Errorf("the note at frame %d on %d is in the rip and no strike read is kept there with its row; %d strike(s) read", n.start, n.midi, len(strikes))
+		}
+	}
+}
+
 // TestAStrikesRowIsTheRowItsJudgeRead: the odds a judge gives a strike are its
 // network's over the row the read lists for it, and where the judge keeps the
 // reported notes the installed scores keep, that row is the one the read lists

@@ -874,7 +874,9 @@ whether it is held, its odds, the verdict, and under `Ripper.Rows` its row.
 With no judge loaded the read still lists every strike over a half, each with
 the installed verdict, a strike the installed scores never weigh dropped at
 odds of zero; a candidate they weighed is the strike of its pitch nearest it
-within `StrikeGap`. Its row is then fitted against the kept notes apart, on the
+within `StrikeGap`, or, where a decoder's bar under a half leaves it none,
+listed itself, so every note the scores keep is a strike read. Its row is then
+fitted against the kept notes apart, from its activation as measured, on the
 floor as it stood before the installed candidates' fit, so it is the row a
 judge that kept the same notes would read, and asking changes no note.
 
