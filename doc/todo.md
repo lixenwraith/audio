@@ -196,6 +196,24 @@ step's bend cannot hold is heard and dropped:
   through a scoop's rise, the sound is not there. The cells a followed sound
   passed are in `ripNote.cells`, where the accounting already reads them.
 
+### Account for a note written beside the cell it sounds in
+
+- Priority: P3
+- Affected files: `account.go`
+
+`glided` writes a sound that rests in one cell at the pitch beside it where the
+cents say it sits nearer that pitch, and the note keeps that cell
+(`ripNote.cells`), which `tell` reads its voice from. The accounting does not:
+it measures a note of one cell at its written pitch (`accNotes`), and its
+ringing check reads a glide's cells alone (`accInput`). So by the code a strike
+in the cell such a note sounds in, the one that struck it included, is a
+candidate apart from it, not the note ringing, and may come back as a second
+note a semitone off. It was so before the note kept its cell, and is kept so
+because reading the cell could move notes; not seen on data, as no notes model
+of random weights wrote such a note. The smallest close: measure a one-cell
+note in its cell and let the ringing check read it, then count the notes that
+move on recordings through a notes model whose cents head writes such notes.
+
 ### Carry a note's voice further
 
 - Priority: P2
