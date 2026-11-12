@@ -2214,7 +2214,7 @@ func (f *RipFrames) repeats(rd ripReading) float64 {
 // ripMeterBars bars only 4/4 is read; a pin is read alone, its beat split.
 func (f *RipFrames) readings(pulses []int, k int, bpm float64, pin *Meter, given bool) ([]ripReading, error) {
 	if f.heard() {
-		return heardReadings(pulses, k, bpm, pin, given)
+		return f.heardReadings(pulses, k, bpm, pin, given)
 	}
 	if pin == nil && len(pulses) <= StepsPerBeat*ripMeterBars*k {
 		return []ripReading{{Meter{}, pulses, StepsPerBeat / k, k, bpm}}, nil
@@ -2259,9 +2259,9 @@ func (f *RipFrames) readings(pulses []int, k int, bpm float64, pin *Meter, given
 // heardReadings is the ways meter reads beats that were heard, every k-th of the
 // pulses, bpm a minute: 4/4, 3/4 and 6/8, a bar the meter's own beats (Rip.Beats)
 // at the tempo that makes its quarter, the note moved by octaves into the
-// sequencer's range; or a pin alone. A tempo given is a quarter's, cut into a
-// shorter note's beats.
-func heardReadings(pulses []int, k int, bpm float64, pin *Meter, given bool) ([]ripReading, error) {
+// sequencer's range; or a pin alone. A tempo given is a quarter's, and the meters
+// read those of the note the head marks: the quarter, or its halves (claims).
+func (f *RipFrames) heardReadings(pulses []int, k int, bpm float64, pin *Meter, given bool) ([]ripReading, error) {
 	beats := make([]int, 0, len(pulses)/k+1)
 	for i := 0; i < len(pulses); i += k {
 		beats = append(beats, pulses[i])
@@ -2278,9 +2278,17 @@ func heardReadings(pulses []int, k int, bpm float64, pin *Meter, given bool) ([]
 		}
 		return []ripReading{read(*pin)}, nil
 	}
+	note := StepsPerBeat
+	if given {
+		if s := f.claims(beats); s[1] > s[0] {
+			note /= 2
+		}
+	}
 	var readings []ripReading
 	for _, m := range [...]Meter{{}, {3, 4}, {6, 8}} {
-		m = m.norm()
+		if m = m.norm(); given && m.Beat() != note {
+			continue
+		}
 		for ; !given && bpm*float64(m.Beat())/StepsPerBeat > MaxBPM && m.Den < StepsPerBar; m.Den *= 2 {
 		}
 		for ; !given && bpm*float64(m.Beat())/StepsPerBeat < MinBPM && m.Den > 1; m.Den /= 2 {

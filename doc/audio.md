@@ -536,7 +536,10 @@ heads gave reads on by them.
   quarter. So a reading is a bar of its meter's beats (`heardReadings`): four
   heard beats 4/4 and three 3/4 at the beats' tempo, six 6/8 at half of it;
   where that tempo is outside the sequencer's range the note moves by octaves
-  (four beats at 352 are 4/8 at 176).
+  (four beats at 352 are 4/8 at 176). Under a tempo given the beats are its
+  quarters, where 3/4 and 6/8 are one bar the downbeat head cannot part, so the
+  meters read are the note's the beat head marks: 4/4 and 3/4, or 6/8 over the
+  quarters cut in two where it marks their halves surer (`claims`).
 - **The bar lines** (`heardLines`) are where the downbeat head marks them over
   the tracked beats: a line every bar's beats from the phase whose lines are
   the highest beat of their bar in the most bars, a beat read at the head's

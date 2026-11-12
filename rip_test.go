@@ -2521,6 +2521,25 @@ func TestAMeterIsTheBeatsHeardToItsBar(t *testing.T) {
 	}
 }
 
+// TestATempoGivenReadsTheMeterOfTheNoteTheHeadMarks: with the quarter given as
+// 129, a head marking the quarters and a line every third reads 3/4, as the
+// same frames read free, and one marking the eighths and a line every sixth
+// reads 6/8 over the same bar
+func TestATempoGivenReadsTheMeterOfTheNoteTheHeadMarks(t *testing.T) {
+	const n = 3000
+	for _, c := range []struct {
+		beat, per int
+		want      Meter
+	}{{40, 3, Meter{3, 4}}, {20, 6, Meter{6, 8}}} {
+		f := headFrames(n, c.beat, c.beat, 0, c.per, 1)
+		hits := [InstrClap][]ripHit{InstrHihat: hitsEvery(n, c.beat, 1, 0)}
+		g, bpm, _, err := Ripper{Grid: &RipGrid{BPM: 129, Downbeat: -1}}.grid(f, ripEvents{hits: hits}, DefaultRipParams())
+		if err != nil || g.m != c.want || bpm != 129 || !every(g.lines, c.beat, c.per*c.beat) {
+			t.Errorf("a head marking every %d frames, a line every %d: %s at %.1f, lines %v, %v; want %s at 129, a line every %d frames", c.beat, c.per, g.m, bpm, g.lines[:min(len(g.lines), 4)], err, c.want, c.per*c.beat)
+		}
+	}
+}
+
 // TestABarIsReadWhereItsLinesTopMostOfItsBars: a waltz's lines marked at 0.55 or
 // 0.45 over beats at 0.01, or at 0.8 with the last three tenths of the clip
 // unmarked, and a 4/4's at 0.1 over 0.02 top most of their bars however loud the

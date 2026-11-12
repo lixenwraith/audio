@@ -351,7 +351,9 @@ that a document now states, and link the document instead.
   `Meter.Beats()` tracked beats of `Meter.Beat()` steps, so 6/8 is six eighths
   and parts from 3/4 by its lines; the cues' readings count quarters, where
   6/8 is only a name for 3/4's bar. A tempo the listener gives is a quarter's
-  either way (`heardReadings`' `given`).
+  either way (`heardReadings`' `given`), and then 3/4 and 6/8 are one bar: a
+  score averaged over 6/8's twice as many pulses took every waltz, so only the
+  beat head, marking the quarters or their halves, parts them.
 - **A head's level must not choose; its ranks do, and locally.** Summed
   log-odds read a downbeat head under a half, or one quiet over a stretch, as a
   word against every line there, and over the same beats 6/8's lines are every
