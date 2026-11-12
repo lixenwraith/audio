@@ -461,8 +461,8 @@ func (e *headEar) Hear(x []float64) (*RipFrames, error) {
 
 func (e *headEar) Close() (*RipFrames, error) { return nil, nil }
 
-// headRip rips frames built by hand through headFront, offline or streamed in
-// blocks of 50 ms, over a sine as long as the frames
+// headRip rips frames built by hand through headFront, offline or streamed,
+// over a sine as long as the frames
 func headRip(rp Ripper, f *RipFrames, stream bool) (*Rip, error) {
 	n := f.frames()
 	for d := range f.Onset {
@@ -473,6 +473,12 @@ func headRip(rp Ripper, f *RipFrames, stream bool) (*Rip, error) {
 	for i := range x {
 		x[i] = 0.3 * math.Sin(float64(i)*2*math.Pi*220/RipRate)
 	}
+	return framesRip(rp, f, x, stream)
+}
+
+// framesRip rips x at RipRate through headFront on f, offline or streamed in
+// blocks of 50 ms
+func framesRip(rp Ripper, f *RipFrames, x []float64, stream bool) (*Rip, error) {
 	rp.Params, rp.FrontEnd = DefaultRipParams(), headFront{f}
 	if !stream {
 		return rp.Samples(x, RipRate)

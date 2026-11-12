@@ -520,29 +520,25 @@ half tempo too, one with sixteenth runs 3/4, and the pin overrides either.
 
 Where the frames carry a beat and a downbeat head (`RipFrames.Beat`,
 `Downbeat`: a frame model's posterior that a beat of the meter, and a bar line,
-falls within a frame; `heard`), the beat and the line are read from them and
-none of the above decides. Every decision there is by the head's ranks, never its
-level, so neither how loud it is nor a stretch where it is quiet chooses: the
-beat's by how often the head is higher at a frame a reading claims than at one
-it leaves, a tie counting half (`above`), a half being chance; the bar's by
-how many of a reading's bars its line tops. With one head alone, or neither,
-or a head that is no posterior at some frame (a NaN), every decision is the
-above's, and so is the grid where the heads give no reading, as a pinned bar
-longer than the beats heard: offline the rip is that of the frames without
-them.
+falls within a frame; `heard`), the beat is read from the beat head and the
+line from the downbeat head weighed beside the cues, each read as a plain
+tracker reads it, by its level. With one head alone, or neither, or a head that
+is no posterior at some frame (a NaN), every decision is the above's, and so is
+the grid where the heads give no reading, as a pinned bar longer than the beats
+heard: offline the rip is that of the frames without them.
 
-- **The tempo and the beats.** The tempo is how the beat head repeats: the same
-  autocorrelation, prior and fold, over the head on the onsets' scale (above
-  its local mean, at unit deviation, so `tightness` weighs it as it weighs
-  them), and the beats are tracked on it.
-- **The beat the head marks** (`level`). The prior may read a beat at half,
-  double or a third of the head's own rate. Each span between tracked beats is
-  read at its beat, quarters, thirds and half (`claims`), and the beat is cut
-  in two or three, or doubled to every other one, where that reading ranks
-  the head's marks surer than the beats as tracked. A beat spans 12 frames at
-  least. Tracked beats that rank over the frames between no more often than
-  chance are no beat the head marks, and the onsets and the cues read the
-  clip. A tempo the listener gives (`RipGrid`) stands, a quarter's.
+- **The tempo and the beats.** The tempo is how the beat head repeats: its
+  autocorrelation over a lag's first four multiples, weighed 1, 0.8, 0.5 and
+  0.6 as a plain tracker weighs them (`ripCombs`), under the same prior, over
+  the head on the onsets' scale (above its local mean, at unit deviation, so
+  `tightness` weighs it as it weighs them). Half the beat's lag, whose odd
+  multiples fall between the beats, scores under half the beat's, and no fold
+  follows: the beat is the one the head marks, 60 to 240 a minute, which the
+  prior alone parts from its half where the head marks both alike. The beats
+  are tracked on the head. Tracked beats it ranks over the frames between no
+  more often than chance (`claims`, `above`) are no beat it marks, and the
+  onsets and the cues read the clip. A tempo the listener gives (`RipGrid`)
+  stands, a quarter's.
 - **The pulses** inside a beat are the beats' spans cut in the count `tatum`
   reads from the onsets. No decision reads them where the beat is heard, the
   five beats a first bar needs included: a line falls on a tracked beat, and
@@ -559,24 +555,26 @@ them.
   quarters, where 3/4 and 6/8 are one bar the downbeat head cannot part, so the
   meters read are the note's the beat head marks: 4/4 and 3/4, or 6/8 over the
   quarters cut in two where it marks their halves surer (`claims`).
-- **The bar lines** (`heardLines`) are where the downbeat head marks them over
-  the tracked beats: a line every bar's beats from the phase whose lines are
-  the highest beat of their bar in the most bars, a beat read at the head's
-  highest within a frame of it. The meter is the reading whose lines top the
-  most bars, the first where two tie, taken only where they top most of its
-  bars: a head quiet over most of the clip gives no reading, and the cues read
-  it. Over the same beats 6/8's lines are every other of 3/4's, and its bar
-  holds the 3/4 line it leaves out, so a quiet head no longer reads the longer
-  bar; a head no higher at its lines than at the other beats marks none. No
-  cue is weighed against another, no margin parts two meters, and a clip of
-  any length is read in all three.
+- **The bar lines** (`heardLines`) fall every bar's beats from the place that
+  scores best over the whole reading: its bars' line cues as the path scores
+  them (`bar`: the kick, the snare on the backbeats, the key's root in the bass,
+  the chroma's change, the bass's accent) and the downbeat head summed by
+  place, how far its mean at the place's lines stands over its mean at every
+  beat (`ripBarHead`), each beat read at the head's highest within three frames
+  (`ripHeadReach`). Where its margin between two places is small the cues
+  decide, and a stretch where it is quiet adds little to any place. The comb
+  is left out, its steps finer in one meter than another over the same beats.
+  The meter is chosen as the cues' readings choose it, 4/4 first and another
+  taken by `ripMeterMargin` over it, twice for whole bars of the best's, so a
+  waltz read 3/4 keeps it over 6/8's every other line; six heard beats are a
+  bar of their own, not a name for 3/4's.
 - **A bar holds its beats**, no more and no fewer: the path's slack of a pulse
   or two is not taken here, since what a slipped bar should cost against a
   head's posterior is a number nothing fits yet
   ([todo](todo.md#hear-the-beat-and-the-bar-line-on-trained-weights)).
 - **The name.** The tempo and the meter are the heard beats', so `name`'s
-  rules that undo the tracker's level, half, double and triplets, have
-  nothing to undo, and six heard beats stay 6/8. One convention holds: which
+  rules that undo the tracker's half, double and triplets have nothing to
+  undo, and six heard beats stay 6/8. One convention holds: which
   note carries a beat nobody divides is no sound, so a drumless bar of three
   or five with no sixteenth is still written in eighths at half the tempo,
   Für Elise 3/8.
