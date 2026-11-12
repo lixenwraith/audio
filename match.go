@@ -137,6 +137,7 @@ func align(a, b []RipNote, shift int, timed bool) Agreement {
 		return func(n RipNote) bool { return lineOf(n) == line && (line == 2 || !n.Further) }
 	}
 	register := func(n RipNote) bool { return !n.Bass }
+	every := func(RipNote) bool { return true }
 	seconds := func(keep func(RipNote) bool, pairs func(la, lb []RipNote) [][2]int) [][2]float64 {
 		la, lb := split(keep)
 		var p [][2]float64
@@ -148,20 +149,37 @@ func align(a, b []RipNote, shift int, timed bool) Agreement {
 	}
 	if !timed {
 		var xs, ys []float64
+		var bass [][2]float64
 		for line := range ag.Lines {
-			for _, q := range seconds(inLine(line), ordered) {
+			p := seconds(inLine(line), ordered)
+			for _, q := range p {
 				xs, ys = append(xs, q[0]), append(ys, q[1])
+			}
+			if line == 2 {
+				bass = p
 			}
 		}
 		ag.Stretch, ag.Offset = fitLine(xs, ys)
-		// the register leads, as a low note's reported start is often its partial's;
-		// the second round's map has lost the first's pairs in the wrong place
-		ag.paired = smoothed(seconds(register, ordered))
-		if len(ag.paired) < 2 {
-			ag.paired = smoothed(seconds(inLine(2), ordered))
+		// led maps through lead's notes, their pitches in order (first, else the
+		// bass's) and then their pairs near their place, as the second round has
+		// lost the first's in the wrong place, and counts every note matched under it
+		led := func(lead func(RipNote) bool, first [][2]float64) (matched int) {
+			if ag.paired = smoothed(first); len(ag.paired) < 2 {
+				ag.paired = smoothed(bass)
+			}
+			if p := seconds(lead, inPlace); len(p) >= 2 {
+				ag.paired = smoothed(p)
+			}
+			la, lb := split(every)
+			return len(inPlace(la, lb))
 		}
-		if p := seconds(register, inPlace); len(p) >= 2 {
-			ag.paired = smoothed(p)
+		// the register leads, as a low note's reported start is often its partial's
+		// and it is one order where the two sides part its lines differently, unless
+		// the bass makes a map that matches more notes by pitch and onset: a few
+		// pairs in the register must not place a bass of many
+		byRegister := led(register, seconds(register, ordered))
+		if p := ag.paired; led(inLine(2), bass) <= byRegister || len(ag.paired) < 2 {
+			ag.paired = p
 		}
 	}
 	part := func(keep func(RipNote) bool) LineAgreement {
@@ -193,7 +211,7 @@ func align(a, b []RipNote, shift int, timed bool) Agreement {
 		ag.Lines[line] = part(inLine(line))
 	}
 	ag.Register = part(register)
-	ag.All = part(func(RipNote) bool { return true })
+	ag.All = part(every)
 	return ag
 }
 

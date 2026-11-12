@@ -148,6 +148,19 @@ stream through the analysis gives one of two rips, its lead and its under line
 exchanged, from one binary. The smallest close: walk each state's keys in
 order, then hash that corpus's rips ten times.
 
+### Read the takes again through the mended map
+
+- Priority: P2
+- Affected files: `match.go`
+
+The takes were graded through a map that held only the given's own tempo ([agent
+notes](agent-notes.md#the-accounting)): the clean Für Elise take's bar lines
+read 0.4 within a sixteenth, its bass about 100 ms off at the B section. The
+audit's count of the takes through the map as it stands rose 14 to 32 notes a
+take; their bar score and the B section's bass are not read again. The smallest
+close: both through the map as it stands, beside the exact-clock renders, and
+the agent notes' advice kept or dropped by them.
+
 ### Pair a tapped rhythm as the notes with pitches are
 
 - Priority: P3

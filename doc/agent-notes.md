@@ -456,10 +456,13 @@ that a document now states, and link the document instead.
   path's long note of one pitch share a start, as the path note overlaps the
   struck one by under a quarter: 23 of the clean Für Elise take's 41 low
   "same pitch again" extras were such pairs, which `accDedup` merges.
-- A truth mapped onto a take through `Agreement.At` sits about 100 ms off in
+- A truth mapped onto a take through `Agreement.At` sat about 100 ms off in
   places (the repeated A2 bass of the B section at 105 s on the clean take): a
   note counted missing there is often reported 100-110 ms away, so the bass
-  F1s of the takes undercount, and a change there is read on the renders.
+  F1s of the takes undercount. The map then held only the given's own tempo, a
+  pitch struck again paired greedily, and the register led it however few its
+  pairs; all three are mended, which moved the B section is unread on the take,
+  and until it is read a change there is read on the renders.
 - Of the 240 notes the clean take misses, 120 have a strike over 0.7 at the
   pitch within 100 ms: the decoder's rules after the bar drop them, a ringing
   pitch struck under `StrikeAgain` above all (the B section's repeated A2s at
@@ -567,16 +570,23 @@ that a document now states, and link the document instead.
 - **And grade the notes by pitch and onset.** A truth files its notes by its
   own rule (a guitar's MIDI has no bass line), so within lines a right note
   reads as an extra and a miss: `Agreement.All` counts every note as one line
-  and is what picks a threshold set or a round. It shares the lines' map and
-  transposition, both found from the pairs within lines so the counts by line
-  stayed as they were; where the truth's clock is the recording's, match it
-  `timed` and no map is fitted at all.
+  and is what picks a threshold set or a round. It shares the lines'
+  transposition, found from the counts within lines, and their map, the
+  register's unless the bass's places more notes by pitch and onset; where the
+  truth's clock is the recording's, match it `timed` and no map is fitted.
+- **The register as one line is the order the two sides share.** A map fitted
+  on each line's pitches in order, then every note near its place, fell under
+  v0.24.0 on every set of the audit's recordings but a bass line (score renders
+  .931 to .775): rip and truth part the register's notes by different rules, so
+  a line's order matches by chance. On a generated ensemble that first round
+  took 415 of 5,436 notes and the second round over every note 235 more, the
+  refit none; after the register's first round neither took any.
 - **A map that follows a drift follows a chance one.** The map keeps a run of
   matches whose offsets move one way, as a tempo off the given's does, and the
   pitches in order of unrelated music drift so too: against another piece in
-  one key and density the fitted count went from 691 to 909 over 20 pieces
-  (timed 219), a floor of F1 0.14 for 0.10, and a two-bar loop's rip on random
-  weights read 0.074 for 0.148 until an end's slope needed `mapMatches` pairs.
+  one key and density the fitted count went from 703 to 909 over 20 pieces
+  (timed 219), a floor of F1 0.138 for 0.107, and a two-bar loop's rip on random
+  weights read 0.148 for 0.074 until an end's slope needed `mapMatches` pairs.
   Read a fitted count against that floor; a timed truth has none.
 - **A rule that fits a synthetic case can be refuted by one recording.** A
   note cut where its salience rose again by a third after falling off its
