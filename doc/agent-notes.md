@@ -352,17 +352,22 @@ that a document now states, and link the document instead.
   and parts from 3/4 by its lines; the cues' readings count quarters, where
   6/8 is only a name for 3/4's bar. A tempo the listener gives is a quarter's
   either way (`heardReadings`' `given`).
-- **A sum of log-odds is a decision with no threshold only for a posterior.**
-  `level` and `heardLines` add `log(p/(1-p))` over a class of frames. A head
-  trained with a positive weight, read through a threshold elsewhere, would
-  shift every such sum by its count times log w.
+- **A head's level must not choose; its ranks do, and locally.** Summed
+  log-odds read a downbeat head under a half, or one quiet over a stretch, as a
+  word against every line there, and over the same beats 6/8's lines are every
+  other of 3/4's, so a quiet waltz read 6/8 at half tempo. One rank over the
+  whole clip still failed where most of it was quiet: its quiet lines lost to
+  the loud stretch's other beats, and any marked bar put it over chance. A line
+  topping its own bar is level-free and local. `peak` reads a beat at the
+  head's highest within a frame, so a head that dips at its lines marks none.
 - **A change that must not move the rip is held by a digest of rips.** A
   scratch program: every WAV of a rendered corpus ripped through the analysis
   and through random weights of `Spec` cut to the heads before the change,
   offline and streamed, each rip's JSON hashed; 240 rips of stapes' `corpus
   <dir> 48 8 aug gen meters` gave one digest before and after the heads. Ten
-  runs of its 96 rips through the analysis give one digest each, so a
-  differing line is the change's; through a model that is unmeasured.
+  runs of its 96 rips through the analysis give one digest each, and two
+  through random weights of `Spec` cut to ten heads (`NewRandom` seed 1), so a
+  differing line is the change's.
 
 ## The matched kit
 

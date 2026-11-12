@@ -525,16 +525,19 @@ func TestRipStreamReadsTheHeads(t *testing.T) {
 }
 
 // TestHeadsThatGiveNoReadingLeaveTheGridToTheCues: a pinned bar longer than the
-// beats heard, or a head that is no posterior at a frame, gives no reading, and
-// the rip is that of the same frames without the heads, offline and streamed
+// beats heard, a head that is no posterior at a frame, or heads that mark
+// nothing give no reading, and the rip is that of the same frames without the
+// heads, offline and streamed
 func TestHeadsThatGiveNoReadingLeaveTheGridToTheCues(t *testing.T) {
-	down, beat := headFrames(3000, 40, 40, 0, 4, 0), headFrames(3000, 40, 40, 0, 4, 0)
+	down, beat, zero := headFrames(3000, 40, 40, 0, 4, 0), headFrames(3000, 40, 40, 0, 4, 0), headFrames(3000, 33, 40, 0, 4, 0)
 	down.Downbeat[100], beat.Beat[100] = math.NaN(), math.NaN()
+	clear(zero.Beat)
+	clear(zero.Downbeat)
 	for _, c := range []struct {
 		name string
 		f    *RipFrames
 		pin  *Meter
-	}{{"12/8 pinned over ten beats", headFrames(430, 40, 40, 0, 4, 0), &Meter{12, 8}}, {"a NaN in the downbeat head", down, nil}, {"a NaN in the beat head", beat, nil}} {
+	}{{"12/8 pinned over ten beats", headFrames(430, 40, 40, 0, 4, 0), &Meter{12, 8}}, {"a NaN in the downbeat head", down, nil}, {"a NaN in the beat head", beat, nil}, {"both heads zero", zero, nil}} {
 		for _, stream := range []bool{false, true} {
 			plain := *c.f
 			plain.Beat, plain.Downbeat = nil, nil

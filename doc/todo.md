@@ -305,13 +305,16 @@ What is left here, each to settle on trained weights:
   cues, 58 under perfect beats), the Für Elise takes against their score, and
   the stream's twelve recordings; with the heads and with the same weights'
   heads left out (a `FrontEnd` whose frames have `Beat` set nil).
-- **The head's scale.** The lines and `level` read a posterior. A head trained
-  with a positive weight w scores p as wp/(wp + 1 - p), and would favour short
-  bars by log w a line: the trainer's loss on these two heads carries no
-  weight, or the decoder must undo it.
-- **A weak or a busy head.** `level` keeps the tracked beat when no class of
-  frames sums over zero, and halves it when a head fires on every eighth; a
-  reading of 6/8 for 3/4 follows. Neither is measured.
+- **A noisy or an ambiguous head.** The decoders read ranks, so no level and
+  no positive weight moves them, and on hand-built heads (lines at 0.1 to 0.9
+  over 0.01 to 0.3, quiet over up to 60% of a clip, in 3/4, 4/4 and 6/8) a rip
+  reads its bar where the lines stand over the rest, and the cues where not or
+  where most of the clip is quiet. Noise is read as a head: clips 95 or 98%
+  noise read a wrong bar in 3 of 12 draws, and a stream whose first eleven
+  seconds are noise reads its first bars by chance (3/4 and 4/4 in 3 draws of
+  7, 6/8 in 1) and holds them. A 6/8 whose head marks its second dotted
+  quarter over every other beat reads 3/4, both readings topping all their
+  bars.
 - **A bar that slips.** A bar holds its beats exactly, so a beat the tracker
   adds or loses in a ritardando moves every line after it; the cues' path
   absorbs one at `ripBarMove`. A cost in the head's own units is to be fitted
@@ -320,8 +323,7 @@ What is left here, each to settle on trained weights:
   head is not read again once they freeze. Reading it at every bar is the
   sections thread's.
 - **Half and double bars** are not offered (2 and 8 heard beats), nor 5/4 and
-  7/8: a silent head scores a longer bar higher, so a longer bar wants a head
-  measured first.
+  7/8: none is measured on a head.
 
 ### Hear the phone takes' bars
 

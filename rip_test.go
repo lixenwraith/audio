@@ -2450,13 +2450,17 @@ func (tr ripTrack) beats() (beats []int) {
 // TestTheTrackedBeatIsTheOneTheHeadMarks: a head's beat the prior reads at half
 // or a third of its rate is tracked at its own where the head marks the halves
 // or thirds between, and one folded to double at its own where the head marks
-// every other beat alone; a tempo given stands
+// every other beat alone, though it marks none over the clip's second half; a
+// tempo given stands
 func TestTheTrackedBeatIsTheOneTheHeadMarks(t *testing.T) {
-	for _, c := range []struct{ beat, first int }{{30, 0}, {15, 7}, {74, 30}, {43, 0}} {
+	for _, c := range []struct{ beat, first, unmarkedFrom int }{{30, 0, 4000}, {15, 7, 4000}, {74, 30, 4000}, {43, 0, 4000}, {74, 30, 2000}, {30, 0, 2000}} {
 		f := headFrames(4000, 20, c.beat, c.first, 4, 0)
+		for t := c.unmarkedFrom; t < 4000; t++ {
+			f.Beat[t] = 0.01
+		}
 		bpm, tr := Ripper{}.track(f, DefaultRipParams())
 		if math.Abs(tr.period-float64(c.beat)) > 0.5 || math.Abs(bpm-60/(float64(c.beat)*f.Hop)) > 2 || !every(tr.beats(), c.first, c.beat) {
-			t.Errorf("a head beat of %d frames tracked at %.1f, %.1f bpm, beats %v", c.beat, tr.period, bpm, tr.beats()[:4])
+			t.Errorf("a head beat of %d frames, marked to frame %d, tracked at %.1f, %.1f bpm, beats %v", c.beat, c.unmarkedFrom, tr.period, bpm, tr.beats()[:4])
 		}
 	}
 	f := headFrames(4000, 20, 30, 0, 4, 0)
@@ -2513,6 +2517,34 @@ func TestAMeterIsTheBeatsHeardToItsBar(t *testing.T) {
 		g, bpm := barsOf(t, f, [InstrClap][]ripHit{InstrHihat: hitsEvery(n, c.beat, 1, 0)})
 		if g.m != c.want || math.Abs(bpm-c.tempo) > 1.5 || !every(g.lines, 2*c.beat, c.per*c.beat) {
 			t.Errorf("a line every %d beats of %d frames: %s at %.1f bpm, lines %v, want %s at %.1f", c.per, c.beat, g.m, bpm, g.lines[:min(len(g.lines), 5)], c.want, c.tempo)
+		}
+	}
+}
+
+// TestABarIsReadWhereItsLinesTopMostOfItsBars: a waltz's lines marked at 0.55 or
+// 0.45 over beats at 0.01, or at 0.8 with the last three tenths of the clip
+// unmarked, and a 4/4's at 0.1 over 0.02 top most of their bars however loud the
+// head, and are read so, not as twice their beats; a 4/4 marked over its first
+// third alone tops no majority, and the cues read it
+func TestABarIsReadWhereItsLinesTopMostOfItsBars(t *testing.T) {
+	for _, c := range []struct {
+		per          int
+		line, rest   float64
+		unmarkedFrom int
+	}{{3, 0.55, 0.01, 3000}, {3, 0.45, 0.01, 3000}, {3, 0.8, 0.01, 2100}, {4, 0.1, 0.02, 3000}, {4, 0.8, 0.02, 1000}} {
+		f := headFrames(3000, 40, 40, 0, c.per, 1)
+		for t, v := range f.Downbeat {
+			if f.Downbeat[t] = c.rest; v > 0.5 && t < c.unmarkedFrom {
+				f.Downbeat[t] = c.line
+			}
+		}
+		g, bpm := barsOf(t, f, [InstrClap][]ripHit{})
+		if c.unmarkedFrom < 1500 {
+			if cues, _ := barsOf(t, f.plain(), [InstrClap][]ripHit{}); !reflect.DeepEqual(g, cues) {
+				t.Errorf("lines marked to frame %d alone: %s, lines %v, want the cues' %s, lines %v", c.unmarkedFrom, g.m, g.lines[:5], cues.m, cues.lines[:5])
+			}
+		} else if g.m.Beats() != c.per || !every(g.lines, 40, c.per*40) {
+			t.Errorf("lines marked at %.2f over %.2f to frame %d: %s at %.1f, lines %v, want %d beats a bar, a line every %d frames from 40", c.line, c.rest, c.unmarkedFrom, g.m, bpm, g.lines[:min(len(g.lines), 5)], c.per, c.per*40)
 		}
 	}
 }

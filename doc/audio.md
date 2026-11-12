@@ -504,23 +504,29 @@ half tempo too, one with sixteenth runs 3/4, and the pin overrides either.
 Where the frames carry a beat and a downbeat head (`RipFrames.Beat`,
 `Downbeat`: a model's posterior that a beat of the meter, and a bar line, falls
 within a frame; `heard`), the beat and the line are read from them and none of
-the above decides. With one head alone, or neither, or a head that is no
-posterior at some frame (a NaN), every decision is the above's, and so is the
-grid where the heads give no reading, as a pinned bar longer than the beats
-heard: the rip is that of the frames without them. A stream whose first bars
-are read so reads on so; one whose first bars the heads gave reads on by them.
+the above decides. Every decision there is by the head's ranks, never its
+level, so neither how loud it is nor a stretch where it is quiet chooses: the
+beat's by how often the head is higher at a frame a reading claims than at one
+it leaves, a tie counting half (`above`), a half being chance; the bar's by
+how many of a reading's bars its line tops. With one head alone, or neither,
+or a head that is no posterior at some frame (a NaN), every decision is the
+above's, and so is the grid where the heads give no reading, as a pinned bar
+longer than the beats heard: the rip is that of the frames without them. A
+stream whose first bars are read so reads on so; one whose first bars the
+heads gave reads on by them.
 
 - **The tempo and the beats.** The tempo is how the beat head repeats: the same
   autocorrelation, prior and fold, over the head on the onsets' scale (above
   its local mean, at unit deviation, so `tightness` weighs it as it weighs
   them), and the beats are tracked on it.
 - **The beat the head marks** (`level`). The prior may read a beat at half,
-  double or a third of the head's own rate. The tracked beat is cut in two or
-  three where the head marks the halves or the thirds between the beats, and
-  doubled where it marks every other beat and not the rest; a class of frames
-  is marked when its log-odds sum over zero, the head's own word and no
-  threshold. A beat spans 12 frames at least. A tempo the listener gives
-  (`RipGrid`) stands, a quarter's.
+  double or a third of the head's own rate. Each span between tracked beats is
+  read at its beat, quarters, thirds and half (`claims`), and the beat is cut
+  in two or three, or doubled to every other one, where that reading ranks
+  the head's marks surer than the beats as tracked. A beat spans 12 frames at
+  least. Tracked beats that rank over the frames between no more often than
+  chance are no beat the head marks, and the onsets and the cues read the
+  clip. A tempo the listener gives (`RipGrid`) stands, a quarter's.
 - **The pulses** inside a beat are the beats' spans cut in the count `tatum`
   reads from the onsets. No decision reads them where the beat is heard: a
   line falls on a tracked beat, and the grid cuts each bar in its meter's
@@ -531,13 +537,17 @@ are read so reads on so; one whose first bars the heads gave reads on by them.
   heard beats 4/4 and three 3/4 at the beats' tempo, six 6/8 at half of it;
   where that tempo is outside the sequencer's range the note moves by octaves
   (four beats at 352 are 4/8 at 176).
-- **The bar lines** (`heardLines`) are where the downbeat head is likeliest
-  over the tracked beats: a line every bar's beats from the phase that scores
-  highest, a beat scoring log p where it is a line and log(1 - p) where it is
-  not, p the head's surest value within a frame, read no surer than one in a
-  million. The meter is the reading that scores highest a beat, the first
-  where two tie. No cue is weighed against another, no margin parts two
-  meters, and a clip of any length is read in all three.
+- **The bar lines** (`heardLines`) are where the downbeat head marks them over
+  the tracked beats: a line every bar's beats from the phase whose lines are
+  the highest beat of their bar in the most bars, a beat read at the head's
+  highest within a frame of it. The meter is the reading whose lines top the
+  most bars, the first where two tie, taken only where they top most of its
+  bars: a head quiet over most of the clip gives no reading, and the cues read
+  it. Over the same beats 6/8's lines are every other of 3/4's, and its bar
+  holds the 3/4 line it leaves out, so a quiet head no longer reads the longer
+  bar; a head no higher at its lines than at the other beats marks none. No
+  cue is weighed against another, no margin parts two meters, and a clip of
+  any length is read in all three.
 - **A bar holds its beats**, no more and no fewer: the path's slack of a pulse
   or two is not taken here, since what a slipped bar should cost against a
   head's posterior is a number nothing fits yet
