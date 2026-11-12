@@ -1790,9 +1790,9 @@ func (f *RipFrames) tempo(p RipParams) (bpm, period float64) {
 		}
 	}
 	lag := float64(best)
-	if best > minLag && best < maxLag { // the peak between its neighbours
+	if best < maxLag { // the peak between its neighbours, at the bound's edge too where it is the higher
 		l, c, r := score(best-1), score(best), score(best+1)
-		if d := l - 2*c + r; d < 0 {
+		if d := l - 2*c + r; d < 0 && l <= c {
 			lag += 0.5 * (l - r) / d
 		}
 	}

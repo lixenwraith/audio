@@ -430,10 +430,14 @@ semitone, and the pitch table is read on the mean offset, so a clip tuned forty
 cents flat, where every note sits between two semitone rows and wobbles between
 them, reads as one in tune. The percussive onsets, each drum's band against its
 own peak with the kick's counting double, give the tempo (autocorrelation from
-240 BPM to 60 under a log-Gaussian prior centred on 120, folded into 80–200) and
-the pulses the
-bars are read over (a dynamic programme loose enough to follow a tempo that
-moves): the tatum,
+240 BPM to 60 under a log-Gaussian prior centred on 120, the peak placed
+between its neighbours, the first lag's too where the lag under it scores no
+higher, folded into 80–200) and the pulses
+the bars are read over (a dynamic programme loose enough to follow a tempo that
+moves). A figure whose only repetition within the search is a pair of notes
+nearer than 240 BPM (two eighths at 128 opening a bar of 3/4) is read by
+another lag: a narrow class given up for a search that holds no lag near zero,
+where one never returned on onsets farther apart than its slowest. The tatum,
 three pulses a beat when the beats hold onsets on both their thirds (a swung
 beat sounds near its second third alone), else the finer of two or four whose
 lag is a peak of the onset autocorrelation at least half the beat's, each

@@ -346,7 +346,9 @@ that a document now states, and link the document instead.
   there: a test of the bound needs a figure whose spacing repeats once or
   twice and stops, three notes on a slow pulse
   (`TestTempoReadsNoLagFasterThan240BPM`). `60/240/f.Hop` divided two integer
-  constants first: write such a bound as `60/(240*f.Hop)`.
+  constants first: write such a bound as `60/(240*f.Hop)`. The search from lag
+  0 it replaced never returned on onsets farther apart than its slowest lag:
+  lag 0 won and the fold doubled an infinite tempo.
 - **A reading of heard beats counts the meter's own.** With the heads a bar is
   `Meter.Beats()` tracked beats of `Meter.Beat()` steps, so 6/8 is six eighths
   and parts from 3/4 by its lines; the cues' readings count quarters, where

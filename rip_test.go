@@ -2379,7 +2379,9 @@ func TestABarLineAtTheStartHearsTheSilenceBeforeIt(t *testing.T) {
 
 // TestTempoReadsNoLagFasterThan240BPM: three notes twenty frames apart on every
 // beat of a slow pulse repeat most at their own spacing, 258 bpm, which folds to
-// 129; the search starts at 240, and reads the pulse's half, 70, as 140
+// 129; the search starts at 240, and reads the pulse's half, 70, as 140. Onsets
+// 199 frames apart, past the slowest lag, read a tempo in the tracker's range,
+// where a search from lag 0 took that lag and its fold never returned.
 func TestTempoReadsNoLagFasterThan240BPM(t *testing.T) {
 	const figure, pulse = 20, 148
 	f := &RipFrames{Hop: RipFrameSec, Flux: make([]float64, 30*pulse)}
@@ -2388,6 +2390,33 @@ func TestTempoReadsNoLagFasterThan240BPM(t *testing.T) {
 	}
 	if bpm, _ := f.tempo(DefaultRipParams()); math.Abs(bpm-140) > 2 {
 		t.Errorf("tempo %.1f, want 140, the pulse's half doubled", bpm)
+	}
+	sparse := &RipFrames{Hop: RipFrameSec, Flux: make([]float64, 30*199)}
+	for at := 0; at < sparse.frames(); at += 199 {
+		sparse.Flux[at] = 1
+	}
+	if bpm, _ := sparse.tempo(DefaultRipParams()); bpm < ripTempoMin || bpm > ripTempoMax {
+		t.Errorf("onsets 199 frames apart: tempo %.1f, outside %d..%d", bpm, ripTempoMin, ripTempoMax)
+	}
+}
+
+// TestTempoAtTheSearchsBoundIsReadBetweenItsNeighbours: pairs of onsets 21.2
+// frames apart, the only repetition within the search, peak at its first lag,
+// 21, and are read between it and the lags either side, at the pair's own
+// tempo folded, 121.9, not lag 21's 123.0
+func TestTempoAtTheSearchsBoundIsReadBetweenItsNeighbours(t *testing.T) {
+	const pair, every = 21.2, 151.0
+	f := &RipFrames{Hop: RipFrameSec, Flux: make([]float64, 3000)}
+	at := func(x float64) { // an onset between two frames, shared by them
+		i := int(x)
+		f.Flux[i], f.Flux[i+1] = f.Flux[i]+float64(i+1)-x, f.Flux[i+1]+x-float64(i)
+	}
+	for k := 0; float64(k)*every+pair+1 < 3000; k++ {
+		at(float64(k)*every + 0.3)
+		at(float64(k)*every + 0.3 + pair)
+	}
+	if bpm, _ := f.tempo(DefaultRipParams()); math.Abs(bpm-60/(pair*f.Hop)/2) > 0.5 {
+		t.Errorf("tempo %.2f, want the pair's %.2f folded", bpm, 60/(pair*f.Hop)/2)
 	}
 }
 
