@@ -2124,21 +2124,29 @@ func TestABarIsNamedByItsBeats(t *testing.T) {
 		drums, sixteenths bool
 		want              Meter
 		wantTempo         float64
+		heard             bool
 	}{
-		{Meter{4, 2}, 140, 2, true, true, Meter{}, 70},
-		{Meter{3, 2}, 130, 2, false, false, Meter{3, 4}, 65},
-		{Meter{2, 4}, 90, 1, true, false, Meter{}, 180},
-		{Meter{2, 4}, 120, 1, true, false, Meter{2, 4}, 120},
-		{Meter{9, 8}, 180, 1, true, false, Meter{3, 4}, 120},
-		{Meter{3, 4}, 147, 2, false, false, Meter{3, 8}, 73.5},
-		{Meter{3, 4}, 147, 2, true, false, Meter{3, 4}, 147},
-		{Meter{3, 4}, 147, 2, false, true, Meter{3, 4}, 147},
-		{Meter{}, 147, 2, false, false, Meter{}, 147},
-		{Meter{6, 8}, 150, 3, false, false, Meter{3, 8}, 75},
-		{Meter{6, 8}, 150, 3, true, false, Meter{6, 8}, 150},
+		{Meter{4, 2}, 140, 2, true, true, Meter{}, 70, false},
+		{Meter{3, 2}, 130, 2, false, false, Meter{3, 4}, 65, false},
+		{Meter{2, 4}, 90, 1, true, false, Meter{}, 180, false},
+		{Meter{2, 4}, 120, 1, true, false, Meter{2, 4}, 120, false},
+		{Meter{9, 8}, 180, 1, true, false, Meter{3, 4}, 120, false},
+		{Meter{3, 4}, 147, 2, false, false, Meter{3, 8}, 73.5, false},
+		{Meter{3, 4}, 147, 2, true, false, Meter{3, 4}, 147, false},
+		{Meter{3, 4}, 147, 2, false, true, Meter{3, 4}, 147, false},
+		{Meter{}, 147, 2, false, false, Meter{}, 147, false},
+		{Meter{6, 8}, 150, 3, false, false, Meter{3, 8}, 75, false},
+		{Meter{6, 8}, 150, 3, true, false, Meter{6, 8}, 150, false},
+		// beats that were heard keep their count: six stay 6/8, two stay 2/4, and
+		// a drumless three with no sixteenth is still written in eighths
+		{Meter{6, 8}, 150, 3, false, false, Meter{6, 8}, 150, true},
+		{Meter{6, 8}, 180, 1, true, false, Meter{6, 8}, 180, true},
+		{Meter{2, 4}, 90, 1, true, false, Meter{2, 4}, 90, true},
+		{Meter{3, 4}, 147, 1, false, false, Meter{3, 8}, 73.5, true},
+		{Meter{3, 4}, 147, 1, true, false, Meter{3, 4}, 147, true},
 	} {
-		if m, tempo := name(c.m, c.tempo, c.k, c.drums, c.sixteenths); m != c.want || tempo != c.wantTempo {
-			t.Errorf("%s at %.0f, %d a beat, drums %v sixteenths %v: named %s at %.1f, want %s at %.1f", c.m, c.tempo, c.k, c.drums, c.sixteenths, m, tempo, c.want, c.wantTempo)
+		if m, tempo := name(c.m, c.tempo, c.k, c.drums, c.sixteenths, c.heard); m != c.want || tempo != c.wantTempo {
+			t.Errorf("%s at %.0f, %d a beat, drums %v sixteenths %v heard %v: named %s at %.1f, want %s at %.1f", c.m, c.tempo, c.k, c.drums, c.sixteenths, c.heard, m, tempo, c.want, c.wantTempo)
 		}
 	}
 }
@@ -2297,5 +2305,156 @@ func TestTempoReadsNoLagFasterThan240BPM(t *testing.T) {
 	}
 	if bpm, _ := f.tempo(DefaultRipParams()); math.Abs(bpm-140) > 2 {
 		t.Errorf("tempo %.1f, want 140, the pulse's half doubled", bpm)
+	}
+}
+
+// headFrames is n frames with an onset every on frames and heads that mark a
+// beat every beat frames from first and a bar line on every per-th of them from
+// the line-th, a mark a frame either side as the trainer's target is
+func headFrames(n, on, beat, first, per, line int) *RipFrames {
+	f := &RipFrames{Hop: RipFrameSec, Flux: make([]float64, n), Chroma: make([][12]float64, n), BassChroma: make([][12]float64, n),
+		Beat: make([]float64, n), Downbeat: make([]float64, n)}
+	for t := range n {
+		f.Beat[t], f.Downbeat[t] = 0.01, 0.01
+		if t%on == 0 {
+			f.Flux[t] = 1
+		}
+	}
+	for i, t := 0, first; t < n; i, t = i+1, t+beat {
+		for k := max(t-1, 0); k <= t+1 && k < n; k++ {
+			if f.Beat[k] = 0.98; i%per == line {
+				f.Downbeat[k] = 0.98
+			}
+		}
+	}
+	return f
+}
+
+// every reports whether each frame of at lies within a frame of first plus a
+// whole number of step
+func every(at []int, first, step int) bool {
+	for _, t := range at {
+		if d := ((t-first)%step + step) % step; d > 1 && d < step-1 {
+			return false
+		}
+	}
+	return len(at) > 0
+}
+
+// TestTheTempoAndTheBeatsAreTheBeatHeads: onsets every twenty frames repeat most
+// at forty, 129 bpm; a beat head marking every sixty sets the tempo at 86 and
+// the beats on its marks, and the pulses are those beats cut in the three the
+// onsets hold to a beat
+func TestTheTempoAndTheBeatsAreTheBeatHeads(t *testing.T) {
+	f := headFrames(3000, 20, 60, 20, 4, 0)
+	bpm, tr := Ripper{}.track(f, DefaultRipParams())
+	if math.Abs(bpm-60/(60*f.Hop)) > 1 || tr.k != 3 || !every(tr.pulses, 20, 20) {
+		t.Fatalf("tracked %.1f bpm, %d pulses a beat, pulses %v: want 86.1, 3, every 20 frames", bpm, tr.k, tr.pulses[:min(len(tr.pulses), 8)])
+	}
+	if beats := tr.beats(); !every(beats, 20, 60) || len(beats) < 48 {
+		t.Errorf("%d beats %v, want the head's, every 60 frames from 20", len(beats), beats[:min(len(beats), 8)])
+	}
+}
+
+// beats are the tracked beats among a track's pulses
+func (tr ripTrack) beats() (beats []int) {
+	for i := 0; i < len(tr.pulses); i += tr.k {
+		beats = append(beats, tr.pulses[i])
+	}
+	return beats
+}
+
+// TestTheTrackedBeatIsTheOneTheHeadMarks: a head's beat the prior reads at half
+// or a third of its rate is tracked at its own where the head marks the halves
+// or thirds between, and one folded to double at its own where the head marks
+// every other beat alone; a tempo given stands
+func TestTheTrackedBeatIsTheOneTheHeadMarks(t *testing.T) {
+	for _, c := range []struct{ beat, first int }{{30, 0}, {15, 7}, {74, 30}, {43, 0}} {
+		f := headFrames(4000, 20, c.beat, c.first, 4, 0)
+		bpm, tr := Ripper{}.track(f, DefaultRipParams())
+		if math.Abs(tr.period-float64(c.beat)) > 0.5 || math.Abs(bpm-60/(float64(c.beat)*f.Hop)) > 2 || !every(tr.beats(), c.first, c.beat) {
+			t.Errorf("a head beat of %d frames tracked at %.1f, %.1f bpm, beats %v", c.beat, tr.period, bpm, tr.beats()[:4])
+		}
+	}
+	f := headFrames(4000, 20, 30, 0, 4, 0)
+	if bpm, tr := (Ripper{Grid: &RipGrid{BPM: 86, Downbeat: -1}}).track(f, DefaultRipParams()); bpm != 86 || math.Abs(tr.period-60) > 0.5 {
+		t.Errorf("a tempo given as 86 tracked at %.1f bpm, a period of %.1f frames", bpm, tr.period)
+	}
+}
+
+// barsOf decodes the bars of frames with no events but the hits given
+func barsOf(t *testing.T, f *RipFrames, hits [InstrClap][]ripHit) (ripGrid, float64) {
+	t.Helper()
+	g, bpm, _, err := Ripper{}.grid(f, ripEvents{hits: hits}, DefaultRipParams())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return g, bpm
+}
+
+// hitsEvery is a hit on every per-th beat from the first-th, beats beat frames apart
+func hitsEvery(n, beat, per, first int) (hits []ripHit) {
+	for i, t := 0, 0; t < n; i, t = i+1, t+beat {
+		if i%per == first {
+			hits = append(hits, ripHit{frame: t, strength: 1})
+		}
+	}
+	return hits
+}
+
+// TestTheBarLineIsWhereTheDownbeatHeadIsLikeliest: a kick on every fourth beat
+// and a snare two after it cue the line on the kick; a downbeat head that marks
+// the beat after the kick puts every line there
+func TestTheBarLineIsWhereTheDownbeatHeadIsLikeliest(t *testing.T) {
+	const n, beat = 3000, 40
+	f := headFrames(n, beat, beat, 0, 4, 1)
+	hits := [InstrClap][]ripHit{InstrKick: hitsEvery(n, beat, 4, 0), InstrSnare: hitsEvery(n, beat, 4, 2)}
+	g, bpm := barsOf(t, f, hits)
+	if g.m != (Meter{}) || math.Abs(bpm-60/(beat*f.Hop)) > 1 || !every(g.lines, beat, 4*beat) || g.bars() < 16 {
+		t.Errorf("%s at %.1f bpm, %d bars, lines %v: want 4/4 on the head's lines, every %d frames from %d", g.m, bpm, g.bars(), g.lines[:min(len(g.lines), 6)], 4*beat, beat)
+	}
+}
+
+// TestAMeterIsTheBeatsHeardToItsBar: the reading whose lines the downbeat head
+// scores highest is taken with no margin, and its bar holds the meter's own
+// beats: three heard beats 3/4 and four 4/4 at the beats' tempo, six 6/8 at half
+// of it, the quarter two of its eighths
+func TestAMeterIsTheBeatsHeardToItsBar(t *testing.T) {
+	for _, c := range []struct {
+		beat, per int
+		want      Meter
+		tempo     float64
+	}{{40, 4, Meter{}, 129.2}, {30, 3, Meter{3, 4}, 172.3}, {15, 6, Meter{6, 8}, 172.3}, {40, 3, Meter{3, 4}, 129.2}, {20, 6, Meter{6, 8}, 129.2}} {
+		const n = 3000
+		f := headFrames(n, c.beat, c.beat, 0, c.per, 2)
+		g, bpm := barsOf(t, f, [InstrClap][]ripHit{InstrHihat: hitsEvery(n, c.beat, 1, 0)})
+		if g.m != c.want || math.Abs(bpm-c.tempo) > 1.5 || !every(g.lines, 2*c.beat, c.per*c.beat) {
+			t.Errorf("a line every %d beats of %d frames: %s at %.1f bpm, lines %v, want %s at %.1f", c.per, c.beat, g.m, bpm, g.lines[:min(len(g.lines), 5)], c.want, c.tempo)
+		}
+	}
+}
+
+// TestFramesWithoutTheHeadsDecodeByTheOnsetsAndTheCues: the frames of the head
+// tests with neither head, or with one alone, are read as before there were
+// any: the tempo the onsets repeat at, and the line on the kick
+func TestFramesWithoutTheHeadsDecodeByTheOnsetsAndTheCues(t *testing.T) {
+	for _, keep := range []string{"neither", "the beat head", "the downbeat head"} {
+		f := headFrames(3000, 20, 60, 20, 4, 0)
+		if keep != "the beat head" {
+			f.Beat = nil
+		}
+		if keep != "the downbeat head" {
+			f.Downbeat = nil
+		}
+		if bpm, tr := (Ripper{}).track(f, DefaultRipParams()); math.Abs(bpm-60/(40*f.Hop)) > 1 || !every(tr.pulses, 0, 20) {
+			t.Errorf("with %s: tracked %.1f bpm, %d pulses a beat, want the onsets' 129.2", keep, bpm, tr.k)
+		}
+	}
+	const n, beat = 3000, 40
+	f := headFrames(n, beat, beat, 0, 4, 1)
+	f.Beat, f.Downbeat = nil, nil
+	hits := [InstrClap][]ripHit{InstrKick: hitsEvery(n, beat, 4, 0), InstrSnare: hitsEvery(n, beat, 4, 2)}
+	if g, bpm := barsOf(t, f, hits); g.m != (Meter{}) || math.Abs(bpm-60/(beat*f.Hop)) > 1 || !every(g.lines, 0, 4*beat) {
+		t.Errorf("%s at %.1f bpm, lines %v: want 4/4 on the kicks, every %d frames from 0", g.m, bpm, g.lines[:min(len(g.lines), 6)], 4*beat)
 	}
 }
