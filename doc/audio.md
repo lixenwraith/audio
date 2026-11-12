@@ -430,10 +430,14 @@ semitone, and the pitch table is read on the mean offset, so a clip tuned forty
 cents flat, where every note sits between two semitone rows and wobbles between
 them, reads as one in tune. The percussive onsets, each drum's band against its
 own peak with the kick's counting double, give the tempo (autocorrelation from
-240 BPM to 60 under a log-Gaussian prior centred on 120, folded into 80–200) and
-the pulses the
-bars are read over (a dynamic programme loose enough to follow a tempo that
-moves): the tatum,
+240 BPM to 60 under a log-Gaussian prior centred on 120, the peak placed
+between its neighbours, the first lag's too where the lag under it scores no
+higher, folded into 80–200) and the pulses
+the bars are read over (a dynamic programme loose enough to follow a tempo that
+moves). A figure whose only repetition within the search is a pair of notes
+nearer than 240 BPM (two eighths at 128 opening a bar of 3/4) is read by
+another lag: a narrow class given up for a search that holds no lag near zero,
+where one never returned on onsets farther apart than its slowest. The tatum,
 three pulses a beat when the beats hold onsets on both their thirds (a swung
 beat sounds near its second third alone), else the finer of two or four whose
 lag is a peak of the onset autocorrelation at least half the beat's, each
@@ -504,37 +508,57 @@ half tempo too, one with sixteenth runs 3/4, and the pin overrides either.
 Where the frames carry a beat and a downbeat head (`RipFrames.Beat`,
 `Downbeat`: a model's posterior that a beat of the meter, and a bar line, falls
 within a frame; `heard`), the beat and the line are read from them and none of
-the above decides. With one head alone, or neither, every decision is the
-above's.
+the above decides. Every decision there is by the head's ranks, never its
+level, so neither how loud it is nor a stretch where it is quiet chooses: the
+beat's by how often the head is higher at a frame a reading claims than at one
+it leaves, a tie counting half (`above`), a half being chance; the bar's by
+how many of a reading's bars its line tops. With one head alone, or neither,
+or a head that is no posterior at some frame (a NaN), every decision is the
+above's, and so is the grid where the heads give no reading, as a pinned bar
+longer than the beats heard: offline the rip is that of the frames without
+them. A stream holds its first bars once its heard beats fill six bars of 4/4,
+and reads on by the cues where they gave none then, by the heads where they
+did.
 
 - **The tempo and the beats.** The tempo is how the beat head repeats: the same
   autocorrelation, prior and fold, over the head on the onsets' scale (above
   its local mean, at unit deviation, so `tightness` weighs it as it weighs
   them), and the beats are tracked on it.
 - **The beat the head marks** (`level`). The prior may read a beat at half,
-  double or a third of the head's own rate. The tracked beat is cut in two or
-  three where the head marks the halves or the thirds between the beats, and
-  doubled where it marks every other beat and not the rest; a class of frames
-  is marked when its log-odds sum over zero, the head's own word and no
-  threshold. A beat spans 12 frames at least. A tempo the listener gives
-  (`RipGrid`) stands, a quarter's.
+  double or a third of the head's own rate. Each span between tracked beats is
+  read at its beat, quarters, thirds and half (`claims`), and the beat is cut
+  in two or three, or doubled to every other one, where that reading ranks
+  the head's marks surer than the beats as tracked. A beat spans 12 frames at
+  least. Tracked beats that rank over the frames between no more often than
+  chance are no beat the head marks, and the onsets and the cues read the
+  clip. A tempo the listener gives (`RipGrid`) stands, a quarter's.
 - **The pulses** inside a beat are the beats' spans cut in the count `tatum`
-  reads from the onsets. No decision reads them where the beat is heard: a
-  line falls on a tracked beat, and the grid cuts each bar in its meter's
-  steps.
+  reads from the onsets. No decision reads them where the beat is heard, the
+  five beats a first bar needs included: a line falls on a tracked beat, and
+  the grid cuts each bar in its meter's steps.
 - **A beat is the meter's own note**, as `Rip.Beats` lists it: a quarter in
   4/4 and 3/4, an eighth in 6/8, six to the bar, never the felt dotted
   quarter. So a reading is a bar of its meter's beats (`heardReadings`): four
   heard beats 4/4 and three 3/4 at the beats' tempo, six 6/8 at half of it;
   where that tempo is outside the sequencer's range the note moves by octaves
-  (four beats at 352 are 4/8 at 176).
-- **The bar lines** (`heardLines`) are where the downbeat head is likeliest
-  over the tracked beats: a line every bar's beats from the phase that scores
-  highest, a beat scoring log p where it is a line and log(1 - p) where it is
-  not, p the head's surest value within a frame, read no surer than one in a
-  million. The meter is the reading that scores highest a beat, the first
-  where two tie. No cue is weighed against another, no margin parts two
-  meters, and a clip of any length is read in all three.
+  (four beats at 352 are 4/8 at 176). A pinned meter keeps its name and moves
+  the beat instead: a heard beat is its note moved by octaves into the range,
+  cut into the pin's notes where longer (3/4 pinned over beats at 215 takes
+  them as eighths, 3/4 at 108). Under a tempo given the beats are its
+  quarters, where 3/4 and 6/8 are one bar the downbeat head cannot part, so the
+  meters read are the note's the beat head marks: 4/4 and 3/4, or 6/8 over the
+  quarters cut in two where it marks their halves surer (`claims`).
+- **The bar lines** (`heardLines`) are where the downbeat head marks them over
+  the tracked beats: a line every bar's beats from the phase whose lines are
+  the highest beat of their bar in the most bars, a beat read at the head's
+  highest within a frame of it. The meter is the reading whose lines top the
+  most bars, the first where two tie, taken only where they top most of its
+  bars: a head quiet over most of the clip gives no reading, and the cues read
+  it. Over the same beats 6/8's lines are every other of 3/4's, and its bar
+  holds the 3/4 line it leaves out, so a quiet head no longer reads the longer
+  bar; a head no higher at its lines than at the other beats marks none. No
+  cue is weighed against another, no margin parts two meters, and a clip of
+  any length is read in all three.
 - **A bar holds its beats**, no more and no fewer: the path's slack of a pulse
   or two is not taken here, since what a slipped bar should cost against a
   head's posterior is a number nothing fits yet
@@ -571,13 +595,17 @@ is heard too, in the bar's own `Under` steps, a track of its own in the pattern
 and a voice of its own (`Rip.UnderVoice`). The decoder follows the louder line,
 and the lead is often the softer, so the two lines' notes are then parted again
 by what a line keeps, its pitch from note to note, the length of its notes, their
-strength and no two at once (`streams`), and the lead is the line a rule names
-(`Ripper.Lead`): the busier by default, the one with the most notes for its
-sounding time, or the higher, lower, louder or softer. The bass line is decoded
-up to A3, over the melody's lowest rows: a reached note the bass line does not
-continue is not the bass's, and a note both registers hear goes to the line it
-continues, the one whose nearest other note is nearer in pitch, so a bass line
-that climbs over E3 is not cut and a melody that dips keeps its note.
+strength and no two at once (`streams`). Two partings that cost the same are
+compared from the last note back by the last note so far of the line each note
+is not on: at the first note where that differs, the earlier in time order wins,
+a line not yet begun before any, so one input gives one parting every run. The
+lead is the line a rule names (`Ripper.Lead`): the busier by default, the one
+with the most notes for its sounding time, or the higher, lower, louder or
+softer. The bass line is decoded up to A3, over the melody's lowest rows: a
+reached note the bass line does not continue is not the bass's, and a note both
+registers hear goes to the line it continues, the one whose nearest other note
+is nearer in pitch, so a bass line that climbs over E3 is not cut and a melody
+that dips keeps its note.
 
 Two transcripts of one piece are compared by `MatchNotes`: the pitches in order,
 under the transposition that matches most, find a time map, a local median of the
@@ -846,7 +874,9 @@ whether it is held, its odds, the verdict, and under `Ripper.Rows` its row.
 With no judge loaded the read still lists every strike over a half, each with
 the installed verdict, a strike the installed scores never weigh dropped at
 odds of zero; a candidate they weighed is the strike of its pitch nearest it
-within `StrikeGap`. Its row is then fitted against the kept notes apart, on the
+within `StrikeGap`, or, where a decoder's bar under a half leaves it none,
+listed itself, so every note the scores keep is a strike read. Its row is then
+fitted against the kept notes apart, from its activation as measured, on the
 floor as it stood before the installed candidates' fit, so it is the row a
 judge that kept the same notes would read, and asking changes no note.
 
@@ -866,13 +896,17 @@ beside the 32 MB of their other fields.
 Each note of the registers is then told its voice (`tell`, `RipNote.Voice`):
 the mean of its pitch's values over the frames it sounds and is among the
 twelve, each weighed by its salience there, and over every cell a note that
-moved sounded in. Its wave is the one of the highest mean share and its genes
-are a voice `VoiceFromGenes` plays, whatever instrument made the sound. Its
-family is the one of the highest mean share where that share passes the measure
-the weight file carries (`RipFrames.Sure`, the head `ripmodel.HeadSure`: the
-share the notes of a family the trainer was told no name of reach at their
-surest), and none otherwise; a file that carries no measure names no note. A
-line's voice (`Rip.MelodyVoice`, `UnderVoice`, `BassVoice`) is then its own
+moved sounded in, the cell beside its pitch where one is written there from the
+cents. Its wave is the one of the highest mean share and its genes are a voice
+`VoiceFromGenes` plays, whatever instrument made the sound. Its family is the
+one of the highest mean share where that share, less the half of a byte a share
+is kept to, so no more than the head's could be, passes the measure the weight
+file carries (`RipFrames.Sure`, the head `ripmodel.HeadSure`: the share the
+notes of a family the trainer was told no name of reach at their surest, its
+row of weights zero and its bias the measure, so a file whose head says another
+number as what it hears changes is refused at load), and none otherwise; a file
+that carries no measure names no note. A line's voice (`Rip.MelodyVoice`,
+`UnderVoice`, `BassVoice`) is then its own
 notes' mean voice by length, on the wave of the highest mean share, the melody
 and the line under it each their own. A live rip's lines take their registers'
 notes' mean the same way, and its notes carry no voice yet.

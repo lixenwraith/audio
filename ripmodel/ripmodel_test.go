@@ -117,7 +117,7 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 
 	notes := NotesSpec()
 	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
-	nm, _ := transformer.NewRandom(notes, 2)
+	nm := exported(t, notes, 2, 0.7)
 	var nb bytes.Buffer
 	nm.Save(&nb)
 	m.Save(&b)
@@ -193,6 +193,93 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 	nv, _ := transformer.NewRandom(notes, 2)
 	if _, err := New(m, nv); err == nil {
 		t.Error("a notes model without voicing passed")
+	}
+}
+
+// exported is a notes model of random weights as stapes' export writes one: its
+// sure head's row of frameout's weights zero and its bias the measure, the file's
+// checksum (FNV-1a 64 of all before it) written again, and loaded
+func exported(t testing.TB, cfg transformer.Config, seed uint64, sure float32) *transformer.Model {
+	t.Helper()
+	m, err := transformer.NewRandom(cfg, seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b bytes.Buffer
+	if err := m.Save(&b); err != nil {
+		t.Fatal(err)
+	}
+	body := b.Bytes()
+	tensor := func(name string) (rows int, data []byte) { // its name, a count of dims, each a uint32, the floats
+		at := bytes.Index(body, []byte(name)) + len(name)
+		dims, size := int(body[at]), 1
+		for i := range dims {
+			d := int(binary.LittleEndian.Uint32(body[at+1+4*i:]))
+			rows, size = cmp.Or(rows, d), size*d
+		}
+		at += 1 + 4*dims
+		return rows, body[at : at+4*size]
+	}
+	rows, w := tensor("frameout.weight")
+	clear(w[len(w)/rows*(rows-1):])
+	_, bias := tensor("frameout.bias")
+	binary.LittleEndian.PutUint32(bias[len(bias)-4:], math.Float32bits(sure))
+	h := uint64(0xcbf29ce484222325)
+	for _, c := range body[:len(body)-8] {
+		h = (h ^ uint64(c)) * 0x100000001b3
+	}
+	binary.LittleEndian.PutUint64(body[len(body)-8:], h)
+	if m, err = transformer.Load(bytes.NewReader(body)); err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// TestANotesModelsMeasureIsOneNumber: a notes model whose sure head has weights
+// says another measure at every frame, and is refused; one written as the
+// trainer's export writes it, the row zero and the measure its bias, loads
+func TestANotesModelsMeasureIsOneNumber(t *testing.T) {
+	cfg := Spec()
+	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window = 16, 2, 1, 32, 8
+	m, _ := transformer.NewRandom(cfg, 1)
+	notes := NotesSpec()
+	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
+	random, _ := transformer.NewRandom(notes, 2)
+	if _, err := New(m, random); err == nil {
+		t.Error("a notes model whose sure head has weights loaded")
+	}
+	if _, err := New(m, exported(t, notes, 2, 0.7)); err != nil {
+		t.Errorf("a notes model as the export writes it: %v", err)
+	}
+}
+
+// TestAStreamsFramesCarryTheMeasureWhateverTheBlocks: a stream through a notes
+// model whose measure is 0.7 gives frames carrying it after every Write, in
+// blocks of a second and of 1,024 samples, many of which complete no step
+func TestAStreamsFramesCarryTheMeasureWhateverTheBlocks(t *testing.T) {
+	cfg := Spec()
+	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window, cfg.Channels = 16, 2, 2, 32, 32, 2
+	m, _ := transformer.NewRandom(cfg, 1)
+	notes := NotesSpec()
+	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
+	fe, err := New(m, exported(t, notes, 2, 0.7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	x, _ := struck(10)
+	for _, block := range []int{audio.RipRate, 1024} {
+		s, err := audio.NewRipStream(audio.Ripper{Params: audio.DefaultRipParams(), FrontEnd: fe})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < len(x); i += block {
+			if err := s.Write(x[i:min(i+block, len(x))], audio.RipRate); err != nil {
+				t.Fatal(err)
+			}
+			if f, _ := s.Frames(0); len(f.Flux) > 0 && f.Sure != float64(float32(0.7)) {
+				t.Fatalf("blocks of %d samples: after write %d the frames' measure is %v, want 0.7", block, i/block, f.Sure)
+			}
+		}
 	}
 }
 
@@ -397,8 +484,7 @@ func TestTheEarHearsAsTheWholeRecording(t *testing.T) {
 	notes := NotesSpec()
 	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
 	notes.Cells.Long = []int{3, 9, 27} // the trainer's
-	nm, _ := transformer.NewRandom(notes, 2)
-	fe := &FrontEnd{Model: m, Notes: nm}
+	fe := &FrontEnd{Model: m, Notes: exported(t, notes, 2, 0.7)}
 	x, loudest := struck(10)
 	if *trained != "" {
 		fe, x, loudest = trainedEar(t)
@@ -498,7 +584,7 @@ func BenchmarkEar(b *testing.B) {
 	m, _ := transformer.NewRandom(cfg, 1)
 	notes := NotesSpec()
 	notes.Cells.Long = []int{3, 9, 27}
-	nm, _ := transformer.NewRandom(notes, 2)
+	nm := exported(b, notes, 2, 0.7)
 	const sec = 30
 	x, _ := struck(sec)
 	for _, c := range []struct {

@@ -6,12 +6,9 @@ import (
 )
 
 // LeadRule names which of the melody register's two lines a rip calls the
-// melody, once the notes are parted into lines: the busier line by default,
-// the one with the most notes for its sounding time, since the ear follows the
-// line that moves while a line of held notes accompanies it; or the higher,
-// lower, louder, softer, longer or shorter in its notes when the listener
-// knows the piece, as when a melody of held notes sings over an accompaniment
-// of repeated eighths.
+// melody: the busier by default, the most notes for its sounding time, since the
+// ear follows the line that moves over held notes; or the higher, lower, louder,
+// softer, longer or shorter in its notes, when the listener knows the piece.
 type LeadRule int
 
 const (
@@ -40,11 +37,10 @@ func ParseLeadRule(s string) (LeadRule, bool) {
 }
 
 // The costs a stream pays, each about one for a clear difference: an octave
-// between a note and the last of its stream, a note four times as long or as
-// short, a change of strength of two thirds, a note that begins while the
-// stream's last still sounds for more than half of the shorter, a change of
-// stream between two notes in a row that do not sound together, and a
-// stream's first note.
+// from its last note, a note four times as long or as short, a change of
+// strength of two thirds, a note begun while its last sounds for over half the
+// shorter, a change of stream between two notes in a row that do not sound
+// together, and a stream's first note.
 const (
 	streamJump    = 1.0
 	streamLength  = 1.0
@@ -55,15 +51,11 @@ const (
 	streamMemory  = 48 // how many notes back the other stream's last note is kept
 )
 
-// streams parts a register's notes, the two decoded lines' together, into the
-// two lines by what a line keeps: its pitch from note to note, the length of
-// its notes, their strength, and no two notes at once. A decoder follows the
-// louder line through a crossing or a rest, so the lead, when it is the softer
-// line, changes hands with it; its notes keep their own character, which this
-// pass follows instead, by a path over the notes in time order where each joins
-// the stream of the note before it or the other stream. Notes that never sound
-// together are one line. The lead is then the stream the rule names, its notes
-// the first line and the rest the second.
+// streams parts a register's notes, both decoded lines' together, into two lines
+// by what a line keeps, its pitch from note to note, its notes' length and
+// strength and no two at once, where the decoder follows the louder: a path over
+// the notes in time order, each joining the stream of the note before or the
+// other. The lead is the stream the rule names, the rest the second line.
 func streams(notes []ripNote, hop float64, lead LeadRule) []ripNote {
 	slices.SortFunc(notes, func(a, b ripNote) int { return a.start - b.start })
 	n := len(notes)
@@ -103,26 +95,23 @@ func streams(notes []ripNote, hop float64, lead LeadRule) []ripNote {
 		return c
 	}
 	// state after note k: the index of the other stream's last note, -1 for
-	// none; note k is the last of its own. best holds the cheapest cost of each
-	// state and from where it came, as the other stream's last note before k and
-	// whether k joined the stream of k-1.
+	// none, at states[k][other+1]; note k is the last of its own. Each holds its
+	// cheapest cost and from where it came, as the other stream's last note before
+	// k and whether k joined the stream of k-1. A tie goes to the earliest other,
+	// met first in the walk, so the parting is the notes' whatever the run.
 	type arrival struct {
 		cost float64
 		from int
 		same bool
 	}
-	states := make([]map[int]arrival, n)
-	states[0] = map[int]arrival{-1: {cost: streamStart, from: -1, same: true}}
+	states := make([][]arrival, n)
+	states[0] = []arrival{{cost: streamStart, from: -1, same: true}}
 	for k := 1; k < n; k++ {
-		states[k] = map[int]arrival{}
-		put := func(other int, a arrival) {
-			if cur, ok := states[k][other]; !ok || a.cost < cur.cost {
-				states[k][other] = a
-			}
-		}
-		for other, prev := range states[k-1] {
+		states[k] = make([]arrival, k+1)
+		for i, prev := range states[k-1] {
+			other := i - 1
 			// k joins the stream of k-1
-			put(other, arrival{cost: prev.cost + cost(k-1, k), from: other, same: true})
+			states[k][i] = arrival{cost: prev.cost + cost(k-1, k), from: other, same: true}
 			// k joins the other stream, started here or continued from other;
 			// the change costs nothing where k sounds together with k-1
 			c := prev.cost
@@ -134,19 +123,21 @@ func streams(notes []ripNote, hop float64, lead LeadRule) []ripNote {
 			} else {
 				c += cost(other, k)
 			}
-			put(k-1, arrival{cost: c, from: other, same: false})
+			if i == 0 || c < states[k][k].cost {
+				states[k][k] = arrival{cost: c, from: other, same: false}
+			}
 		}
 	}
 	// the cheapest end, walked back into stream numbers
 	best, at := math.Inf(1), -1
-	for other, a := range states[n-1] {
+	for i, a := range states[n-1] {
 		if a.cost < best {
-			best, at = a.cost, other
+			best, at = a.cost, i-1
 		}
 	}
 	same := make([]bool, n)
 	for k := n - 1; k >= 1; k-- {
-		a := states[k][at]
+		a := states[k][at+1]
 		same[k] = a.same
 		at = a.from
 	}

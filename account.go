@@ -1012,6 +1012,17 @@ func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody [
 		floor = slices.Clone(fit.b) // as it is before the candidates' fit moves it
 	}
 	var weighed []RipStrike // the candidates the installed scores weighed
+	// one with no strike of its pitch listed near it, under accStrike, is listed
+	// itself, fitted from its activation before the candidates' fit
+	var alone []*accNote
+	var aloneG [][]float32
+	gap := int(p.StrikeGap / f.Hop)
+	for _, n := range cands {
+		under := float64(f.Strike[n.start*RipPitches+n.midi-RipMinMIDI]) < accStrike
+		if ask.strikes && under && !slices.ContainsFunc(every, func(e *accNote) bool { return e.midi == n.midi && max(e.start-n.start, n.start-e.start) < gap }) {
+			alone, aloneG = append(alone, n), append(aloneG, slices.Clone(n.g))
+		}
+	}
 	if len(cands) > 0 {
 		all, ev := fit.against(reported, cands, fit.b)
 		for i, n := range all {
@@ -1055,10 +1066,14 @@ func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody [
 		// every strike is listed as a judge would be asked of it, measured against
 		// the same kept notes, with what the installed scores made of the candidate
 		// of its pitch nearest it within StrikeGap
+		for i, n := range alone {
+			copy(n.g, aloneG[i])
+		}
 		var ev []accEvidence
-		all, at, gap := every, len(strikes), int(p.StrikeGap/f.Hop)
-		if rows && len(every) > 0 {
-			all, ev = fit.against(reported, every, floor)
+		listed, at := slices.Concat(every, alone), len(strikes)
+		all := listed
+		if rows && len(listed) > 0 {
+			all, ev = fit.against(reported, listed, floor)
 		}
 		for i, n := range all {
 			if st := (RipStrike{Frame: n.start, MIDI: n.midi}); n.cand {
@@ -1209,7 +1224,7 @@ func (f *RipFrames) accInput(n *accNote, ev accEvidence, notes []*accNote, refs 
 		}
 		// a note's glide through the pitch's cell is that note sounding there
 		for _, v := range o.cells {
-			if v.midi == n.midi && v.start-accDup <= n.start && n.start < v.end {
+			if len(o.cells) > 1 && v.midi == n.midi && v.start-accDup <= n.start && n.start < v.end {
 				in.ringing = true
 			}
 		}

@@ -510,6 +510,27 @@ func TestRipTellsTheLeadByItsCharacter(t *testing.T) {
 	}
 }
 
+// TestATieInThePartingGoesToTheEarlierOtherLine: after a dyad, a note three
+// semitones from one and six from the other joins either at one cost, the
+// nearer dearer by a change of line, last or under a note it sounds with. Read
+// from the last note back it stays off the line whose last note came earlier,
+// every run, though a walk of the states as made meets the rival first.
+func TestATieInThePartingGoesToTheEarlierOtherLine(t *testing.T) {
+	note := func(start, end, midi int) ripNote { return ripNote{start: start, end: end, midi: midi, strength: 0.5} }
+	held, sixth, third := note(0, 16, 60), note(12, 16, 69), note(16, 80, 63)
+	for _, notes := range [][]ripNote{{held, sixth, third}, {held, sixth, third, note(17, 81, 48)}} {
+		for range 20 {
+			line := map[int]bool{}
+			for _, n := range streams(slices.Clone(notes), RipFrameSec, LeadBusy) {
+				line[n.midi] = n.second
+			}
+			if line[63] != line[69] || line[60] == line[69] || len(notes) == 4 && line[48] != line[60] {
+				t.Fatalf("%d notes: the line of each pitch, second or not: %v", len(notes), line)
+			}
+		}
+	}
+}
+
 // TestRipKeepsABassLineThatClimbs: a bass line on F3 and G3, above the E3 the
 // bass register's rows end at, stays the bass line, heard by the bass decoder
 // where it reaches over the melody's rows; and a melody that dips to G3 over a
@@ -960,6 +981,59 @@ func TestANoteCarriesTheVoiceItsPitchWasTold(t *testing.T) {
 	}
 	if v := f.voice(notes[2].said); v != nil {
 		t.Errorf("a note told on no frame carries %+v", v)
+	}
+}
+
+// TestANoteWrittenBesideItsCellIsToldFromIt: a sound in cell 60 that the cents
+// head reads 70 cents sharp is written as a 61; it is told from cell 60, where it
+// sounds, a piano on a modal bank, not from the silent 61 beside it, a guitar's saw
+func TestANoteWrittenBesideItsCellIsToldFromIt(t *testing.T) {
+	const n = 120
+	f := &RipFrames{Hop: RipFrameSec, Flux: make([]float64, n), Sure: 0.5,
+		VoiceAt: slices.Repeat([]uint8{255}, n*RipVoiceCells), Voices: make([]uint8, n*RipVoiceCells*RipVoiceSize)}
+	for _, h := range [...]*[]float32{&f.Salience, &f.Strike, &f.Cents, &f.CentsError} {
+		*h = make([]float32, n*RipPitches)
+	}
+	names := len(RipFamilies) - 1
+	for u := range n {
+		for m := range RipPitches {
+			f.CentsError[u*RipPitches+m] = 5
+		}
+		for k, c := range [...]struct{ midi, family, wave int }{{60, 0, 4}, {61, 1, 1}} {
+			f.VoiceAt[u*RipVoiceCells+k] = uint8(c.midi - RipMinMIDI)
+			row := f.Voices[(u*RipVoiceCells+k)*RipVoiceSize:][:RipVoiceSize]
+			row[c.family], row[names+c.wave] = 255, 255
+		}
+	}
+	for u := 10; u < 80; u++ {
+		f.Salience[u*RipPitches+60-RipMinMIDI], f.Cents[u*RipPitches+60-RipMinMIDI] = 0.9, 70
+		f.Salience[u*RipPitches+61-RipMinMIDI] = 0.01
+	}
+	f.Strike[10*RipPitches+60-RipMinMIDI] = 0.99
+	notes := f.strikes(RipBassTop, RipMaxMIDI, DefaultRipParams())
+	if len(notes) != 1 || notes[0].midi != 61 {
+		t.Fatalf("notes %+v, want one written at 61", notes)
+	}
+	f.tell(notes)
+	if v := f.voice(notes[0].said); v == nil || v.Family != "piano" || v.Wave != "modal" {
+		t.Errorf("the note's voice %+v, want the piano on a modal bank its own cell says", v)
+	}
+}
+
+// TestAFamilyIsNamedWhereItsShareSurelyPassesTheMeasure: a piano's share of
+// 0.9985 kept as the byte 255 reads back whole, where the head's lay anywhere
+// from half a byte under; under a measure of 0.999 it names nothing, as the
+// unrounded share would not, and under 0.99 the piano
+func TestAFamilyIsNamedWhereItsShareSurelyPassesTheMeasure(t *testing.T) {
+	said := make([]float64, RipVoiceSize)
+	said[slices.Index(RipFamilies[:], "piano")] = float64(uint8(math.Round(255*0.9985))) / 255
+	for _, c := range []struct {
+		sure   float64
+		family string
+	}{{0.999, ""}, {0.99, "piano"}} {
+		if v := (&RipFrames{Sure: c.sure}).voice(said); v.Family != c.family {
+			t.Errorf("a share kept as %.5f under a measure of %v names %q, want %q", said[0], c.sure, v.Family, c.family)
+		}
 	}
 }
 
@@ -2358,7 +2432,9 @@ func TestABarLineAtTheStartHearsTheSilenceBeforeIt(t *testing.T) {
 
 // TestTempoReadsNoLagFasterThan240BPM: three notes twenty frames apart on every
 // beat of a slow pulse repeat most at their own spacing, 258 bpm, which folds to
-// 129; the search starts at 240, and reads the pulse's half, 70, as 140
+// 129; the search starts at 240, and reads the pulse's half, 70, as 140. Onsets
+// 199 frames apart, past the slowest lag, read a tempo in the tracker's range,
+// where a search from lag 0 took that lag and its fold never returned.
 func TestTempoReadsNoLagFasterThan240BPM(t *testing.T) {
 	const figure, pulse = 20, 148
 	f := &RipFrames{Hop: RipFrameSec, Flux: make([]float64, 30*pulse)}
@@ -2367,6 +2443,33 @@ func TestTempoReadsNoLagFasterThan240BPM(t *testing.T) {
 	}
 	if bpm, _ := f.tempo(DefaultRipParams()); math.Abs(bpm-140) > 2 {
 		t.Errorf("tempo %.1f, want 140, the pulse's half doubled", bpm)
+	}
+	sparse := &RipFrames{Hop: RipFrameSec, Flux: make([]float64, 30*199)}
+	for at := 0; at < sparse.frames(); at += 199 {
+		sparse.Flux[at] = 1
+	}
+	if bpm, _ := sparse.tempo(DefaultRipParams()); bpm < ripTempoMin || bpm > ripTempoMax {
+		t.Errorf("onsets 199 frames apart: tempo %.1f, outside %d..%d", bpm, ripTempoMin, ripTempoMax)
+	}
+}
+
+// TestTempoAtTheSearchsBoundIsReadBetweenItsNeighbours: pairs of onsets 21.2
+// frames apart, the only repetition within the search, peak at its first lag,
+// 21, and are read between it and the lags either side, at the pair's own
+// tempo folded, 121.9, not lag 21's 123.0
+func TestTempoAtTheSearchsBoundIsReadBetweenItsNeighbours(t *testing.T) {
+	const pair, every = 21.2, 151.0
+	f := &RipFrames{Hop: RipFrameSec, Flux: make([]float64, 3000)}
+	at := func(x float64) { // an onset between two frames, shared by them
+		i := int(x)
+		f.Flux[i], f.Flux[i+1] = f.Flux[i]+float64(i+1)-x, f.Flux[i+1]+x-float64(i)
+	}
+	for k := 0; float64(k)*every+pair+1 < 3000; k++ {
+		at(float64(k)*every + 0.3)
+		at(float64(k)*every + 0.3 + pair)
+	}
+	if bpm, _ := f.tempo(DefaultRipParams()); math.Abs(bpm-60/(pair*f.Hop)/2) > 0.5 {
+		t.Errorf("tempo %.2f, want the pair's %.2f folded", bpm, 60/(pair*f.Hop)/2)
 	}
 }
 
@@ -2429,13 +2532,17 @@ func (tr ripTrack) beats() (beats []int) {
 // TestTheTrackedBeatIsTheOneTheHeadMarks: a head's beat the prior reads at half
 // or a third of its rate is tracked at its own where the head marks the halves
 // or thirds between, and one folded to double at its own where the head marks
-// every other beat alone; a tempo given stands
+// every other beat alone, though it marks none over the clip's second half; a
+// tempo given stands
 func TestTheTrackedBeatIsTheOneTheHeadMarks(t *testing.T) {
-	for _, c := range []struct{ beat, first int }{{30, 0}, {15, 7}, {74, 30}, {43, 0}} {
+	for _, c := range []struct{ beat, first, unmarkedFrom int }{{30, 0, 4000}, {15, 7, 4000}, {74, 30, 4000}, {43, 0, 4000}, {74, 30, 2000}, {30, 0, 2000}} {
 		f := headFrames(4000, 20, c.beat, c.first, 4, 0)
+		for t := c.unmarkedFrom; t < 4000; t++ {
+			f.Beat[t] = 0.01
+		}
 		bpm, tr := Ripper{}.track(f, DefaultRipParams())
 		if math.Abs(tr.period-float64(c.beat)) > 0.5 || math.Abs(bpm-60/(float64(c.beat)*f.Hop)) > 2 || !every(tr.beats(), c.first, c.beat) {
-			t.Errorf("a head beat of %d frames tracked at %.1f, %.1f bpm, beats %v", c.beat, tr.period, bpm, tr.beats()[:4])
+			t.Errorf("a head beat of %d frames, marked to frame %d, tracked at %.1f, %.1f bpm, beats %v", c.beat, c.unmarkedFrom, tr.period, bpm, tr.beats()[:4])
 		}
 	}
 	f := headFrames(4000, 20, 30, 0, 4, 0)
@@ -2492,6 +2599,65 @@ func TestAMeterIsTheBeatsHeardToItsBar(t *testing.T) {
 		g, bpm := barsOf(t, f, [InstrClap][]ripHit{InstrHihat: hitsEvery(n, c.beat, 1, 0)})
 		if g.m != c.want || math.Abs(bpm-c.tempo) > 1.5 || !every(g.lines, 2*c.beat, c.per*c.beat) {
 			t.Errorf("a line every %d beats of %d frames: %s at %.1f bpm, lines %v, want %s at %.1f", c.per, c.beat, g.m, bpm, g.lines[:min(len(g.lines), 5)], c.want, c.tempo)
+		}
+	}
+}
+
+// TestATempoGivenReadsTheMeterOfTheNoteTheHeadMarks: with the quarter given as
+// 129, a head marking the quarters and a line every third reads 3/4, as the
+// same frames read free, and one marking the eighths and a line every sixth
+// reads 6/8 over the same bar
+func TestATempoGivenReadsTheMeterOfTheNoteTheHeadMarks(t *testing.T) {
+	const n = 3000
+	for _, c := range []struct {
+		beat, per int
+		want      Meter
+	}{{40, 3, Meter{3, 4}}, {20, 6, Meter{6, 8}}} {
+		f := headFrames(n, c.beat, c.beat, 0, c.per, 1)
+		hits := [InstrClap][]ripHit{InstrHihat: hitsEvery(n, c.beat, 1, 0)}
+		g, bpm, _, err := Ripper{Grid: &RipGrid{BPM: 129, Downbeat: -1}}.grid(f, ripEvents{hits: hits}, DefaultRipParams())
+		if err != nil || g.m != c.want || bpm != 129 || !every(g.lines, c.beat, c.per*c.beat) {
+			t.Errorf("a head marking every %d frames, a line every %d: %s at %.1f, lines %v, %v; want %s at 129, a line every %d frames", c.beat, c.per, g.m, bpm, g.lines[:min(len(g.lines), 4)], err, c.want, c.per*c.beat)
+		}
+	}
+}
+
+// TestFiveHeardBeatsHoldABarWhateverTheOnsetsInsideThem: five beats heard 80
+// frames apart, a line on the first and the fifth, are one bar of 4/4 read from
+// the heads, the onsets on the beats alone or on their quarters too
+func TestFiveHeardBeatsHoldABarWhateverTheOnsetsInsideThem(t *testing.T) {
+	for _, on := range []int{80, 20} {
+		g, _, tr, err := Ripper{}.grid(headFrames(380, on, 80, 0, 4, 0), ripEvents{}, DefaultRipParams())
+		if err != nil || !tr.heard || g.bars() != 1 || !every(g.lines, 0, 320) {
+			t.Errorf("an onset every %d frames, %d pulses a beat: %v, heard %v, lines %v, want one bar from the heads, lines 320 frames apart", on, tr.k, err, tr.heard, g.lines)
+		}
+	}
+}
+
+// TestABarIsReadWhereItsLinesTopMostOfItsBars: a waltz's lines marked at 0.55 or
+// 0.45 over beats at 0.01, or at 0.8 with the last three tenths of the clip
+// unmarked, and a 4/4's at 0.1 over 0.02 top most of their bars however loud the
+// head, and are read so, not as twice their beats; a 4/4 marked over its first
+// third alone tops no majority, and the cues read it
+func TestABarIsReadWhereItsLinesTopMostOfItsBars(t *testing.T) {
+	for _, c := range []struct {
+		per          int
+		line, rest   float64
+		unmarkedFrom int
+	}{{3, 0.55, 0.01, 3000}, {3, 0.45, 0.01, 3000}, {3, 0.8, 0.01, 2100}, {4, 0.1, 0.02, 3000}, {4, 0.8, 0.02, 1000}} {
+		f := headFrames(3000, 40, 40, 0, c.per, 1)
+		for t, v := range f.Downbeat {
+			if f.Downbeat[t] = c.rest; v > 0.5 && t < c.unmarkedFrom {
+				f.Downbeat[t] = c.line
+			}
+		}
+		g, bpm := barsOf(t, f, [InstrClap][]ripHit{})
+		if c.unmarkedFrom < 1500 {
+			if cues, _ := barsOf(t, f.plain(), [InstrClap][]ripHit{}); !reflect.DeepEqual(g, cues) {
+				t.Errorf("lines marked to frame %d alone: %s, lines %v, want the cues' %s, lines %v", c.unmarkedFrom, g.m, g.lines[:5], cues.m, cues.lines[:5])
+			}
+		} else if g.m.Beats() != c.per || !every(g.lines, 40, c.per*40) {
+			t.Errorf("lines marked at %.2f over %.2f to frame %d: %s at %.1f, lines %v, want %d beats a bar, a line every %d frames from 40", c.line, c.rest, c.unmarkedFrom, g.m, bpm, g.lines[:min(len(g.lines), 5)], c.per, c.per*40)
 		}
 	}
 }

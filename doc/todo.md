@@ -136,17 +136,19 @@ installed scores stay until one is. What the stage leaves open:
   and a tenth more of its stream's. A judge's network is scalar float32, 0.16 M
   multiply-adds a strike: 5% more of the loop's rip, 8% of its stream's.
 
-### Part the lines the same way every run
+### Walk the notes that start together in an order of their own
 
 - Priority: P2
 - Affected files: `streams.go`
 
-`streams` keeps its states in maps and walks them in map order, so where two
-arrivals cost the same the first met wins and the parting differs from run to
-run: of 48 loops of stapes' `corpus <dir> 48 8 aug gen meters`, loop 031's
-stream through the analysis gives one of two rips, its lead and its under line
-exchanged, from one binary. The smallest close: walk each state's keys in
-order, then hash that corpus's rips ten times.
+`streams` walks the melody register's notes by start, and those that start on
+one frame as its unstable sort leaves the order the decoders hand them in; a
+note joins the line of the note walked before it with no change of line, so the
+parting follows that order where no cost ties. On stapes' `corpus <dir> 48 8
+aug gen meters` through the analysis, offline and streamed, a walk by pitch at
+a shared start parts 45 of the 96 rips otherwise and a stable sort 39, 1 to 71
+notes changing line. The smallest close: an order the notes alone set, chosen
+by the lines' agreement with the corpus labels (`MatchNotes`).
 
 ### The misses and extras the ear still hears
 
@@ -193,6 +195,24 @@ step's bend cannot hold is heard and dropped:
   length, as stapes' `notes` reads its support: while a bent note moves, and
   through a scoop's rise, the sound is not there. The cells a followed sound
   passed are in `ripNote.cells`, where the accounting already reads them.
+
+### Account for a note written beside the cell it sounds in
+
+- Priority: P3
+- Affected files: `account.go`
+
+`glided` writes a sound that rests in one cell at the pitch beside it where the
+cents say it sits nearer that pitch, and the note keeps that cell
+(`ripNote.cells`), which `tell` reads its voice from. The accounting does not:
+it measures a note of one cell at its written pitch (`accNotes`), and its
+ringing check reads a glide's cells alone (`accInput`). So by the code a strike
+in the cell such a note sounds in, the one that struck it included, is a
+candidate apart from it, not the note ringing, and may come back as a second
+note a semitone off. It was so before the note kept its cell, and is kept so
+because reading the cell could move notes; not seen on data, as no notes model
+of random weights wrote such a note. The smallest close: measure a one-cell
+note in its cell and let the ringing check read it, then count the notes that
+move on recordings through a notes model whose cents head writes such notes.
 
 ### Carry a note's voice further
 
@@ -303,13 +323,16 @@ What is left here, each to settle on trained weights:
   cues, 58 under perfect beats), the Für Elise takes against their score, and
   the stream's twelve recordings; with the heads and with the same weights'
   heads left out (a `FrontEnd` whose frames have `Beat` set nil).
-- **The head's scale.** The lines and `level` read a posterior. A head trained
-  with a positive weight w scores p as wp/(wp + 1 - p), and would favour short
-  bars by log w a line: the trainer's loss on these two heads carries no
-  weight, or the decoder must undo it.
-- **A weak or a busy head.** `level` keeps the tracked beat when no class of
-  frames sums over zero, and halves it when a head fires on every eighth; a
-  reading of 6/8 for 3/4 follows. Neither is measured.
+- **A noisy or an ambiguous head.** The decoders read ranks, so no level and
+  no positive weight moves them, and on hand-built heads (lines at 0.1 to 0.9
+  over 0.01 to 0.3, quiet over up to 60% of a clip, in 3/4, 4/4 and 6/8) a rip
+  reads its bar where the lines stand over the rest, and the cues where not or
+  where most of the clip is quiet. Noise is read as a head: clips 95 or 98%
+  noise read a wrong bar in 3 of 12 draws, and a stream whose first eleven
+  seconds are noise reads its first bars by chance (3/4 and 4/4 in 3 draws of
+  7, 6/8 in 1) and holds them. A 6/8 whose head marks its second dotted
+  quarter over every other beat reads 3/4, both readings topping all their
+  bars.
 - **A bar that slips.** A bar holds its beats exactly, so a beat the tracker
   adds or loses in a ritardando moves every line after it; the cues' path
   absorbs one at `ripBarMove`. A cost in the head's own units is to be fitted
@@ -318,8 +341,7 @@ What is left here, each to settle on trained weights:
   head is not read again once they freeze. Reading it at every bar is the
   sections thread's.
 - **Half and double bars** are not offered (2 and 8 heard beats), nor 5/4 and
-  7/8: a silent head scores a longer bar higher, so a longer bar wants a head
-  measured first.
+  7/8: none is measured on a head.
 
 ### Hear the phone takes' bars
 

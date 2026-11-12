@@ -346,24 +346,32 @@ that a document now states, and link the document instead.
   there: a test of the bound needs a figure whose spacing repeats once or
   twice and stops, three notes on a slow pulse
   (`TestTempoReadsNoLagFasterThan240BPM`). `60/240/f.Hop` divided two integer
-  constants first: write such a bound as `60/(240*f.Hop)`.
+  constants first: write such a bound as `60/(240*f.Hop)`. The search from lag
+  0 it replaced never returned on onsets farther apart than its slowest lag:
+  lag 0 won and the fold doubled an infinite tempo.
 - **A reading of heard beats counts the meter's own.** With the heads a bar is
   `Meter.Beats()` tracked beats of `Meter.Beat()` steps, so 6/8 is six eighths
   and parts from 3/4 by its lines; the cues' readings count quarters, where
   6/8 is only a name for 3/4's bar. A tempo the listener gives is a quarter's
-  either way (`heardReadings`' `given`).
-- **A sum of log-odds is a decision with no threshold only for a posterior.**
-  `level` and `heardLines` add `log(p/(1-p))` over a class of frames. A head
-  trained with a positive weight, read through a threshold elsewhere, would
-  shift every such sum by its count times log w.
-- **A change that must not move the rip is held by a digest of rips, run
-  twice.** A scratch program: every WAV of a rendered corpus ripped through the
-  analysis and through random weights of `Spec` cut to the heads before the
-  change, offline and streamed, each rip's JSON hashed; 240 rips of stapes'
-  `corpus <dir> 48 8 aug gen meters` gave one digest before and after the
-  heads. One stream rip in it flips between runs of one binary
-  ([todo](todo.md#part-the-lines-the-same-way-every-run)): a differing line is
-  run again on both sides before it is believed.
+  either way (`heardReadings`' `given`), and then 3/4 and 6/8 are one bar: a
+  score averaged over 6/8's twice as many pulses took every waltz, so only the
+  beat head, marking the quarters or their halves, parts them.
+- **A head's level must not choose; its ranks do, and locally.** Summed
+  log-odds read a downbeat head under a half, or one quiet over a stretch, as a
+  word against every line there, and over the same beats 6/8's lines are every
+  other of 3/4's, so a quiet waltz read 6/8 at half tempo. One rank over the
+  whole clip still failed where most of it was quiet: its quiet lines lost to
+  the loud stretch's other beats, and any marked bar put it over chance. A line
+  topping its own bar is level-free and local. `peak` reads a beat at the
+  head's highest within a frame, so a head that dips at its lines marks none.
+- **A change that must not move the rip is held by a digest of rips.** A
+  scratch program: every WAV of a rendered corpus ripped through the analysis
+  and through random weights of `Spec` cut to the heads before the change,
+  offline and streamed, each rip's JSON hashed; 240 rips of stapes' `corpus
+  <dir> 48 8 aug gen meters` gave one digest before and after the heads. Ten
+  runs of its 96 rips through the analysis give one digest each, and two
+  through random weights of `Spec` cut to ten heads (`NewRandom` seed 1), so a
+  differing line is the change's.
 
 ## The matched kit
 
@@ -612,6 +620,19 @@ that a document now states, and link the document instead.
   voiced frames alone, and a test's hand-built frames need the cell beside a
   sound over `StrikeHold` of the reference before the strikes make the note a
   smear test is about; at 0.6 that test passed with nothing to drop.
+- **The parting ties by its costs' shape, and walks simultaneous notes in an
+  order it is given.** Two pairings of a dyad onto the next cost the same in
+  exact arithmetic where the level term is linear across them, the lengths'
+  logs telescope and three semitones of jump buy the change of line (0.25);
+  the floats then land on one bit pattern now and again (loop 031's stream,
+  one rip in 96, six runs in ten one way). A Go map of up to eight keys
+  iterates from a random slot, so two keys come in their slots' order seven
+  times in eight: a test of a tie needs costs exact by construction (quarters,
+  capped terms), its rival state made first and calls enough that a map's walk
+  cannot pass by chance (`streams` on maps took the rule's parting in 22% of
+  calls). Notes that start on one frame are walked as `streams`' unstable sort
+  leaves the decoders' order, and the parting follows that order with no cost
+  tied ([todo](todo.md#walk-the-notes-that-start-together-in-an-order-of-their-own)).
 
 ## A live rip
 
@@ -641,7 +662,9 @@ that a document now states, and link the document instead.
   blocks of window 32 share a 46-frame wait as 23 and 23 where `Spec`'s four
   of 64 get 12, 12, 11 and 11. For the distances at the shapes in use, save
   random weights of `Spec` and `NotesSpec` (`transformer.NewRandom`, `Save`)
-  and pass them to the test's `-model`, `-notes` and `-wav`.
+  and pass them to the test's `-model`, `-notes` and `-wav`, the notes model's
+  sure row zeroed first as `exported` writes it: `New` refuses a sure head with
+  weights, which is what `NewRandom` makes.
 - **A median taken as the notes come rounds at an edge the whole's does not.**
   The loop at 175 bpm reads at 88, where the notes' lag sat at 3.50 frames: in
   five early bars the stream placed one note a step later than `RipSamples`.
@@ -669,6 +692,10 @@ that a document now states, and link the document instead.
   there is neither frozen again nor open. `Strikes` keeps a frozen strike
   until the `Write` after its frames went, as `Frames` keeps a late frame.
   The stream test holds the strikes kept to the notes frozen, one to one.
+- **An ear's step that completes no frame still returns frames, empty, their
+  scalars zero.** `extend` takes `Hop`, `Tuning` and `Sure` only from frames
+  that hold some, or a stream's frames lost the measure after such a `Write`; a
+  new scalar on `RipFrames` goes through it the same way.
 - **`Final` rips the samples a stream kept, float32.** A test that compares it
   with `Samples` rounds the recording to float32 first.
 - **`BenchmarkRip` and the stream's `struck` ways are mostly the analysis.**

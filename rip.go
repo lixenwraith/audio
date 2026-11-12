@@ -438,12 +438,15 @@ func (f *RipFrames) fields(visit func(field any, per int)) {
 	}
 }
 
-// extend appends g's frames to f's
+// extend appends g's frames to f's, and takes its hop, tuning and measure where
+// it holds frames: an ear's step that gave none says nothing of them
 func (f *RipFrames) extend(g *RipFrames) {
 	if g == nil {
 		return
 	}
-	f.Hop, f.Tuning, f.Sure = g.Hop, g.Tuning, g.Sure
+	if g.frames() > 0 {
+		f.Hop, f.Tuning, f.Sure = g.Hop, g.Tuning, g.Sure
+	}
 	from := make([]any, 0, 24) // every field's, at one allocation
 	g.fields(func(field any, _ int) { from = append(from, field) })
 	i := 0
@@ -725,7 +728,9 @@ func (f *RipFrames) tell(notes []ripNote) {
 
 // voice is what a note was said to be played by as its RipNote carries it: the
 // family of the highest share where that passes f.Sure, the wave of the highest
-// share and the genes; nil for a note told none
+// share and the genes; nil for a note told none. A share kept in bytes lies up
+// to half a byte over the head's, so it passes the measure where the least the
+// head's could be does, and names no note the unrounded share would not.
 func (f *RipFrames) voice(said []float64) *RipVoice {
 	if said == nil {
 		return nil
@@ -733,7 +738,7 @@ func (f *RipFrames) voice(said []float64) *RipVoice {
 	names, waves := len(RipFamilies)-1, len(VoiceWaves)
 	top := func(v []float64) int { return slices.Index(v, slices.Max(v)) }
 	v := &RipVoice{Wave: VoiceWaves[top(said[names:names+waves])], Genes: slices.Clone(said[names+waves:])}
-	if k := top(said[:names]); f.Sure > 0 && said[k] > f.Sure {
+	if k := top(said[:names]); f.Sure > 0 && said[k]-0.5/255 > f.Sure {
 		v.Family = RipFamilies[k]
 	}
 	return v
@@ -750,14 +755,15 @@ func (ev ripEvents) seconds(hop float64) (at [InstrClap][]float64) {
 }
 
 // ripTrack is how a grid was decoded: the tracked beat's tempo and period in
-// frames, the pulses a beat, the pulses tracked and the reading its bars are
-// of; zero for a grid pinned
+// frames, the pulses a beat, the pulses tracked, the reading its bars are of
+// and whether the beats were heard; zero for a grid pinned
 type ripTrack struct {
 	bpm    float64
 	period float64
 	k      int
 	pulses []int
 	rd     ripReading
+	heard  bool
 }
 
 // grid is the bars the Ripper pins, or decodes from the frames and events, and
@@ -774,12 +780,21 @@ func (rp Ripper) grid(f *RipFrames, ev ripEvents, p RipParams) (ripGrid, float64
 		}
 	} else {
 		bpm, tr = rp.track(f, p)
-		if len(tr.pulses) < (BeatsPerBar+1)*tr.k {
-			return g, 0, tr, errors.New("rip: no full bar found")
+		need := (BeatsPerBar + 1) * tr.k
+		if tr.heard { // heard beats' spans cut in k: the last beat starts none
+			need = BeatsPerBar*tr.k + 1
 		}
-		var err error
-		if g, bpm, tr.rd, err = f.meter(tr.pulses, tr.k, bpm, ev.hits, ev.root%12, ev.bass, ev.melody, rp.Meter, rp.Grid != nil); err != nil {
-			return g, 0, tr, err
+		if tr.heard == f.heard() && len(tr.pulses) >= need {
+			var err error
+			if g, bpm, tr.rd, err = f.meter(tr.pulses, tr.k, bpm, ev.hits, ev.root%12, ev.bass, ev.melody, rp.Meter, rp.Grid != nil); err != nil {
+				return g, 0, tr, err
+			}
+		}
+		if g.bars() < 1 && f.heard() { // the heads give no reading: the cues', as before them
+			return rp.grid(f.plain(), ev, p)
+		}
+		if g.bars() < 1 {
+			return g, 0, tr, errors.New("rip: no full bar found")
 		}
 		g = g.pickup(slices.Concat(ev.melody, ev.bass), ev.hits)
 	}
@@ -790,8 +805,9 @@ func (rp Ripper) grid(f *RipFrames, ev ripEvents, p RipParams) (ripGrid, float64
 }
 
 // track is the beat over the frames, at the tempo the Ripper's Grid gives or
-// the frames' own, the beat a head marks where one is heard (level): its tempo,
-// period, pulses a beat and the pulses tracked
+// the frames' own, the beat a head marks where one is heard (level), or the
+// onsets' where the head marks none: its tempo, period, pulses a beat and the
+// pulses tracked
 func (rp Ripper) track(f *RipFrames, p RipParams) (bpm float64, tr ripTrack) {
 	if rp.Grid != nil { // the tempo given, the beats tracked at it and the bar line decoded
 		bpm = float64(min(max(rp.Grid.BPM, MinBPM), MaxBPM))
@@ -800,19 +816,27 @@ func (rp Ripper) track(f *RipFrames, p RipParams) (bpm float64, tr ripTrack) {
 		bpm, tr.period = f.tempo(p)
 	}
 	beats := f.beats(tr.period, p, -1)
-	if rp.Grid == nil && f.heard() {
-		tr.period, beats = f.level(tr.period, beats, p)
-		bpm = 60 / (tr.period * f.Hop)
+	if tr.heard = f.heard(); tr.heard {
+		if rp.Grid == nil {
+			tr.period, beats = f.level(tr.period, beats, p)
+			bpm = 60 / (tr.period * f.Hop)
+		}
+		if f.claims(beats)[0] <= 0.5 { // its beats rank over the frames between no more than chance
+			return rp.track(f.plain(), p)
+		}
 	}
 	tr.bpm, tr.k = bpm, f.tatum(tr.period, beats)
 	tr.pulses = f.pulses(tr.period, tr.k, p, -1)
 	return bpm, tr
 }
 
-// heard is whether the frames carry a beat and a downbeat head, which the
-// tempo, the beats and the bar lines are then read from
+// heard is whether the frames carry a beat and a downbeat head, a posterior at
+// every frame, which the tempo, the beats and the bar lines are then read from
 func (f *RipFrames) heard() bool {
-	return f.Beat != nil && len(f.Beat) == f.frames() && len(f.Downbeat) == f.frames()
+	posterior := func(head []float64) bool {
+		return len(head) == f.frames() && !slices.ContainsFunc(head, func(v float64) bool { return !(v >= 0 && v <= 1) })
+	}
+	return f.Beat != nil && posterior(f.Beat) && posterior(f.Downbeat)
 }
 
 // pulses are the k pulses a beat the bars are read over, from frame from when it
@@ -825,43 +849,89 @@ func (f *RipFrames) pulses(period float64, k int, p RipParams, from int) []int {
 	return f.beats(period/float64(k), p, from)
 }
 
-// ripSure is the surest a head's posterior is read, as a float32's sigmoid
-// reaches zero and one
-const ripSure = 1e-6
+// plain is the frames without the heads, as the cues read them
+func (f *RipFrames) plain() *RipFrames {
+	g := *f
+	g.Beat, g.Downbeat = nil, nil
+	return &g
+}
 
-// odds is the log-odds a head gives frame t, its surest within a frame
-func odds(head []float64, t float64) float64 {
-	v := min(max(peak(head, t), ripSure), 1-ripSure)
-	return math.Log(v / (1 - v))
+// above is how often a value of marked exceeds one of rest, a tie counting half:
+// how surely a head ranks the frames a reading claims over those it leaves, the
+// same however loud the head, and a half where it does no better than chance
+func above(marked, rest []float64) float64 {
+	if len(marked) == 0 || len(rest) == 0 {
+		return 0.5
+	}
+	r := slices.Sorted(slices.Values(rest))
+	var wins float64
+	for _, v := range marked {
+		under := sort.SearchFloat64s(r, v)
+		wins += float64(under) + float64(sort.Search(len(r), func(i int) bool { return r[i] > v })-under)/2
+	}
+	return wins / float64(len(marked)*len(rest))
+}
+
+// ripProbes are where the beat head is read in each span between two tracked
+// beats, as shares of it: the beat, its quarters, thirds and half
+var ripProbes = [...]float64{0, 1. / 4, 1. / 3, 1. / 2, 2. / 3, 3. / 4}
+
+// claims is how surely the beat head marks each reading of the beats over the
+// probes of their spans (above): the beats themselves, the beats and their
+// halves, the beats and their thirds, and every other beat from the first and
+// from the second.
+func (f *RipFrames) claims(beats []int) (scores [5]float64) {
+	sets := [3][]int{{0}, {0, 3}, {0, 2, 4}}
+	var at [][len(ripProbes)]float64
+	for i := 0; i+1 < len(beats); i++ {
+		var v [len(ripProbes)]float64
+		for j, x := range ripProbes {
+			v[j] = peak(f.Beat, float64(beats[i])+x*float64(beats[i+1]-beats[i]))
+		}
+		at = append(at, v)
+	}
+	claim := func(claimed func(i, j int) bool) float64 {
+		var marked, rest []float64
+		for i, v := range at {
+			for j, x := range v {
+				if claimed(i, j) {
+					marked = append(marked, x)
+				} else {
+					rest = append(rest, x)
+				}
+			}
+		}
+		return above(marked, rest)
+	}
+	for c, set := range sets {
+		scores[c] = claim(func(_, j int) bool { return slices.Contains(set, j) })
+	}
+	for parity := range 2 {
+		scores[3+parity] = claim(func(i, j int) bool { return j == 0 && i%2 == parity })
+	}
+	return scores
 }
 
 // level is the beat the head marks and the beats tracked at it, from those
-// tracked at period: a third or a half as long where the head marks the beats'
-// thirds or halves, twice where it marks every other beat and not the rest. A
-// class of frames is marked when its log-odds sum over zero, the head's own word.
+// tracked at period: a half or a third as long, or twice, where that reading of
+// the beats claims the head's marks surer than the beats as tracked (claims),
+// the beats kept where none does.
 func (f *RipFrames) level(period float64, beats []int, p RipParams) (float64, []int) {
 	for range 3 {
-		var half, thirds float64
-		var alternate [2]float64
-		for i, b := range beats {
-			alternate[i%2] += odds(f.Beat, float64(b))
-			if i+1 < len(beats) {
-				d := float64(beats[i+1] - b)
-				half += odds(f.Beat, float64(b)+d/2)
-				thirds += odds(f.Beat, float64(b)+d/3) + odds(f.Beat, float64(b)+2*d/3)
+		s := f.claims(beats)
+		best, next := s[0], period
+		for c, cut := range [...]float64{0, 2, 3} {
+			if c > 0 && s[c] > best && period/cut >= ripPulseMin {
+				best, next = s[c], period/cut
 			}
 		}
-		switch {
-		case thirds > 0 && thirds >= half && period/3 >= ripPulseMin:
-			period /= 3
-		case half > 0 && period/2 >= ripPulseMin:
-			period /= 2
-		case (alternate[0] > 0) != (alternate[1] > 0) && len(beats) > 3:
-			period *= 2
-		default:
+		if s := max(s[3], s[4]); s > best && len(beats) > 3 {
+			next = period * 2
+		}
+		if next == period {
 			return period, beats
 		}
-		beats = f.beats(period, p, -1)
+		period, beats = next, f.beats(next, p, -1)
 	}
 	return period, beats
 }
@@ -1725,9 +1795,9 @@ func (f *RipFrames) tempo(p RipParams) (bpm, period float64) {
 		}
 	}
 	lag := float64(best)
-	if best > minLag && best < maxLag { // the peak between its neighbours
+	if best < maxLag { // the peak between its neighbours, at the bound's edge too where it is the higher
 		l, c, r := score(best-1), score(best), score(best+1)
-		if d := l - 2*c + r; d < 0 {
+		if d := l - 2*c + r; d < 0 && l <= c {
 			lag += 0.5 * (l - r) / d
 		}
 	}
@@ -1950,7 +2020,7 @@ var (
 // first reading holds unless another's path scores over it by ripMeterMargin
 // (twice for a bar of two of the best's), or comes within it at its tempo and
 // repeats more at its bars or cuts them nearer their nearest; where the beat is
-// heard, the highest score. pin fixes the meter; given, the tempo was, a quarter's.
+// heard, the one whose lines top most bars. pin fixes the meter; given, the tempo.
 func (f *RipFrames) meter(pulses []int, k int, bpm float64, hits [InstrClap][]ripHit, rootPC int, bass, melody []ripNote, pin *Meter, given bool) (ripGrid, float64, ripReading, error) {
 	readings, err := f.readings(pulses, k, bpm, pin, given)
 	if err != nil {
@@ -1962,10 +2032,13 @@ func (f *RipFrames) meter(pulses []int, k int, bpm float64, hits [InstrClap][]ri
 	var bestRd ripReading
 	var bestTempo, bestUnlike, bestNear, bestFelt float64
 	bestScore := math.Inf(-1)
+	if f.heard() { // a reading's lines must top most of its bars
+		bestScore = 0.5
+	}
 	for _, rd := range readings {
 		lines, score, _, _, felt := f.barPath(rd, c, false)
 		g := ripGrid{lines: lines, m: rd.m}
-		if f.heard() { // a likelihood, so no margin between meters
+		if f.heard() { // a share of bars on one scale for every reading, so no margin between meters
 			if score > bestScore {
 				best, bestRd, bestTempo, bestScore = g, rd, rd.tempo, score
 			}
@@ -1991,6 +2064,9 @@ func (f *RipFrames) meter(pulses []int, k int, bpm float64, hits [InstrClap][]ri
 			continue
 		}
 		best, bestRd, bestTempo, bestScore, bestUnlike, bestNear, bestFelt = g, rd, rd.tempo, score, unlike, near, felt
+	}
+	if best.bars() < 1 { // heard beats that no reading holds
+		return best, 0, ripReading{}, nil
 	}
 	if pin == nil { // a drum part has a snare every other bar or a hat every bar; kicks alone are a bass's attacks, fewer hits a front end's doubts
 		drums := len(hits[InstrSnare]) >= best.bars()/2 || len(hits[InstrHihat]) >= best.bars()
@@ -2147,7 +2223,7 @@ func (f *RipFrames) repeats(rd ripReading) float64 {
 // ripMeterBars bars only 4/4 is read; a pin is read alone, its beat split.
 func (f *RipFrames) readings(pulses []int, k int, bpm float64, pin *Meter, given bool) ([]ripReading, error) {
 	if f.heard() {
-		return heardReadings(pulses, k, bpm, pin, given)
+		return f.heardReadings(pulses, k, bpm, pin, given)
 	}
 	if pin == nil && len(pulses) <= StepsPerBeat*ripMeterBars*k {
 		return []ripReading{{Meter{}, pulses, StepsPerBeat / k, k, bpm}}, nil
@@ -2192,33 +2268,51 @@ func (f *RipFrames) readings(pulses []int, k int, bpm float64, pin *Meter, given
 // heardReadings is the ways meter reads beats that were heard, every k-th of the
 // pulses, bpm a minute: 4/4, 3/4 and 6/8, a bar the meter's own beats (Rip.Beats)
 // at the tempo that makes its quarter, the note moved by octaves into the
-// sequencer's range; or a pin alone. A tempo given is a quarter's, cut into a
-// shorter note's beats.
-func heardReadings(pulses []int, k int, bpm float64, pin *Meter, given bool) ([]ripReading, error) {
+// sequencer's range; or a pin alone, the beat moved so. A tempo given is a
+// quarter's, the meters those of the note the head marks there (claims).
+func (f *RipFrames) heardReadings(pulses []int, k int, bpm float64, pin *Meter, given bool) ([]ripReading, error) {
 	beats := make([]int, 0, len(pulses)/k+1)
 	for i := 0; i < len(pulses); i += k {
 		beats = append(beats, pulses[i])
 	}
-	read := func(m Meter) ripReading {
-		if unit := min(m.Beat(), StepsPerBeat); given {
-			return ripReading{m, split(beats, StepsPerBeat/unit), unit, 1, bpm}
-		}
-		return ripReading{m, beats, m.Beat(), 1, bpm * float64(m.Beat()) / StepsPerBeat}
+	read := func(m Meter, u int) ripReading { // each beat heard u steps, cut into m's where they are shorter
+		unit := min(m.Beat(), u)
+		return ripReading{m, split(beats, u/unit), unit, 1, bpm * float64(u) / StepsPerBeat}
 	}
 	if pin != nil {
 		if err := pin.check(); err != nil {
 			return nil, fmt.Errorf("rip: %w", err)
 		}
-		return []ripReading{read(*pin)}, nil
+		u := pin.Beat()
+		for ; bpm*float64(u)/StepsPerBeat > MaxBPM && u > 1; u /= 2 {
+		}
+		for ; bpm*float64(u)/StepsPerBeat < MinBPM && u < StepsPerBar; u *= 2 {
+		}
+		if given {
+			u = StepsPerBeat
+		}
+		return []ripReading{read(*pin, u)}, nil
+	}
+	note := StepsPerBeat
+	if given {
+		if s := f.claims(beats); s[1] > s[0] {
+			note /= 2
+		}
 	}
 	var readings []ripReading
 	for _, m := range [...]Meter{{}, {3, 4}, {6, 8}} {
-		m = m.norm()
+		if m = m.norm(); given && m.Beat() != note {
+			continue
+		}
 		for ; !given && bpm*float64(m.Beat())/StepsPerBeat > MaxBPM && m.Den < StepsPerBar; m.Den *= 2 {
 		}
 		for ; !given && bpm*float64(m.Beat())/StepsPerBeat < MinBPM && m.Den > 1; m.Den /= 2 {
 		}
-		readings = append(readings, read(meterOf(m.Num, m.Den)))
+		if m = meterOf(m.Num, m.Den); given {
+			readings = append(readings, read(m, StepsPerBeat))
+		} else {
+			readings = append(readings, read(m, m.Beat()))
+		}
 	}
 	return readings, nil
 }
@@ -2368,32 +2462,36 @@ func (c *ripLineCues) bar(o []float64, m Meter, i, a int, d, span float64) (comb
 	return comb, ripBarLine * line, felts
 }
 
-// heardLines is a reading's bar lines where the downbeat head is likeliest over
-// the beats heard: a line every bar's beats from the phase whose lines score
-// highest, a beat scoring log p where it is a line and log(1-p) where it is
-// not, the first beat when anchored; and that score a beat. No cue is weighed
-// against another, and a bar holds its beats, no more and no fewer.
+// heardLines is a reading's bar lines where the downbeat head marks them over
+// the beats heard: a line every bar's beats from the phase whose lines top the
+// most of their bars, the first beat when anchored, and that share. A line read
+// against its own bar's beats is read the same however loud the head and
+// wherever it is quiet; a bar holds its beats, no more and no fewer.
 func (f *RipFrames) heardLines(rd ripReading, anchored bool) (lines []int, score float64) {
 	n, per := len(rd.pulses), rd.m.Steps()/rd.unit
 	if n <= per {
 		return []int{rd.pulses[0], rd.pulses[n-1]}, math.Inf(-1)
 	}
-	on, all := make([]float64, per), 0.0 // each phase's lines' log-odds, and every beat no line
+	v := make([]float64, n)
 	for i, b := range rd.pulses {
-		v := odds(f.Downbeat, float64(b))
-		on[i%per] += v
-		all -= math.Log1p(math.Exp(v))
+		v[i] = peak(f.Downbeat, float64(b))
 	}
-	phase := 0
-	for ph := 1; ph < per && ph+per < n && !anchored; ph++ {
-		if on[ph] > on[phase] {
-			phase = ph
+	phase, score := 0, math.Inf(-1)
+	for ph := 0; ph < per && (ph == 0 || ph+per < n && !anchored); ph++ {
+		var tops, bars float64
+		for i := ph; i+per <= n; i += per {
+			if bars++; per == 1 || v[i] > slices.Max(v[i+1:i+per]) {
+				tops++
+			}
+		}
+		if s := tops / bars; s > score {
+			phase, score = ph, s
 		}
 	}
 	for i := phase; i < n; i += per {
 		lines = append(lines, rd.pulses[i])
 	}
-	return lines, (all + on[phase]) / float64(n)
+	return lines, score
 }
 
 // barPath decodes a reading's bars as a path over the pulses, each a whole bar's
@@ -2779,7 +2877,7 @@ type ripNote struct {
 	bright           float64 // RipNote.Bright
 	bend, bendAt     float64 // RipNote.Bend and BendAt
 	voice, said      []float64
-	cells            []ripVisit // the cells its sound passed through, when more than its own
+	cells            []ripVisit // the cells its sound passed through, when other than its own
 }
 
 // notes tracks a register's lines: the bass as one path, the melody as two
@@ -3143,7 +3241,7 @@ func (r register) glided(struck ripNote, g []ripVisit, short int) ripNote {
 			n.midi = min(max(int(math.Round(level/100)), RipMinMIDI), RipMaxMIDI-1)
 		}
 	}
-	if len(g) > 1 {
+	if len(g) > 1 || n.midi != g[0].midi {
 		n.cells = slices.Clone(g)
 	}
 	last := g[len(g)-1]
