@@ -260,9 +260,9 @@ voice ([Audio §9](audio.md#9-ripping-a-recording)). What is left:
 - `Hear` holds the notes model's whole output while it reads it: 3,562 values a
   frame with these heads against 456 without, 221 MB over three minutes against
   28 MB, beside the stack's 212 MB, though the frames keep 552 bytes of it. The
-  smallest close: `Hear` in stretches of frames with the model's reach either
-  side, as the ear already hears; or a cell net that gives a head only at the
-  cells asked for, in `transformer`.
+  smallest close: `Hear` in stretches of frames with the notes model's reach
+  either side, as the ear already hears; or a cell net that gives a head only at
+  the cells asked for, in `transformer`.
 - The measure is one number for every family, written in the weight file as a
   frame head of no weights, and a measure a family fits the same head at eight
   values. Not taken: a file version with named constants, which needs
@@ -394,7 +394,7 @@ the decoders need no change to use it.
 `RipStream` ([Audio §9](audio.md#9-ripping-a-recording)) cost a desktop core
 0.08 s a second of audio through the analysis and 0.34 s through a model of the
 trainer's shapes (`FrameSpec`, and PitchNet with dilations 3, 9 and 27), 0.30 s
-of it the model's ear, which ran `Forward` over a window around each half
+of it the models' ear, which ran `Forward` over a window around each half
 second. The ear now runs each frame through each model once: `BenchmarkEar`,
 30 s through those shapes on one core of a 4-vCPU Xeon with AVX2, medians of
 five, in seconds a second of audio:
