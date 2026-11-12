@@ -415,7 +415,9 @@ var modelHeads = []string{HeadOnset, HeadDrums, HeadWave, HeadVoice, HeadFamily,
 func byHead(to map[string][]float32, f *audio.RipFrames) {
 	for t, v := range f.Flux {
 		to[HeadOnset] = append(to[HeadOnset], float32(v))
-		to[HeadBeat], to[HeadDownbeat] = append(to[HeadBeat], float32(f.Beat[t])), append(to[HeadDownbeat], float32(f.Downbeat[t]))
+		if f.Beat != nil {
+			to[HeadBeat], to[HeadDownbeat] = append(to[HeadBeat], float32(f.Beat[t])), append(to[HeadDownbeat], float32(f.Downbeat[t]))
+		}
 		for d := range f.Onset {
 			to[HeadDrums] = append(to[HeadDrums], float32(f.Onset[d][t]))
 		}
