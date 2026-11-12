@@ -97,6 +97,18 @@ under the reference outweighing it; candidates under a ring with new sound,
 a sure pitch head and a sure strike are right in only half of the clean
 take's cases and a tenth of the Pixel take's, so no rule admits them yet.
 
+### Part the lines the same way every run
+
+- Priority: P2
+- Affected files: `streams.go`
+
+`streams` keeps its states in maps and walks them in map order, so where two
+arrivals cost the same the first met wins and the parting differs from run to
+run: of 48 loops of stapes' `corpus <dir> 48 8 aug gen meters`, loop 031's
+stream through the analysis gives one of two rips, its lead and its under line
+exchanged, from one binary. The smallest close: walk each state's keys in
+order, then hash that corpus's rips ten times.
+
 ### The misses and extras the ear still hears
 
 - Priority: P1
@@ -199,6 +211,40 @@ path score, repetition and a prior per meter could not hold them within 2% of
 the chain on any prior set tried. The smallest close: 5/4 and 7/4 as readings
 taken only by the full margin, graded on e-gmd's 5/4 and 5/8 performances (7
 of each on disk, one performance under seven kits) before the 4/4 sets.
+
+### Hear the beat and the bar line on trained weights
+
+- Priority: P1
+- Affected files: `rip.go`, `ripstream.go`; stapes' `tool/rip-train`, `tune.go`
+
+The decoders read a beat and a downbeat head where the frames carry them
+([Audio §9](audio.md#9-ripping-a-recording)), and are held on frames built by
+hand alone: no model has the heads yet. The trainer's side, the targets, the
+heads, the loss and the run that is this change's evidence, is [stapes'
+todo](https://github.com/lixenwraith/stapes/blob/main/doc/todo.md#teach-the-frame-model-the-beat-and-the-bar-line).
+What is left here, each to settle on trained weights:
+
+- **Read against truths.** GuitarSet's 120 unmet clips (37 right through the
+  cues, 58 under perfect beats), the Für Elise takes against their score, and
+  the stream's twelve recordings; with the heads and with the same weights'
+  heads left out (a `FrontEnd` whose frames have `Beat` set nil).
+- **The head's scale.** The lines and `level` read a posterior. A head trained
+  with a positive weight w scores p as wp/(wp + 1 - p), and would favour short
+  bars by log w a line: the trainer's loss on these two heads carries no
+  weight, or the decoder must undo it.
+- **A weak or a busy head.** `level` keeps the tracked beat when no class of
+  frames sums over zero, and halves it when a head fires on every eighth; a
+  reading of 6/8 for 3/4 follows. Neither is measured.
+- **A bar that slips.** A bar holds its beats exactly, so a beat the tracker
+  adds or loses in a ritardando moves every line after it; the cues' path
+  absorbs one at `ripBarMove`. A cost in the head's own units is to be fitted
+  on played takes (Für Elise), not set.
+- **The stream** holds the phase of its first bars, as before: the downbeat
+  head is not read again once they freeze. Reading it at every bar is the
+  sections thread's.
+- **Half and double bars** are not offered (2 and 8 heard beats), nor 5/4 and
+  7/8: a silent head scores a longer bar higher, so a longer bar wants a head
+  measured first.
 
 ### Hear the phone takes' bars
 
