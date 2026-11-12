@@ -72,41 +72,44 @@ func DefaultRipParams() RipParams {
 }
 
 // ripGene is one parameter as a search sees it: its range, and where it lives.
+// most is the highest a document may set it, past max for a front end whose own
+// scale the search does not cover; 0 is max.
 type ripGene struct {
 	name     string
 	min, max float64
+	most     float64
 	at       func(*RipParams) *float64
 }
 
 // ripGenes is the parameters in gene order with the range each is sane in; the
 // partial count is the one integer, rounded when read back.
 var ripGenes = []ripGene{
-	{"tempo_prior", 90, 150, func(p *RipParams) *float64 { return &p.TempoPrior }},
-	{"tempo_width", 0.5, 2, func(p *RipParams) *float64 { return &p.TempoWidth }},
-	{"tightness", 20, 400, func(p *RipParams) *float64 { return &p.Tightness }},
-	{"onset_floor", 1.2, 4, func(p *RipParams) *float64 { return &p.OnsetFloor }},
-	{"onset_min", 0.02, 0.3, func(p *RipParams) *float64 { return &p.OnsetMin }},
-	{"onset_gap", 0.03, 0.12, func(p *RipParams) *float64 { return &p.OnsetGap }},
-	{"kick_share", 0.02, 0.3, func(p *RipParams) *float64 { return &p.KickShare }},
-	{"snare_share", 0.3, 0.7, func(p *RipParams) *float64 { return &p.SnareShare }},
-	{"snare_noise", 0.02, 0.3, func(p *RipParams) *float64 { return &p.SnareNoise }},
-	{"hat_share", 0.15, 0.6, func(p *RipParams) *float64 { return &p.HatShare }},
-	{"harmonics", 3, 8, nil},
-	{"harmonic_decay", 0.5, 0.95, func(p *RipParams) *float64 { return &p.HarmonicDecay }},
-	{"voicing", 0.1, 0.6, func(p *RipParams) *float64 { return &p.Voicing }},
-	{"jump", 0.01, 0.2, func(p *RipParams) *float64 { return &p.Jump }},
-	{"switch", 0.1, 0.8, func(p *RipParams) *float64 { return &p.Switch }},
-	{"retrigger", 0.2, 0.7, func(p *RipParams) *float64 { return &p.Retrigger }},
-	{"min_note", 0.03, 0.15, func(p *RipParams) *float64 { return &p.MinNote }},
-	{"second_voice", 0, 0.9, func(p *RipParams) *float64 { return &p.SecondVoice }},
-	{"compress", 0.3, 1, func(p *RipParams) *float64 { return &p.Compress }},
-	{"cross", 0, 0.02, func(p *RipParams) *float64 { return &p.Cross }},
-	{"strike", 0.2, 0.99, func(p *RipParams) *float64 { return &p.Strike }},
-	{"strike_hold", 0.3, 1, func(p *RipParams) *float64 { return &p.StrikeHold }},
-	{"strike_gap", 0.03, 0.3, func(p *RipParams) *float64 { return &p.StrikeGap }},
-	{"strike_low", 0.2, 0.99, func(p *RipParams) *float64 { return &p.StrikeLow }},
-	{"strike_again", 0.5, 0.99, func(p *RipParams) *float64 { return &p.StrikeAgain }},
-	{"release", 0.2, 0.99, func(p *RipParams) *float64 { return &p.Release }},
+	{"tempo_prior", 90, 150, 0, func(p *RipParams) *float64 { return &p.TempoPrior }},
+	{"tempo_width", 0.5, 2, 0, func(p *RipParams) *float64 { return &p.TempoWidth }},
+	{"tightness", 20, 400, 0, func(p *RipParams) *float64 { return &p.Tightness }},
+	{"onset_floor", 1.2, 4, 0, func(p *RipParams) *float64 { return &p.OnsetFloor }},
+	{"onset_min", 0.02, 0.3, 0.9, func(p *RipParams) *float64 { return &p.OnsetMin }},
+	{"onset_gap", 0.03, 0.12, 0, func(p *RipParams) *float64 { return &p.OnsetGap }},
+	{"kick_share", 0.02, 0.3, 0, func(p *RipParams) *float64 { return &p.KickShare }},
+	{"snare_share", 0.3, 0.7, 0, func(p *RipParams) *float64 { return &p.SnareShare }},
+	{"snare_noise", 0.02, 0.3, 0, func(p *RipParams) *float64 { return &p.SnareNoise }},
+	{"hat_share", 0.15, 0.6, 0, func(p *RipParams) *float64 { return &p.HatShare }},
+	{"harmonics", 3, 8, 0, nil},
+	{"harmonic_decay", 0.5, 0.95, 0, func(p *RipParams) *float64 { return &p.HarmonicDecay }},
+	{"voicing", 0.1, 0.6, 0, func(p *RipParams) *float64 { return &p.Voicing }},
+	{"jump", 0.01, 0.2, 0, func(p *RipParams) *float64 { return &p.Jump }},
+	{"switch", 0.1, 0.8, 0, func(p *RipParams) *float64 { return &p.Switch }},
+	{"retrigger", 0.2, 0.7, 0, func(p *RipParams) *float64 { return &p.Retrigger }},
+	{"min_note", 0.03, 0.15, 0, func(p *RipParams) *float64 { return &p.MinNote }},
+	{"second_voice", 0, 0.9, 0, func(p *RipParams) *float64 { return &p.SecondVoice }},
+	{"compress", 0.3, 1, 0, func(p *RipParams) *float64 { return &p.Compress }},
+	{"cross", 0, 0.02, 0, func(p *RipParams) *float64 { return &p.Cross }},
+	{"strike", 0.2, 0.99, 0, func(p *RipParams) *float64 { return &p.Strike }},
+	{"strike_hold", 0.3, 1, 0, func(p *RipParams) *float64 { return &p.StrikeHold }},
+	{"strike_gap", 0.03, 0.3, 0, func(p *RipParams) *float64 { return &p.StrikeGap }},
+	{"strike_low", 0.2, 0.99, 0, func(p *RipParams) *float64 { return &p.StrikeLow }},
+	{"strike_again", 0.5, 0.99, 0, func(p *RipParams) *float64 { return &p.StrikeAgain }},
+	{"release", 0.2, 0.99, 0, func(p *RipParams) *float64 { return &p.Release }},
 }
 
 func (g *ripGene) get(p *RipParams) float64 {
@@ -154,11 +157,13 @@ func RipParamsFromGenes(genes []float64) RipParams {
 	return p
 }
 
-// ValidateRipParams refuses a parameter outside its range, by its key.
+// ValidateRipParams refuses a parameter outside what a document may hold, by its
+// key.
 func ValidateRipParams(p RipParams) error {
 	for i := range ripGenes {
-		if v := ripGenes[i].get(&p); !finite(v) || v < ripGenes[i].min || v > ripGenes[i].max {
-			return fmt.Errorf("rip: %s %v outside [%v,%v]", ripGenes[i].name, v, ripGenes[i].min, ripGenes[i].max)
+		g := &ripGenes[i]
+		if v, top := g.get(&p), max(g.max, g.most); !finite(v) || v < g.min || v > top {
+			return fmt.Errorf("rip: %s %v outside [%v,%v]", g.name, v, g.min, top)
 		}
 	}
 	return nil

@@ -685,7 +685,9 @@ the recording at its own pitch.
 place in a gene vector (`Genes`, `RipParamsFromGenes`), among them `compress`,
 the power the harmonic spectrum is raised to before the salience, under one to
 flatten the partials a saturated mix piles on every note; a `[rip]` table in a
-TOML document carries a set (`LoadRipParams`, `MarshalRipParams`).
+TOML document carries a set (`LoadRipParams`, `MarshalRipParams`), each key in
+its range but `onset_min`, which a document may set to 0.9 past the search's 0.3:
+a frame model sure of its drum hits wants its bar near 0.7.
 `DefaultRipParams` is the hand-set start. The engine grades a set itself:
 `RenderMusic` plays registered patterns offline in a meter, `ExpectedRip` is the
 rip a perfect listener would make of them, and `CompareRips` scores a rip against

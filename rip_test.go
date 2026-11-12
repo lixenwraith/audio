@@ -1757,6 +1757,25 @@ func TestRipParamsAreData(t *testing.T) {
 	}
 }
 
+// TestARipDocumentReachesPastTheSearch is the rule a front end's own bar is held
+// by: a document sets onset_min up to 0.9, past the range the search moves it in.
+func TestARipDocumentReachesPastTheSearch(t *testing.T) {
+	p, err := LoadRipParams([]byte("[rip]\nonset_min = 0.7\n"))
+	if err != nil || p.OnsetMin != 0.7 {
+		t.Fatalf("onset_min 0.7: %v, %v", err, p.OnsetMin)
+	}
+	if _, err := LoadRipParams([]byte("[rip]\nonset_min = 0.95\n")); err == nil {
+		t.Error("onset_min 0.95 was accepted")
+	}
+	at := slices.Index(RipParams{OnsetMin: -1}.Genes(), -1)
+	if r := RipGeneRanges()[at]; r != [2]float64{0.02, 0.3} {
+		t.Errorf("the search moves onset_min over %v", r)
+	}
+	if q := RipParamsFromGenes(p.Genes()); q.OnsetMin != 0.3 {
+		t.Errorf("a gene vector holds onset_min %v", q.OnsetMin)
+	}
+}
+
 // TestRipPatternsWindowTheBars is the rule Patterns writes by: a pattern per part
 // per window of up to four bars, the last window as long as what is left.
 func TestRipPatternsWindowTheBars(t *testing.T) {
