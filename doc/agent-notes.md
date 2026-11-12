@@ -403,15 +403,15 @@ that a document now states, and link the document instead.
   Count a song render's silent runs (5 ms frames under -80 dBFS, four or more,
   none touching an end) before blaming the model for a gap.
 
-- The rip's front end is a seam: `analysis` and `ripmodel` both fill `RipFrames`,
+- The rip's front end is a seam: `analysis` and `ripmodels` both fill `RipFrames`,
   and the decoders read nothing else, so a front end is checked by the frames it
-  makes and the rip they give, as `ripmodel`'s test does with an untrained model.
+  makes and the rip they give, as `ripmodels`' test does with an untrained model.
 - The harmonic stack (`stacked`) interpolates in float64 where the trainer's
   `PitchNet.stack` does in float32, so a third of the floats differ in the last
   bit (up to 4.8e-7); through PitchNet at the trainer's shape the heads differ
   from PyTorch's by up to 4.8e-6 on outputs up to 11, rounding. Dump
   `model.stack(x)` beside the outputs to tell the stack from the model.
-- The trainer's `ripmodel.features` and `features` agree bit for bit on the
+- The trainer's `features` and `ripmodels`' agree bit for bit on the
   PCEN plane, but on a piano recording 63 of the dB plane's 534,520 floats
   differed in the last bits (up to 1.4e-14, all near zero): numpy's `mean` sums
   pairwise, Go in order. Compare the planes with that in mind, not the whole
@@ -453,7 +453,7 @@ that a document now states, and link the document instead.
   16. The measure reads the same at every frame, its head's weights being zero.
 - A notes file with a head this audio does not know must still load in the
   last tag: `git worktree add <dir> origin/main`, a scratch module that
-  replaces audio by it, `ripmodel.Load` and `Hear` on a second of a sine.
+  replaces audio by it, `ripmodels.Load` and `Hear` on a second of a sine.
 - `RipNote` is compared with `==` (stapes' `truth` skips a note itself that
   way), so a slice field breaks a caller's build: what a note carries beyond
   scalars hangs off a pointer, as `Voice` does.
@@ -670,7 +670,7 @@ that a document now states, and link the document instead.
   past eight seconds, moved with the block size; it reads exactly the first
   eight seconds now, and the model's ear hears on a fixed frame grid against the
   loudest sample up to it. `TestRipStreamBarsAreTheSameWhateverTheBlocks` and
-  `ripmodel`'s ear test compare the rips and the frames in fixed and in random
+  `ripmodels`' ear test compare the rips and the frames in fixed and in random
   blocks; a new ear goes through both. The ear test feeds a hop a block and
   counts the frames given after each: at 50 ms a step given a hop late passed.
 - **A model's ear is the whole's to rounding, never bit for bit, and only from

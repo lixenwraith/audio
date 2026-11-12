@@ -1,4 +1,4 @@
-package ripmodel
+package ripmodels
 
 import (
 	"bytes"

@@ -36,7 +36,7 @@ The engine carries no game concept. Its embedder hands it the sfx levels and
 sound shapes by sound name (`SfxLevels`, `SoundShapes`) and sets the tempo, the
 tier and the harmony from whatever drives its music; vif's conductor reads them
 off the player's actions a minute. Beside the standard library the root package
-imports only `lixenwraith/toml` and its `macro` expander, and `ripmodel` adds
+imports only `lixenwraith/toml` and its `macro` expander, and `ripmodels` adds
 `lixenwraith/transformer`. No file carries a build tag, so every package builds
 wherever Go does. `model` holds the identifiers an embedder's protocol carries
 (sound, instrument, pattern, scale and tier) with no mixer, backend or synthesis
@@ -691,7 +691,7 @@ averaged, each one where they sound alike.
 
 The front end is a seam (`RipFrontEnd`): whatever hears the recording into
 `RipFrames`, the onset strengths, the pitch salience and the chroma per frame,
-feeds the same decoders. The analysis above is one front end; `ripmodel` is the
+feeds the same decoders. The analysis above is one front end; `ripmodels` is the
 other, a transformer over the log-mel frames `MelFrames` makes, whose heads say
 per frame what struck, what sounds, which pitch is struck or let go and how hard
 (`RipFrames.Strike`, `Release`, `Velocity`), the wave and voice genes
@@ -699,7 +699,7 @@ per frame what struck, what sounds, which pitch is struck or let go and how hard
 voices its registers were played with (`Rip.Voices`), the family playing the
 highest note (`RipFrames.Family`, shares over `RipFamilies`: piano, guitar,
 voice, bass, strings, winds, synth, drums or unknown), which no decoder reads
-yet, and the beat and the bar line (`ripmodel.HeadBeat`, `HeadDownbeat`, after
+yet, and the beat and the bar line (`ripmodels.HeadBeat`, `HeadDownbeat`, after
 the family in `Spec`; a model without them loads as before, and a library from
 before them refuses a file that has them, its heads no prefix of its `Spec`'s).
 From strikes both registers' notes start where a pitch is struck, as hard
@@ -769,11 +769,11 @@ head names, as it names saw through a phone's narrow band; where a notes model
 says what plays each pitch (below), a line's voice is its own notes' instead.
 Either plays with one oscillator, as that mean of two would beat, and a fade
 that keeps the line's long notes within 12 dB to their end (`lasting`).
-`ripmodel.Load` reads
+`ripmodels.Load` reads
 a weight file into a front end; rip-train, stapes' trainer, writes one from loops
 the engine renders.
 
-A second file may give the notes: a notes model (`ripmodel.NotesSpec`, the
+A second file may give the notes: a notes model (`ripmodels.NotesSpec`, the
 trainer's PitchNet), a transformer module cell net of convolutions alone with
 the same weights at every pitch, gives the pitch, voicing, strike, release and
 velocity heads, and the model the onsets, drums, wave, voice and family. It
@@ -783,7 +783,7 @@ each harmonic of a half and one to seven, shifted so a pitch's harmonics lie at
 its own bin, 16 channels of 213 bins, each ending in its plane's scalar. Without
 it the model gives every head, as before.
 
-A notes model trained with one has a cents head too (`ripmodel.HeadCents`, two
+A notes model trained with one has a cents head too (`ripmodels.HeadCents`, two
 values a pitch): how far each pitch's sound sits from its cell's centre, and the
 error the head states for that reading, both in cents (`RipFrames.Cents`,
 `CentsError`; nil from a model without the head, and nothing below runs then).
@@ -852,7 +852,7 @@ candidate. A stage standardizes the row by its fit's mean and spread and reads
 it through two hidden layers with ReLU and one output through a sigmoid. A
 judge loads from a file of its own (`LoadRipJudge`), which names the row and
 the notes weights it was fitted on by the checksum their file ends in
-(`ripmodel.FrontEnd.NotesSum`), and is refused with any other notes model or a
+(`ripmodels.FrontEnd.NotesSum`), and is refused with any other notes model or a
 row this package does not build:
 
 ```
@@ -888,7 +888,7 @@ judge that kept the same notes would read, and asking changes no note.
 
 A notes model may also say what plays each pitch, where the model's wave, voice
 and family heads say one thing a frame: three more heads of values a pitch
-(`ripmodel.HeadPitchFamily`, a score for each of `RipFamilies` but unknown,
+(`ripmodels.HeadPitchFamily`, a score for each of `RipFamilies` but unknown,
 which is the absence of a name and no class; `HeadPitchWave`, one for each of
 `VoiceWaves`; `HeadPitchVoice`, the genes). Their planes are 45 values a pitch,
 3,105 a frame, so the front end keeps them at each frame's twelve most salient
@@ -907,7 +907,7 @@ cents. Its wave is the one of the highest mean share and its genes are a voice
 `VoiceFromGenes` plays, whatever instrument made the sound. Its family is the
 one of the highest mean share where that share, less the half of a byte a share
 is kept to, so no more than the head's could be, passes the measure the weight
-file carries (`RipFrames.Sure`, the head `ripmodel.HeadSure`: the share the
+file carries (`RipFrames.Sure`, the head `ripmodels.HeadSure`: the share the
 notes of a family the trainer was told no name of reach at their surest, its
 row of weights zero and its bias the measure, so a file whose head says another
 number as what it hears changes is refused at load), and none otherwise; a file
@@ -984,7 +984,7 @@ samples at any rate go in (`Write`), resampled as `Resample` would and heard
 through the front end's ear (`RipLiveFrontEnd`, a `RipEar`), each frame once and
 the same frames whatever the blocks. The analysis's ear gives the whole's frames
 but for the tuning, read over the first eight seconds and held, and the onset
-strength, against the loudest onsets heard so far. `ripmodel`'s runs each frame
+strength, against the loudest onsets heard so far. `ripmodels`' runs each frame
 through each model once (`transformer`'s `Stream`), its mel frames
 (`MelStream`) and their PCEN average against the loudest sample heard when the
 frame came, and gives the frames in half-second steps once the frames a model
@@ -1088,6 +1088,6 @@ unaware of what drives it: tempo, tier and harmony arrive as commands.
   `song.go`, `wav.go`, its notes held to the recording `account.go`, by a
   trained judge `judge.go`, and as it plays `ripstream.go`; its transcripts compared
   and read or written, and patterns and songs as MIDI files: `match.go`,
-  `midi.go`; its learned front end `ripmodel`, over `lixenwraith/transformer`
+  `midi.go`; its learned front end `ripmodels`, over `lixenwraith/transformer`
 - Shared protocol identifiers: `model`
 - The shipped banks: `bank`

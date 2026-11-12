@@ -367,7 +367,7 @@ var RipVoiceSize = len(RipFamilies) - 1 + len(VoiceWaves) + VoiceGeneCount
 // Hop seconds: onset strength, each drum's (kick, snare, hihat), each pitch's
 // salience from E1 to C7 (the bass's by its first partials, the melody's with the
 // bass cancelled) and each register's chroma, as a front end fills it: the analysis,
-// or a model (ripmodel), which may also say what plays the frame and its pitches
+// or a model (ripmodels), which may also say what plays the frame and its pitches
 // and where its beats and bar lines fall.
 type RipFrames struct {
 	Hop                float64

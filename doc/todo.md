@@ -244,7 +244,7 @@ move on recordings through a notes model whose cents head writes such notes.
 ### Carry a note's voice further
 
 - Priority: P2
-- Affected files: `rip.go`, `ripstream.go`, `ripmodel/ripmodel.go`
+- Affected files: `rip.go`, `ripstream.go`, `ripmodels/ripmodels.go`
 
 A notes model with the heads says what plays each pitch, and a note carries its
 voice ([Audio §9](audio.md#9-ripping-a-recording)). What is left:
@@ -373,7 +373,7 @@ What is left here, each to settle on trained weights:
 ### Hear the phone takes' bars
 
 - Priority: P2
-- Affected files: `rip.go`, `ripmodel/`
+- Affected files: `rip.go`, `ripmodels/`
 
 On the exact-clock renders of Für Elise the bar path puts three quarters of
 the lines within a sixteenth of the render's and on the clean take half; on
@@ -389,7 +389,7 @@ decoders need no change to use it.
 ### Follow a recording on the phone
 
 - Priority: P2
-- Affected files: `ripstream.go`, `ripmodel/ripmodel.go`
+- Affected files: `ripstream.go`, `ripmodels/ripmodels.go`
 
 `RipStream` ([Audio §9](audio.md#9-ripping-a-recording)) cost a desktop core
 0.08 s a second of audio through the analysis and 0.34 s through a model of the
@@ -416,7 +416,7 @@ model's heads under the shorter wait (`FrontEnd.Ahead`), which on random
 weights of `Spec`'s shape lie from the whole's, as the rip reads them, by 0.09
 rms for the onset (0.16 at worst), 0.04 for the drums (0.16), 0.19 for the
 wave (0.69, of rms 1.45), 0.05 for the voice (0.20) and 0.03 for the family
-(0.17), and on trained weights are unmeasured: `go test ./ripmodel -run
+(0.17), and on trained weights are unmeasured: `go test ./ripmodels -run
 TestTheEarHearsAsTheWholeRecording -v -args -model <file> -notes <file> -wav
 <file>` logs each head's under both waits; the tempo, meter and key held from
 the first six bars, so a recording that changes meter or key reads on in the
@@ -429,7 +429,7 @@ each wait against its offline rip (`MatchBars`, `BarDistance`).
 
 - Priority: P2
 - Affected files: `rip.go` (`RipEar`, `RipFrames`), `ripstream.go`,
-  `ripmodel/ripmodel.go` (`ear`)
+  `ripmodels/ripmodels.go` (`ear`)
 
 The ear gives both models' frames in one step, so under the default wait the
 notes model's heads (pitch, strike, release, velocity), complete 46 frames,
@@ -453,7 +453,7 @@ they could come 210 frames, 2.44 s, sooner. What it takes:
 ### Hear again the frames a louder sample reaches
 
 - Priority: P3
-- Affected files: `ripmodel/ripmodel.go` (`ear`)
+- Affected files: `ripmodels/ripmodels.go` (`ear`)
 
 A frame is scaled by the loudest sample heard when it came and run once, so a
 model's heads are the whole's from its reach past the recording's loudest

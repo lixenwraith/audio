@@ -1,9 +1,9 @@
-// Package ripmodel is the rip's learned front end: a transformer over log-mel
+// Package ripmodels is the rip's learned front end: a transformer over log-mel
 // frames whose heads say, per frame, whether anything and which drum struck,
 // which pitches sound, are struck or let go and how hard, the note's wave, genes
 // and family, and whether a beat or a bar line falls there, and a notes model
 // that may give the notes and what plays each. stapes' rip-train trains both.
-package ripmodel
+package ripmodels
 
 import (
 	"encoding/binary"
@@ -156,21 +156,21 @@ const optionalHeads = 6
 func New(m, notes *transformer.Model) (*FrontEnd, error) {
 	want, got := Spec(), m.Config()
 	if got.Inputs != want.Inputs || got.Channels > 2 {
-		return nil, fmt.Errorf("ripmodel: model reads %d inputs in %d channels, want %d in one or two, the bands in dB over the frame's level and the level, then each band's PCEN and their mean", got.Inputs, got.Channels, want.Inputs)
+		return nil, fmt.Errorf("ripmodels: model reads %d inputs in %d channels, want %d in one or two, the bands in dB over the frame's level and the level, then each band's PCEN and their mean", got.Inputs, got.Channels, want.Inputs)
 	}
 	if n := len(got.Outputs); n > len(want.Outputs) || n < len(want.Outputs)-optionalHeads {
-		return nil, fmt.Errorf("ripmodel: model has %d heads, want %d", n, len(want.Outputs))
+		return nil, fmt.Errorf("ripmodels: model has %d heads, want %d", n, len(want.Outputs))
 	}
 	for i, h := range want.Outputs[:len(got.Outputs)] {
 		if got.Outputs[i] != h {
-			return nil, fmt.Errorf("ripmodel: head %d is %q of %d, want %q of %d", i, got.Outputs[i].Name, got.Outputs[i].Size, h.Name, h.Size)
+			return nil, fmt.Errorf("ripmodels: head %d is %q of %d, want %q of %d", i, got.Outputs[i].Name, got.Outputs[i].Size, h.Name, h.Size)
 		}
 	}
 	if notes == nil {
 		return &FrontEnd{Model: m}, nil
 	}
 	if got := notes.Config(); got.Inputs != stackBins+1 || got.Channels != stackChannels {
-		return nil, fmt.Errorf("ripmodel: notes model reads %d inputs in %d channels, want the harmonic stack's %d in %d", got.Inputs, got.Channels, stackBins+1, stackChannels)
+		return nil, fmt.Errorf("ripmodels: notes model reads %d inputs in %d channels, want the harmonic stack's %d in %d", got.Inputs, got.Channels, stackBins+1, stackChannels)
 	}
 	for _, h := range notesHeads {
 		head := transformer.Head{Name: h.name, Size: h.per*audio.RipPitches + h.frame}
@@ -182,11 +182,11 @@ func New(m, notes *transformer.Model) (*FrontEnd, error) {
 			continue
 		}
 		if i < 0 || notes.Config().Outputs[i] != head {
-			return nil, fmt.Errorf("ripmodel: notes model has no head %q of %d", h.name, head.Size)
+			return nil, fmt.Errorf("ripmodels: notes model has no head %q of %d", h.name, head.Size)
 		}
 	}
 	if lo, hi := sureSpread(notes); lo != hi {
-		return nil, fmt.Errorf("ripmodel: notes model's %q head says %g to %g as what it hears changes; the trainer's export writes its row zero, the measure its bias", HeadSure, lo, hi)
+		return nil, fmt.Errorf("ripmodels: notes model's %q head says %g to %g as what it hears changes; the trainer's export writes its row zero, the measure its bias", HeadSure, lo, hi)
 	}
 	return &FrontEnd{Model: m, Notes: notes}, nil
 }
