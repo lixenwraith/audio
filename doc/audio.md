@@ -511,9 +511,10 @@ it leaves, a tie counting half (`above`), a half being chance; the bar's by
 how many of a reading's bars its line tops. With one head alone, or neither,
 or a head that is no posterior at some frame (a NaN), every decision is the
 above's, and so is the grid where the heads give no reading, as a pinned bar
-longer than the beats heard: the rip is that of the frames without them. A
-stream whose first bars are read so reads on so; one whose first bars the
-heads gave reads on by them.
+longer than the beats heard: offline the rip is that of the frames without
+them. A stream holds its first bars once its heard beats fill six bars of 4/4,
+and reads on by the cues where they gave none then, by the heads where they
+did.
 
 - **The tempo and the beats.** The tempo is how the beat head repeats: the same
   autocorrelation, prior and fold, over the head on the onsets' scale (above
@@ -536,7 +537,10 @@ heads gave reads on by them.
   quarter. So a reading is a bar of its meter's beats (`heardReadings`): four
   heard beats 4/4 and three 3/4 at the beats' tempo, six 6/8 at half of it;
   where that tempo is outside the sequencer's range the note moves by octaves
-  (four beats at 352 are 4/8 at 176). Under a tempo given the beats are its
+  (four beats at 352 are 4/8 at 176). A pinned meter keeps its name and moves
+  the beat instead: a heard beat is its note moved by octaves into the range,
+  cut into the pin's notes where longer (3/4 pinned over beats at 215 takes
+  them as eighths, 3/4 at 108). Under a tempo given the beats are its
   quarters, where 3/4 and 6/8 are one bar the downbeat head cannot part, so the
   meters read are the note's the beat head marks: 4/4 and 3/4, or 6/8 over the
   quarters cut in two where it marks their halves surer (`claims`).

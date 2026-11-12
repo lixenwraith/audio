@@ -524,6 +524,29 @@ func TestRipStreamReadsTheHeads(t *testing.T) {
 	}
 }
 
+// TestAPinnedMeterKeepsItsTempoInTheSequencersRange: beats heard at 215 a minute
+// with a line every sixth pinned 3/4, and at 73.8 with one every third pinned
+// 6/8, take the beat an eighth and a quarter, offline and streamed: 3/4 at 108
+// and 6/8 at 74, whose songs validate
+func TestAPinnedMeterKeepsItsTempoInTheSequencersRange(t *testing.T) {
+	for _, c := range []struct {
+		beat, per int
+		pin       Meter
+		bpm       int
+	}{{24, 6, Meter{3, 4}, 108}, {70, 3, Meter{6, 8}, 74}} {
+		for _, stream := range []bool{false, true} {
+			r, err := headRip(Ripper{Meter: &c.pin}, headFrames(4000, c.beat, c.beat, 0, c.per, 1), stream)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, song := r.Song("pinned", [RipParts][]int{})
+			if err := ValidateSong(song); r.Meter != c.pin || r.BPM != c.bpm || err != nil {
+				t.Errorf("beats every %d frames pinned %s, streamed %v: %s at %d (%v), want %s at %d", c.beat, c.pin, stream, r.Meter, r.BPM, err, c.pin, c.bpm)
+			}
+		}
+	}
+}
+
 // TestHeadsThatGiveNoReadingLeaveTheGridToTheCues: a pinned bar longer than the
 // beats heard, a head that is no posterior at a frame, or heads that mark
 // nothing give no reading, and the rip is that of the same frames without the

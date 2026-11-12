@@ -2259,24 +2259,30 @@ func (f *RipFrames) readings(pulses []int, k int, bpm float64, pin *Meter, given
 // heardReadings is the ways meter reads beats that were heard, every k-th of the
 // pulses, bpm a minute: 4/4, 3/4 and 6/8, a bar the meter's own beats (Rip.Beats)
 // at the tempo that makes its quarter, the note moved by octaves into the
-// sequencer's range; or a pin alone. A tempo given is a quarter's, and the meters
-// read those of the note the head marks: the quarter, or its halves (claims).
+// sequencer's range; or a pin alone, the beat moved so. A tempo given is a
+// quarter's, the meters those of the note the head marks there (claims).
 func (f *RipFrames) heardReadings(pulses []int, k int, bpm float64, pin *Meter, given bool) ([]ripReading, error) {
 	beats := make([]int, 0, len(pulses)/k+1)
 	for i := 0; i < len(pulses); i += k {
 		beats = append(beats, pulses[i])
 	}
-	read := func(m Meter) ripReading {
-		if unit := min(m.Beat(), StepsPerBeat); given {
-			return ripReading{m, split(beats, StepsPerBeat/unit), unit, 1, bpm}
-		}
-		return ripReading{m, beats, m.Beat(), 1, bpm * float64(m.Beat()) / StepsPerBeat}
+	read := func(m Meter, u int) ripReading { // each beat heard u steps, cut into m's where they are shorter
+		unit := min(m.Beat(), u)
+		return ripReading{m, split(beats, u/unit), unit, 1, bpm * float64(u) / StepsPerBeat}
 	}
 	if pin != nil {
 		if err := pin.check(); err != nil {
 			return nil, fmt.Errorf("rip: %w", err)
 		}
-		return []ripReading{read(*pin)}, nil
+		u := pin.Beat()
+		for ; bpm*float64(u)/StepsPerBeat > MaxBPM && u > 1; u /= 2 {
+		}
+		for ; bpm*float64(u)/StepsPerBeat < MinBPM && u < StepsPerBar; u *= 2 {
+		}
+		if given {
+			u = StepsPerBeat
+		}
+		return []ripReading{read(*pin, u)}, nil
 	}
 	note := StepsPerBeat
 	if given {
@@ -2293,7 +2299,11 @@ func (f *RipFrames) heardReadings(pulses []int, k int, bpm float64, pin *Meter, 
 		}
 		for ; !given && bpm*float64(m.Beat())/StepsPerBeat < MinBPM && m.Den > 1; m.Den /= 2 {
 		}
-		readings = append(readings, read(meterOf(m.Num, m.Den)))
+		if m = meterOf(m.Num, m.Den); given {
+			readings = append(readings, read(m, StepsPerBeat))
+		} else {
+			readings = append(readings, read(m, m.Beat()))
+		}
 	}
 	return readings, nil
 }
