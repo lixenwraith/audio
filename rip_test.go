@@ -920,6 +920,68 @@ func TestARipsVoiceLastsItsLongNotes(t *testing.T) {
 	}
 }
 
+// TestANoteCarriesTheVoiceItsPitchWasTold: a note's voice is its pitch's say on
+// the frames it sounds and is told, each by its salience there, in every cell a
+// note that moved sounded in; its family is named only past the front end's
+// measure, and a note told on no frame carries none.
+func TestANoteCarriesTheVoiceItsPitchWasTold(t *testing.T) {
+	const n = 60
+	f := &RipFrames{Hop: RipFrameSec, Flux: make([]float64, n), Salience: make([]float32, n*RipPitches),
+		VoiceAt: slices.Repeat([]uint8{255}, n*RipVoiceCells), Voices: make([]uint8, n*RipVoiceCells*RipVoiceSize)}
+	names, waves := len(RipFamilies)-1, len(VoiceWaves)
+	// tell says at frames a to b, in slot k of those told, what plays midi: a family, a wave and the first gene
+	tell := func(a, b, k, midi int, salience float32, family, wave int, gene uint8) {
+		for t := a; t < b; t++ {
+			f.Salience[t*RipPitches+midi-RipMinMIDI], f.VoiceAt[t*RipVoiceCells+k] = salience, uint8(midi-RipMinMIDI)
+			row := f.Voices[(t*RipVoiceCells+k)*RipVoiceSize:][:RipVoiceSize]
+			row[family], row[names+wave], row[names+waves] = 255, 255, gene
+		}
+	}
+	tell(10, 20, 0, 60, 0.9, 0, 4, 51) // a piano on a modal bank, loud
+	tell(20, 30, 3, 60, 0.3, 1, 3, 204)
+	tell(30, 40, 1, 62, 0.5, 2, 1, 51) // a sound that moves up a cell
+	tell(40, 50, 1, 63, 0.5, 2, 1, 153)
+	tell(40, 50, 2, 62, 0.5, 6, 0, 255) // another's, in the cell it left
+	f.Salience[15*RipPitches+70-RipMinMIDI] = 0.9
+	notes := []ripNote{{start: 10, end: 30, midi: 60}, {start: 30, end: 50, midi: 62, cells: []ripVisit{{midi: 62, start: 30, end: 40}, {midi: 63, start: 40, end: 50}}},
+		{start: 10, end: 30, midi: 70}}
+	f.tell(notes)
+	for _, c := range []struct {
+		sure   float64
+		family string
+	}{{0.8, ""}, {0, ""}, {0.7, "piano"}} {
+		f.Sure = c.sure
+		if v := f.voice(notes[0].said); v == nil || v.Family != c.family || v.Wave != "modal" || math.Abs(v.Genes[0]-0.35) > 1e-6 {
+			t.Errorf("a name sure past %v: the note's voice %+v, want %q on a modal bank, its first gene 0.35", c.sure, v, c.family)
+		}
+	}
+	if v := f.voice(notes[1].said); v == nil || v.Family != "voice" || v.Wave != "saw" || math.Abs(v.Genes[0]-0.4) > 1e-6 {
+		t.Errorf("the note that moved: %+v, want a voice's saw, its first gene 0.4 over both cells", v)
+	}
+	if v := f.voice(notes[2].said); v != nil {
+		t.Errorf("a note told on no frame carries %+v", v)
+	}
+}
+
+// TestALinesVoiceIsItsNotesMeanVoice: where the front end told a line's notes
+// their voices the line plays their mean by length, on the wave of the highest
+// share, and not the frames' genes on a modal bank; a note told none adds none.
+func TestALinesVoiceIsItsNotesMeanVoice(t *testing.T) {
+	names, waves := len(RipFamilies)-1, len(VoiceWaves)
+	bright := slices.IndexFunc(voiceGenes, func(g voiceGene) bool { return g.name == "bright" })
+	said := func(wave int, b float64) []float64 {
+		s := make([]float64, RipVoiceSize)
+		s[names+wave], s[names+waves+bright] = 1, b
+		return s
+	}
+	frame := slices.Repeat([]float64{1}, VoiceGeneCount)
+	notes := []ripNote{{start: 0, end: 300, midi: 60, voice: frame, said: said(3, 0.2)}, {start: 300, end: 400, midi: 62, voice: frame, said: said(1, 0.8)},
+		{start: 400, end: 900, midi: 64, voice: frame}}
+	if v := voiceOf(notes); v.Wave != "string" || math.Abs(v.Bright-0.35) > 1e-9 {
+		t.Errorf("the line plays a %s of brightness %.3f, want its notes' string of 0.35", v.Wave, v.Bright)
+	}
+}
+
 // TestMatchNotesCountsANoteOnlyNearItsPlace: under a tempo that bends, every
 // note in its place matches, and a note of the right pitch half a second off
 // does not, where pitches in order alone would take it.

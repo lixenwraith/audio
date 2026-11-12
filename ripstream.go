@@ -80,7 +80,12 @@ type RipStream struct {
 	// one's line through the last one's end
 	open   []RipBar
 	openAt []int
-	closed bool
+	// the strikes judged, when the Ripper asks: those frozen with their bars, of
+	// the frames held or let go since the last Write began, the frozen ones near
+	// the line, which a later read may hear again, and the open bars' as last read
+	strikes, tailStrikes, openStrikes []RipStrike
+	fluxes                            ripLevels // the flux heard, for a row's level of it
+	closed                            bool
 }
 
 // RipOpenBar is a bar after a stream's frozen ones as its decoders last laid it
@@ -142,6 +147,7 @@ func (s *RipStream) Write(x []float64, rate int) error {
 		return nil
 	}
 	s.late, s.wrote = nil, s.heard()
+	s.strikes = slices.DeleteFunc(s.strikes, func(st RipStrike) bool { return st.Frame < s.w0 })
 	s.n += len(x)
 	for _, v := range x {
 		s.kept = append(s.kept, float32(v))
@@ -209,6 +215,25 @@ func (s *RipStream) Open() []RipOpenBar {
 		out[i] = RipOpenBar{RipBar: b, Start: s.openAt[i], End: s.openAt[i+1]}
 	}
 	return out
+}
+
+// Strikes is the strikes judged from frame since on, when the Ripper asks for
+// them, and how many of them are frozen with their bars, the first: those of
+// the frames the stream holds or let go since the last Write began. The rest
+// are the open bars' as the read that froze the last bar judged them,
+// provisional as Open's bars are. Their rows are the stream's: read, not changed.
+func (s *RipStream) Strikes(since int) (strikes []RipStrike, frozen int) {
+	for i, from := range [...][]RipStrike{s.strikes, s.openStrikes} {
+		for _, st := range from {
+			if st.Frame >= since {
+				strikes = append(strikes, st)
+			}
+		}
+		if i == 0 {
+			frozen = len(strikes)
+		}
+	}
+	return strikes, frozen
 }
 
 // Close hears the end of the recording, freezes every bar left and returns the
@@ -292,8 +317,8 @@ func (s *RipStream) heard() int { return s.w0 + s.f.frames() }
 // step is the frames between two reads
 func (s *RipStream) step() int { return int(ripStreamStep / s.f.Hop) }
 
-// count takes the frames up to upto into the loudest onsets and bands heard
-// and the registers' levels
+// count takes the frames up to upto into the loudest onsets and bands heard,
+// the registers' levels and, where a row is read, the flux's
 func (s *RipStream) count(upto int) {
 	f := s.f
 	for t := s.counted - s.w0; t < upto-s.w0; t++ {
@@ -310,6 +335,9 @@ func (s *RipStream) count(upto int) {
 		for i, lh := range ripRegisters {
 			r := register{f: f, lo: lh[0], reach: registerReach(lh[0], lh[1])}
 			s.levels[i].add(r.peak(t))
+		}
+		if s.rp.Judge != nil || s.rp.Strikes && s.rp.Rows { // what reads a row
+			s.fluxes.add(f.Flux[t])
 		}
 	}
 	s.counted = upto
@@ -334,6 +362,9 @@ func (s *RipStream) decode(upto int, end bool) error {
 		x = x[:min(len(x), (upto-s.w0)*RipHop+RipN/2)]
 	}
 	f.loud, f.refs = s.loud, map[[2]int]float64{}
+	if s.fluxes.n > 0 {
+		f.fluxRef = s.fluxes.at(s.fluxes.n * accRowFlux / 100)
+	}
 	for i, lh := range ripRegisters { // the ninetieth percentile, as register reads it
 		f.refs[lh] = s.levels[i].at(s.levels[i].n * 9 / 10)
 	}
@@ -359,7 +390,7 @@ func (s *RipStream) decode(upto int, end bool) error {
 func (s *RipStream) hold(f *RipFrames, x []float64, ev ripEvents, end bool) error {
 	t := musicStart(x)
 	if t > 0 {
-		ev.hits, ev.bass, ev.melody = heardFrom(t, ev.hits, ev.bass, ev.melody)
+		ev.from(t)
 	}
 	g, bpm, tr, err := s.rp.grid(f, ev, s.p)
 	if err != nil {
@@ -381,7 +412,7 @@ func (s *RipStream) hold(f *RipFrames, x []float64, ev ripEvents, end bool) erro
 // offline grid would place it
 func (s *RipStream) follow(f *RipFrames, x []float64, ev ripEvents, end bool) error {
 	if t := s.start - s.w0; t > 0 {
-		ev.hits, ev.bass, ev.melody = heardFrom(t, ev.hits, ev.bass, ev.melody)
+		ev.from(t)
 	}
 	ev.root, ev.scale = s.root, s.scale
 	from := s.line - s.w0
@@ -399,14 +430,17 @@ func (s *RipStream) follow(f *RipFrames, x []float64, ev ripEvents, end bool) er
 	return s.freeze(f, x, g, ev, 1, shift, end)
 }
 
-// dedup drops the events a frozen one near the line holds already: a note of
-// its pitch or a hit of its drum starting within gap frames of it
+// dedup drops the events a frozen one near the line holds already: a note or a
+// strike of its pitch or a hit of its drum starting within gap frames of it
 func (s *RipStream) dedup(ev ripEvents, gap float64) ripEvents {
 	near := func(a, b int) bool { return math.Abs(float64(a-b)) <= gap }
 	again := func(n ripNote) bool {
 		return slices.ContainsFunc(s.tail, func(o ripNote) bool { return o.midi == n.midi && near(o.start, s.w0+n.start) })
 	}
 	ev.melody, ev.bass = slices.DeleteFunc(ev.melody, again), slices.DeleteFunc(ev.bass, again)
+	ev.strikes = slices.DeleteFunc(ev.strikes, func(st RipStrike) bool {
+		return slices.ContainsFunc(s.tailStrikes, func(o RipStrike) bool { return o.MIDI == st.MIDI && near(o.Frame, s.w0+st.Frame) })
+	})
 	for d := range ev.hits {
 		ev.hits[d] = slices.DeleteFunc(ev.hits[d], func(h ripHit) bool {
 			return slices.ContainsFunc(s.tailHits[d], func(t int) bool { return near(t, s.w0+h.frame) })
@@ -509,6 +543,22 @@ func (s *RipStream) freeze(f *RipFrames, x []float64, g ripGrid, ev ripEvents, f
 	}
 	slices.SortStableFunc(notes, func(a, b RipNote) int { return cmp.Compare(a.Start, b.Start) })
 	s.rip.Notes = append(s.rip.Notes, notes...)
+	// a strike freezes as a note starting where it does would, and one of a bar
+	// frozen before is that read's
+	var tailStrikes []RipStrike
+	s.openStrikes = s.openStrikes[:0]
+	for _, st := range ev.strikes {
+		at := st.Frame - shift
+		st.Frame += s.w0
+		switch bar, _, ok := g.at(at); {
+		case frozen(at):
+			if s.strikes = append(s.strikes, st); st.Frame >= line-near {
+				tailStrikes = append(tailStrikes, st)
+			}
+		case ok && bar >= first || !ok && at >= g.lines[0]:
+			s.openStrikes = append(s.openStrikes, st)
+		}
+	}
 	var tailHits [InstrClap][]int
 	for d, hs := range ev.hits {
 		for _, h := range hs {
@@ -525,7 +575,7 @@ func (s *RipStream) freeze(f *RipFrames, x []float64, g ripGrid, ev ripEvents, f
 		}
 	}
 	if n > 0 {
-		s.prev, s.line, s.tail, s.tailHits = s.w0+g.lines[first+n-1], line, tail, tailHits
+		s.prev, s.line, s.tail, s.tailHits, s.tailStrikes = s.w0+g.lines[first+n-1], line, tail, tailHits, tailStrikes
 		s.drop(s.line - ripStreamContext*(s.line-s.prev))
 	}
 	return nil

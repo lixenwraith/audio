@@ -729,11 +729,12 @@ since they sort the strikes into two populations the score weighs apart, and
 strikes judged all together let a bass note's partials take its sound. A front end's drum strength is how sure it is, so a
 drum it never grows sure of stays silent, where a bar set against its own loudest
 would raise its doubts to hits, and one striking under four times a minute is no
-part (`drumHits`). A register's voice is the mean of its notes' genes, one voice
-over the melody's two lines, on a modal bank whatever wave the head names, as it
-names saw through a phone's narrow band, with one oscillator, as that mean of two
-would beat, and a fade that keeps the line's long notes within 12 dB to their end
-(`lasting`).
+part (`drumHits`). A register's voice is the mean of the frames' genes over its
+notes, one voice over the melody's two lines, on a modal bank whatever wave the
+head names, as it names saw through a phone's narrow band; where a notes model
+says what plays each pitch (below), a line's voice is its own notes' instead.
+Either plays with one oscillator, as that mean of two would beat, and a fade
+that keeps the line's long notes within 12 dB to their end (`lasting`).
 `ripmodel.Load` reads
 a weight file into a front end; rip-train, stapes' trainer, writes one from loops
 the engine renders.
@@ -791,6 +792,90 @@ to its last leaving, so what sounds over the pitch a glide lands on is held
 against the glide. Its verdict is read in the cell it was struck in, as the
 note the strikes read, and keeps or drops the whole; and no strike comes back
 in a cell a glide passed.
+
+A judge can rule in the installed scores' place (`Ripper.Judge`): a trained
+network a stage, the reported notes' and the dropped strikes', over a strike's
+row. The row (`RipRowVersion` 1, `RipRowSize` 544 values) is built in one
+place, for the decoder and for whoever writes rows to fit:
+
+```
+values  what
+    11  the terms the scores weigh, scaled as they scale them: share, unF0,
+        unOdd, rise, strike, support, low, level, ringing, span, step
+   247  the strike plane, 13 frames from 4 before the strike's to 8 after, a
+        frame at a time, at 19 pitches: its own, then 24, 19, 12, 7, 5, 4, 3, 2
+        and 1 semitones under and 1, 2, 3, 4, 5, 7, 12, 19 and 24 over
+   247  the salience at the same cells, over the reference loudness of the
+        strike's register, the one its support is read against
+    13  the release plane at its pitch over those frames
+    13  the velocity plane there
+    13  the flux over the recording's 95th percentile
+```
+
+A cell outside the frames or the pitches is 0, and for a dropped strike the
+ringing term means a kept note of its pitch sounds at its start, never another
+candidate. A stage standardizes the row by its fit's mean and spread and reads
+it through two hidden layers with ReLU and one output through a sigmoid. A
+judge loads from a file of its own (`LoadRipJudge`), which names the row and
+the notes weights it was fitted on by the checksum their file ends in
+(`ripmodel.FrontEnd.NotesSum`), and is refused with any other notes model or a
+row this package does not build:
+
+```
+"VIFJ"  u32 version (1)  u32 row version  u32 row size  u32 hidden 1  u32 hidden 2  u64 notes checksum
+the reported notes' stage, then the dropped strikes':
+  mean[row] spread[row]  w1[h1 x row] b1[h1]  w2[h2 x h1] b2[h2]  w3[h2] b3[1]
+u64 FNV-1a 64 of all before it; little-endian, float32, an output's inputs together
+```
+
+With a judge loaded a reported note stays when its odds reach a half, and the
+covered, held note still stays on the heads' word. Every strike over a half that
+starts no reported note is a candidate, in both registers, the strongest of its
+pitch within `StrikeGap` standing, a pitch still sounding included. It is
+measured against the kept notes as before and comes back when its odds reach a
+half, and one that comes back on a pitch still sounding ends the kept note
+before it at its start. A followed note is judged once, by the row at its
+strike, and the strikes in the cells it moved on to are no candidates; the row
+does not read the cents. With none loaded nothing changes: the candidates, the
+scores and the bars are the installed ones, and the rip the same byte for byte.
+The module ships no judge: stapes writes the rows, fits one and loads it.
+
+The strikes judged can be read (`Ripper.Strikes`, `Rip.Strikes`): each a
+`RipStrike`, its start in frames, its pitch, whether the decoder reported it,
+whether it is held, its odds, the verdict, and under `Ripper.Rows` its row.
+With no judge loaded the read still lists every strike over a half, each with
+the installed verdict, a strike the installed scores never weigh dropped at
+odds of zero; a candidate they weighed is the strike of its pitch nearest it
+within `StrikeGap`. Its row is then fitted against the kept notes apart, on the
+floor as it stood before the installed candidates' fit, so it is the row a
+judge that kept the same notes would read, and asking changes no note.
+
+A notes model may also say what plays each pitch, where the model's wave, voice
+and family heads say one thing a frame: three more heads of values a pitch
+(`ripmodel.HeadPitchFamily`, a score for each of `RipFamilies` but unknown,
+which is the absence of a name and no class; `HeadPitchWave`, one for each of
+`VoiceWaves`; `HeadPitchVoice`, the genes). Their planes are 45 values a pitch,
+3,105 a frame, so the front end keeps them at each frame's twelve most salient
+pitches alone (`RipVoiceCells`; `RipFrames.VoiceAt` names them, most salient
+first), a byte a value (`RipFrames.Voices`, `RipVoiceSize` a pitch, 255 a
+whole): each family's and each wave's share, a softmax over its head's scores
+at the pitch, and each gene. That is 552 bytes a frame, twice the salience
+plane's 276: a three-minute recording's 15,504 frames keep 8.6 MB of them
+beside the 32 MB of their other fields.
+
+Each note of the registers is then told its voice (`tell`, `RipNote.Voice`):
+the mean of its pitch's values over the frames it sounds and is among the
+twelve, each weighed by its salience there, and over every cell a note that
+moved sounded in. Its wave is the one of the highest mean share and its genes
+are a voice `VoiceFromGenes` plays, whatever instrument made the sound. Its
+family is the one of the highest mean share where that share passes the measure
+the weight file carries (`RipFrames.Sure`, the head `ripmodel.HeadSure`: the
+share the notes of a family the trainer was told no name of reach at their
+surest), and none otherwise; a file that carries no measure names no note. A
+line's voice (`Rip.MelodyVoice`, `UnderVoice`, `BassVoice`) is then its own
+notes' mean voice by length, on the wave of the highest mean share, the melody
+and the line under it each their own. A live rip's lines take their registers'
+notes' mean the same way, and its notes carry no voice yet.
 
 The model's input (`features`) is each band in dB less the frame's mean, over
 80, and the mean, so the bands are level-free and loudness is one input. A model
@@ -900,7 +985,8 @@ before go, half a minute at most staying until the first bars freeze: a stream
 holds five bars of frames, its rip and, for `Final`, the recording as float32 at
 its own rate (10.6 MB a minute at 44.1 kHz). `Close` freezes the bars left and
 adds the voices and the drums' tone, read off each hit as it froze; `Final` rips
-the whole recording offline, as a whole decodes better. The engine's loops at
+the whole recording offline, as a whole decodes better, under the stream's
+judge when it has one. The engine's loops at
 100 and 140 bpm, a waltz and a jig, fed in 50 ms blocks, freeze `RipSamples`'s
 bars from the third on, note for note; a lag taken as the notes come can round a
 note to the next step where the whole's does not (one note a bar in the third to
@@ -922,7 +1008,13 @@ shorter wait. `Open` gives the bars after the frozen ones,
 each on the frames it spans (`RipOpenBar`), as they were laid out when the last
 bar froze, since the read that freezes a bar lays out those after it:
 provisional, renewed about once a bar, and on the engine's loop each is the bar
-that then freezes, note for note, its velocities settling.
+that then freezes, note for note, its velocities settling. `Strikes` gives the
+strikes judged from a frame on, under `Ripper.Strikes`: first those frozen with
+their bars, of the frames the stream holds or let go since the last `Write`
+began, then the open bars' as the read that froze the last bar judged them,
+with how many are frozen. A row's two levels over the whole recording, its
+register's reference and the flux's, are read over what the stream has heard,
+as the accounting's references are, the flux's as the ear gave it.
 
 What it does not yet tell apart: a bass note's attack from a kick, a plucked
 chord's attack from a snare, two voices in one register, a note off the key
@@ -953,7 +1045,8 @@ unaware of what drives it: tempo, tier and harmony arrive as commands.
 - Sequencer and patterns: `sequencer.go`, `pattern*.go`, `harmony.go`,
   `motif.go`, `track.go`, `voice.go`
 - Ripping a recording: `rip.go`, `dsp.go`, `streams.go`, `fidelity.go`,
-  `song.go`, `wav.go`, and as it plays `ripstream.go`; its transcripts compared
+  `song.go`, `wav.go`, its notes held to the recording `account.go`, by a
+  trained judge `judge.go`, and as it plays `ripstream.go`; its transcripts compared
   and read or written, and patterns and songs as MIDI files: `match.go`,
   `midi.go`; its learned front end `ripmodel`, over `lixenwraith/transformer`
 - Shared protocol identifiers: `model`

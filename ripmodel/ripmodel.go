@@ -2,10 +2,11 @@
 // frames whose heads say, per frame, whether anything and which drum struck,
 // which pitches sound, are struck or let go and how hard, the note's wave, genes
 // and family, and whether a beat or a bar line falls there, and a notes model
-// that may give the notes. stapes' rip-train trains both, of Spec and NotesSpec.
+// that may give the notes and what plays each. stapes' rip-train trains both.
 package ripmodel
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"math"
@@ -34,6 +35,14 @@ const (
 	// HeadCents is a notes model's alone: where in its cell each pitch's sound sits,
 	// in cells from the centre, then the log of the error it states for each
 	HeadCents = "cents"
+	// A notes model's alone, what plays each pitch: a score for each family of
+	// RipFamilies but unknown, one for each of VoiceWaves, and the voice's genes
+	HeadPitchFamily = "pitchfamily"
+	HeadPitchWave   = "pitchwave"
+	HeadPitchVoice  = "pitchvoice"
+	// HeadSure is the share a family must pass over a note to name it, a notes
+	// model's: a head of no weights, the same at every frame, its trainer's measure
+	HeadSure = "sure"
 )
 
 // Spec is the model the trainer builds and a weight file must match in its
@@ -60,24 +69,27 @@ func NotesSpec() transformer.Config {
 	return transformer.Config{
 		Inputs: stackBins + 1, Channels: stackChannels,
 		Outputs: []transformer.Head{heads[2], heads[6], heads[7], heads[8], {Name: HeadCents, Size: 2 * audio.RipPitches},
-			heads[0], heads[1], heads[3], heads[4], heads[5]},
+			{Name: HeadPitchFamily, Size: (len(audio.RipFamilies) - 1) * audio.RipPitches},
+			{Name: HeadPitchWave, Size: len(audio.VoiceWaves) * audio.RipPitches}, {Name: HeadPitchVoice, Size: audio.VoiceGeneCount * audio.RipPitches},
+			heads[0], heads[1], heads[3], heads[4], heads[5], {Name: HeadSure, Size: 1}},
 		Cells: &transformer.Cells{Bins: stackBins, Reduce: 8, Wide: 16, WideTime: 3, WideFreq: 39, Cell: 32, CellTime: 7, CellFreq: 3,
-			Stride: 3, Depth: 1, NearTime: 7, NearFreq: 3, First: audio.RipMinMIDI - stackRootMIDI, Read: audio.RipPitches, Heads: 5, Regions: 16,
+			Stride: 3, Depth: 1, NearTime: 7, NearFreq: 3, First: audio.RipMinMIDI - stackRootMIDI, Read: audio.RipPitches, Heads: 8, Regions: 16,
 			Scalars: []int{stackBins, stackChannels/2*(stackBins+1) + stackBins}, Frame: 64, FrameTime: 5, AgainTime: 9, Dilation: 2},
 	}
 }
 
 // notesHead is a head a notes model gives: one of Spec's it gives in place of
-// the model's, or one of its own of per values a pitch, which a notes model
-// trained before it may lack
+// the model's, or one of its own of per values a pitch and frame values a
+// frame, which a notes model trained before it may lack
 type notesHead struct {
-	name string
-	per  int
+	name       string
+	per, frame int
 }
 
 // notesHeads is a row a head
 var notesHeads = []notesHead{{name: HeadPitch}, {name: HeadVoicing}, {name: HeadStrike}, {name: HeadRelease}, {name: HeadVelocity},
-	{name: HeadCents, per: 2}}
+	{name: HeadCents, per: 2}, {name: HeadPitchFamily, per: len(audio.RipFamilies) - 1}, {name: HeadPitchWave, per: len(audio.VoiceWaves)},
+	{name: HeadPitchVoice, per: audio.VoiceGeneCount}, {name: HeadSure, frame: 1}}
 
 // FrontEnd hears with a model, and takes the notes from Notes when it has one
 type FrontEnd struct {
@@ -87,22 +99,49 @@ type FrontEnd struct {
 	// model hears it, when under the model's reach: its blocks share the wait,
 	// and its heads are no longer Hear's. Zero waits the reach.
 	Ahead float64
+	// NotesSum is the checksum the file of the weights that give the notes ends
+	// in, the notes model's or else the model's: what a judge names the weights
+	// it was fitted on by (audio.LoadRipJudge). Load sets it; zero from New.
+	NotesSum uint64
 }
 
 // Load reads a weight file, and a notes model's from notes when it is not nil,
 // and checks they hear and say what the rip expects.
 func Load(r, notes io.Reader) (*FrontEnd, error) {
-	m, err := transformer.Load(r)
+	sum := &tail{r: r}
+	m, err := transformer.Load(sum)
 	if err != nil {
 		return nil, err
 	}
 	var n *transformer.Model
 	if notes != nil {
-		if n, err = transformer.Load(notes); err != nil {
+		sum = &tail{r: notes}
+		if n, err = transformer.Load(sum); err != nil {
 			return nil, fmt.Errorf("notes model: %w", err)
 		}
 	}
-	return New(m, n)
+	fe, err := New(m, n)
+	if err != nil {
+		return nil, err
+	}
+	fe.NotesSum = binary.LittleEndian.Uint64(sum.last[:])
+	return fe, nil
+}
+
+// tail reads through r and keeps the last eight bytes read, the checksum a
+// weight file ends in
+type tail struct {
+	r    io.Reader
+	last [8]byte
+}
+
+func (t *tail) Read(p []byte) (int, error) {
+	n, err := t.r.Read(p)
+	if k := min(n, len(t.last)); k > 0 {
+		copy(t.last[:], t.last[k:])
+		copy(t.last[len(t.last)-k:], p[n-k:n])
+	}
+	return n, err
 }
 
 // optionalHeads is how many of Spec's last heads a model may lack: one trained
@@ -134,12 +173,12 @@ func New(m, notes *transformer.Model) (*FrontEnd, error) {
 		return nil, fmt.Errorf("ripmodel: notes model reads %d inputs in %d channels, want the harmonic stack's %d in %d", got.Inputs, got.Channels, stackBins+1, stackChannels)
 	}
 	for _, h := range notesHeads {
-		head := transformer.Head{Name: h.name, Size: h.per * audio.RipPitches}
-		if h.per == 0 {
+		head := transformer.Head{Name: h.name, Size: h.per*audio.RipPitches + h.frame}
+		if head.Size == 0 {
 			head = want.Outputs[slices.IndexFunc(want.Outputs, func(o transformer.Head) bool { return o.Name == h.name })]
 		}
 		i := slices.IndexFunc(notes.Config().Outputs, func(o transformer.Head) bool { return o.Name == h.name })
-		if i < 0 && h.per > 0 {
+		if i < 0 && h.per+h.frame > 0 {
 			continue
 		}
 		if i < 0 || notes.Config().Outputs[i] != head {
@@ -154,8 +193,8 @@ func New(m, notes *transformer.Model) (*FrontEnd, error) {
 // scores as strengths, the pitch scores as salience, the chroma folded from them,
 // the wave scores and voice genes as they are, the strike, release and velocity
 // scores when a model has them, the family's softmax and the beat and downbeat
-// scores when the model has them, and each pitch's cents and their stated error
-// when the notes model has them.
+// scores when the model has them, and when the notes model has them each pitch's
+// cents and their error, what plays each frame's most salient pitches, and Sure.
 func (fe *FrontEnd) Hear(x []float64, rate int, _ audio.RipParams) (*audio.RipFrames, error) {
 	in := features(audio.MelFrames(x, rate), fe.pcen())
 	out := fe.Model.Forward(fe.planes(in))
@@ -224,6 +263,12 @@ func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 	if n > 0 && head(HeadCents, 0) != nil {
 		f.Cents, f.CentsError = make([]float32, 0, n*audio.RipPitches), make([]float32, 0, n*audio.RipPitches)
 	}
+	if n > 0 && head(HeadPitchFamily, 0) != nil && head(HeadPitchWave, 0) != nil && head(HeadPitchVoice, 0) != nil {
+		f.VoiceAt, f.Voices = make([]uint8, 0, n*audio.RipVoiceCells), make([]uint8, 0, n*audio.RipVoiceCells*audio.RipVoiceSize)
+		if s := head(HeadSure, 0); s != nil {
+			f.Sure = float64(s[0])
+		}
+	}
 	for t := range out {
 		f.Flux[t] = sigmoid(head(HeadOnset, t)[0])
 		for d, v := range head(HeadDrums, t) {
@@ -265,8 +310,49 @@ func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 				f.CentsError = append(f.CentsError, float32(100*math.Exp(float64(c[audio.RipPitches+i]))))
 			}
 		}
+		if f.Voices != nil {
+			f.VoiceAt, f.Voices = appendVoices(f.VoiceAt, f.Voices, head(HeadPitch, t), head(HeadPitchFamily, t), head(HeadPitchWave, t), head(HeadPitchVoice, t))
+		}
 	}
 	return f
+}
+
+// appendVoices appends a frame's RipVoiceCells most salient pitches, the most
+// salient first, and what the heads say plays each as bytes of 255 a whole:
+// the family scores' softmax, the wave scores' and each gene's sigmoid. A
+// head's scores lie value by value, each value's pitches in turn.
+func appendVoices(at, to []uint8, pitch, family, wave, voice []float32) ([]uint8, []uint8) {
+	var top [audio.RipVoiceCells]int
+	for i := range pitch { // an insertion into the cells kept, the earlier of two alike first
+		k := min(i, len(top))
+		for ; k > 0 && pitch[i] > pitch[top[k-1]]; k-- {
+			if k < len(top) {
+				top[k] = top[k-1]
+			}
+		}
+		if k < len(top) {
+			top[k] = i
+		}
+	}
+	var shares []float32
+	for _, cell := range top {
+		at = append(at, uint8(cell))
+		for _, h := range [][]float32{family, wave} {
+			shares = shares[:0]
+			for i := cell; i < len(h); i += audio.RipPitches {
+				shares = append(shares, h[i])
+			}
+			n := len(shares)
+			shares = appendSoftmax(shares, shares)
+			for _, v := range shares[n:] {
+				to = append(to, uint8(math.Round(255*float64(v))))
+			}
+		}
+		for i := cell; i < len(voice); i += audio.RipPitches {
+			to = append(to, uint8(math.Round(255*sigmoid(voice[i]))))
+		}
+	}
+	return at, to
 }
 
 // earStep is the seconds of frames the ear gives at a time
