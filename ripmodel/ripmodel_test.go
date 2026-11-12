@@ -19,9 +19,9 @@ import (
 
 // TestAnUntrainedModelHearsFramesTheRipReads is the contract between the models
 // and the decoders: Spec's yields frames the rip runs on, every field read, a
-// family's shares summing to one, with or without its last four heads, in one
-// channel or two; a notes model gives the notes, each pitch's cents and what
-// plays a frame's most salient pitches, unless it was trained before those.
+// family's shares summing to one, with or without its last heads back to the
+// strike's, in one channel or two; a notes model gives the notes, each pitch's
+// cents and what plays a frame's most salient pitches, unless trained before those.
 func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 	cfg := Spec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window = 16, 2, 1, 32, 8 // a small one for the test's sake
@@ -53,9 +53,13 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 	per := n * audio.RipPitches
 	if n < 400 || len(f.Salience) != per || len(f.Strike) != per || len(f.Release) != per || len(f.Velocity) != per ||
 		len(f.Voice) != n*audio.VoiceGeneCount || len(f.Wave) != n*len(audio.VoiceWaves) || len(f.Onset[2]) != n ||
-		len(f.Family) != n*len(audio.RipFamilies) {
-		t.Fatalf("frames %d, salience %d, strikes %d, releases %d, velocities %d, voice %d, wave %d, family %d",
-			n, len(f.Salience), len(f.Strike), len(f.Release), len(f.Velocity), len(f.Voice), len(f.Wave), len(f.Family))
+		len(f.Family) != n*len(audio.RipFamilies) || len(f.Beat) != n || len(f.Downbeat) != n {
+		t.Fatalf("frames %d, salience %d, strikes %d, releases %d, velocities %d, voice %d, wave %d, family %d, beat %d, downbeat %d",
+			n, len(f.Salience), len(f.Strike), len(f.Release), len(f.Velocity), len(f.Voice), len(f.Wave), len(f.Family), len(f.Beat), len(f.Downbeat))
+	}
+	if out := m.Forward(fe.planes(features(audio.MelFrames(x, audio.AudioSampleRate), false))); f.Beat[n/2] != sigmoid(m.Slice(out[n/2], HeadBeat)[0]) ||
+		f.Downbeat[n/2] != sigmoid(m.Slice(out[n/2], HeadDownbeat)[0]) {
+		t.Errorf("frame %d's beat %g and downbeat %g are not the heads' sigmoids", n/2, f.Beat[n/2], f.Downbeat[n/2])
 	}
 	for at := 0; at < len(f.Family); at += len(audio.RipFamilies) {
 		var sum float64
@@ -79,9 +83,12 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 			continue
 		}
 		of, err := ofe.Hear(x, audio.AudioSampleRate, audio.DefaultRipParams())
-		if err != nil || of.Family != nil || (of.Velocity != nil) != (lack < 2) || (of.Release != nil) != (lack < 3) || (of.Strike != nil) != (lack < 4) {
-			t.Errorf("a model without its last %d heads heard strikes %v, releases %v, velocities %v, families %v: %v",
-				lack, of.Strike != nil, of.Release != nil, of.Velocity != nil, of.Family != nil, err)
+		has := []bool{of.Downbeat != nil, of.Beat != nil, of.Family != nil, of.Velocity != nil, of.Release != nil, of.Strike != nil}
+		for i, h := range has {
+			if err != nil || h != (lack <= i) {
+				t.Errorf("a model without its last %d heads heard downbeats, beats, families, velocities, releases, strikes %v: %v", lack, has, err)
+				break
+			}
 		}
 	}
 	planes := cfg
@@ -313,13 +320,14 @@ func struck(sec int) (x []float64, loudest int) {
 }
 
 // modelHeads are the heads a notes model leaves the model, as the rip reads them
-var modelHeads = []string{HeadOnset, HeadDrums, HeadWave, HeadVoice, HeadFamily}
+var modelHeads = []string{HeadOnset, HeadDrums, HeadWave, HeadVoice, HeadFamily, HeadBeat, HeadDownbeat}
 
 // byHead appends frames' values to to, by the head each is read from, a frame's
 // after another's, and the spectrum under its own name
 func byHead(to map[string][]float32, f *audio.RipFrames) {
 	for t, v := range f.Flux {
 		to[HeadOnset] = append(to[HeadOnset], float32(v))
+		to[HeadBeat], to[HeadDownbeat] = append(to[HeadBeat], float32(f.Beat[t])), append(to[HeadDownbeat], float32(f.Downbeat[t]))
 		for d := range f.Onset {
 			to[HeadDrums] = append(to[HeadDrums], float32(f.Onset[d][t]))
 		}

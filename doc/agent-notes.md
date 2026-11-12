@@ -340,6 +340,31 @@ that a document now states, and link the document instead.
   addresses: hash `MarshalPatternFile`'s document instead. `Rip.Notes` is the
   transcript before the grid, so it hashes the same when only the bars move.
 
+- **A tempo's lag under the search's bound is halved against its double.** The
+  prior scores a lag under 21 frames at about half its double's, and a
+  periodic signal repeats as much at both, so nothing steady is ever read
+  there: a test of the bound needs a figure whose spacing repeats once or
+  twice and stops, three notes on a slow pulse
+  (`TestTempoReadsNoLagFasterThan240BPM`). `60/240/f.Hop` divided two integer
+  constants first: write such a bound as `60/(240*f.Hop)`.
+- **A reading of heard beats counts the meter's own.** With the heads a bar is
+  `Meter.Beats()` tracked beats of `Meter.Beat()` steps, so 6/8 is six eighths
+  and parts from 3/4 by its lines; the cues' readings count quarters, where
+  6/8 is only a name for 3/4's bar. A tempo the listener gives is a quarter's
+  either way (`heardReadings`' `given`).
+- **A sum of log-odds is a decision with no threshold only for a posterior.**
+  `level` and `heardLines` add `log(p/(1-p))` over a class of frames. A head
+  trained with a positive weight, read through a threshold elsewhere, would
+  shift every such sum by its count times log w.
+- **A change that must not move the rip is held by a digest of rips, run
+  twice.** A scratch program: every WAV of a rendered corpus ripped through the
+  analysis and through random weights of `Spec` cut to the heads before the
+  change, offline and streamed, each rip's JSON hashed; 240 rips of stapes'
+  `corpus <dir> 48 8 aug gen meters` gave one digest before and after the
+  heads. One stream rip in it flips between runs of one binary
+  ([todo](todo.md#part-the-lines-the-same-way-every-run)): a differing line is
+  run again on both sides before it is believed.
+
 ## The matched kit
 
 - A drum's tone picks the quarter of its hits with the least power before

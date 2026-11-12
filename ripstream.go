@@ -417,8 +417,8 @@ func (s *RipStream) follow(f *RipFrames, x []float64, ev ripEvents, end bool) er
 	ev.root, ev.scale = s.root, s.scale
 	from := s.line - s.w0
 	lines := []int{from}
-	if pulses := f.beats(s.track.period/float64(s.track.k), s.p, from); len(pulses) > 1 {
-		rds, err := f.readings(pulses, s.track.k, s.track.bpm, &s.track.rd.m)
+	if pulses := f.pulses(s.track.period, s.track.k, s.p, from); len(pulses) > 1 {
+		rds, err := f.readings(pulses, s.track.k, s.track.bpm, &s.track.rd.m, s.rp.Grid != nil)
 		if err != nil {
 			return err
 		}

@@ -434,3 +434,77 @@ func BenchmarkRipStream(b *testing.B) {
 		})
 	}
 }
+
+// headFront is a front end that gives frames built by hand, a frame a hop of
+// the samples heard, as a model's ear gives its own
+type headFront struct{ f *RipFrames }
+
+type headEar struct {
+	f        *RipFrames
+	n, given int
+}
+
+func (h headFront) Hear(x []float64, _ int, _ RipParams) (*RipFrames, error) {
+	e := &headEar{f: h.f}
+	return e.Hear(x)
+}
+
+func (h headFront) Ear(RipParams, bool) (RipEar, error) { return &headEar{f: h.f}, nil }
+
+func (e *headEar) Hear(x []float64) (*RipFrames, error) {
+	e.n += len(x)
+	f := *e.f
+	f.cut(e.given, e.n/RipHop)
+	e.given = max(e.given, e.n/RipHop)
+	return &f, nil
+}
+
+func (e *headEar) Close() (*RipFrames, error) { return nil, nil }
+
+// TestRipStreamReadsTheHeads: a stream through an ear whose frames carry the
+// heads holds the head's tempo and meter, and every bar it freezes, the first
+// and those it follows on with, starts on a line the downbeat head marks
+func TestRipStreamReadsTheHeads(t *testing.T) {
+	const n, beat, per = 4000, 40, 3
+	f := headFrames(n, 43, beat, 0, per, 1)
+	for d := range f.Onset {
+		f.Onset[d] = make([]float64, n)
+	}
+	f.Salience = make([]float32, n*RipPitches)
+	x := make([]float64, n*RipHop)
+	for i := range x {
+		x[i] = 0.3 * math.Sin(float64(i)*2*math.Pi*220/RipRate)
+	}
+	for _, m := range []*Meter{nil, {3, 4}} {
+		rp := Ripper{Params: DefaultRipParams(), FrontEnd: headFront{f}, Meter: m}
+		off, err := rp.Samples(x, RipRate)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s, err := NewRipStream(rp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, block := 0, RipRate/20; i < len(x); i += block {
+			if err := s.Write(x[i:min(i+block, len(x))], RipRate); err != nil {
+				t.Fatal(err)
+			}
+		}
+		r, err := s.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var lines []int
+		for i := 0; i < len(r.Beats); i += r.Meter.Beats() {
+			lines = append(lines, int(math.Round(r.Beats[i]/f.Hop)))
+		}
+		want := Meter{3, 8} // three heard beats with no drum and no sixteenth are written in eighths
+		if m != nil {
+			want = *m
+		}
+		if r.Meter != want || r.Meter != off.Meter || r.BPM != off.BPM || len(r.Bars) < n/(per*beat)-2 || !every(lines, beat, per*beat) {
+			t.Errorf("pinned %v: %d bars in %s at %d bpm, the offline rip in %s at %d, lines %v: want %s on the head's lines, every %d frames from %d",
+				m != nil, len(r.Bars), r.Meter, r.BPM, off.Meter, off.BPM, lines[:min(len(lines), 6)], want, per*beat, beat)
+		}
+	}
+}

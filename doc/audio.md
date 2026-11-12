@@ -429,8 +429,9 @@ four times longer, every spectral peak votes its offset from the nearest
 semitone, and the pitch table is read on the mean offset, so a clip tuned forty
 cents flat, where every note sits between two semitone rows and wobbles between
 them, reads as one in tune. The percussive onsets, each drum's band against its
-own peak with the kick's counting double, give the tempo (autocorrelation under a
-log-Gaussian prior centred on 120 BPM, folded into 80–200) and the pulses the
+own peak with the kick's counting double, give the tempo (autocorrelation from
+240 BPM to 60 under a log-Gaussian prior centred on 120, folded into 80–200) and
+the pulses the
 bars are read over (a dynamic programme loose enough to follow a tempo that
 moves): the tatum,
 three pulses a beat when the beats hold onsets on both their thirds (a swung
@@ -499,6 +500,55 @@ whichever pulse the tracker locked on; a bar of 2 or 4 beats keeps its
 quarter. Für Elise reads 3/8 at 73, the tempo a player reads being eighth 147
 (`FeltTempo`, §7); a waltz whose notes are eighths and quarters reads 3/8 at
 half tempo too, one with sixteenth runs 3/4, and the pin overrides either.
+
+Where the frames carry a beat and a downbeat head (`RipFrames.Beat`,
+`Downbeat`: a model's posterior that a beat of the meter, and a bar line, falls
+within a frame; `heard`), the beat and the line are read from them and none of
+the above decides. With one head alone, or neither, every decision is the
+above's.
+
+- **The tempo and the beats.** The tempo is how the beat head repeats: the same
+  autocorrelation, prior and fold, over the head on the onsets' scale (above
+  its local mean, at unit deviation, so `tightness` weighs it as it weighs
+  them), and the beats are tracked on it.
+- **The beat the head marks** (`level`). The prior may read a beat at half,
+  double or a third of the head's own rate. The tracked beat is cut in two or
+  three where the head marks the halves or the thirds between the beats, and
+  doubled where it marks every other beat and not the rest; a class of frames
+  is marked when its log-odds sum over zero, the head's own word and no
+  threshold. A beat spans 12 frames at least. A tempo the listener gives
+  (`RipGrid`) stands, a quarter's.
+- **The pulses** inside a beat are the beats' spans cut in the count `tatum`
+  reads from the onsets. No decision reads them where the beat is heard: a
+  line falls on a tracked beat, and the grid cuts each bar in its meter's
+  steps.
+- **A beat is the meter's own note**, as `Rip.Beats` lists it: a quarter in
+  4/4 and 3/4, an eighth in 6/8, six to the bar, never the felt dotted
+  quarter. So a reading is a bar of its meter's beats (`heardReadings`): four
+  heard beats 4/4 and three 3/4 at the beats' tempo, six 6/8 at half of it;
+  where that tempo is outside the sequencer's range the note moves by octaves
+  (four beats at 352 are 4/8 at 176).
+- **The bar lines** (`heardLines`) are where the downbeat head is likeliest
+  over the tracked beats: a line every bar's beats from the phase that scores
+  highest, a beat scoring log p where it is a line and log(1 - p) where it is
+  not, p the head's surest value within a frame, read no surer than one in a
+  million. The meter is the reading that scores highest a beat, the first
+  where two tie. No cue is weighed against another, no margin parts two
+  meters, and a clip of any length is read in all three.
+- **A bar holds its beats**, no more and no fewer: the path's slack of a pulse
+  or two is not taken here, since what a slipped bar should cost against a
+  head's posterior is a number nothing fits yet
+  ([todo](todo.md#hear-the-beat-and-the-bar-line-on-trained-weights)).
+- **The name.** The tempo and the meter are the heard beats', so `name`'s
+  rules that undo the tracker's level, half, double and triplets, have
+  nothing to undo, and six heard beats stay 6/8. One convention holds: which
+  note carries a beat nobody divides is no sound, so a drumless bar of three
+  or five with no sixteenth is still written in eighths at half the tempo,
+  Für Elise 3/8.
+- **The stream** reads the heads through the same functions: its first bars as
+  offline, each later bar counted on from the last frozen line on beats
+  tracked on the head, so it consults the downbeat head for its first bars
+  alone.
 
 Pitch salience sums a candidate's partials, the bass register's from its first
 three, read from a window four times longer as well as the rip's own, the two
@@ -612,10 +662,13 @@ other, a transformer over the log-mel frames `MelFrames` makes, whose heads say
 per frame what struck, what sounds, which pitch is struck or let go and how hard
 (`RipFrames.Strike`, `Release`, `Velocity`), the wave and voice genes
 (`VoiceDef.Genes`) the note is played with, so a rip through it also names the
-voices its registers were played with (`Rip.Voices`), and the family playing the
+voices its registers were played with (`Rip.Voices`), the family playing the
 highest note (`RipFrames.Family`, shares over `RipFamilies`: piano, guitar,
 voice, bass, strings, winds, synth, drums or unknown), which no decoder reads
-yet. From strikes both registers' notes start where a pitch is struck, as hard
+yet, and the beat and the bar line (`ripmodel.HeadBeat`, `HeadDownbeat`, after
+the family in `Spec`; a model without them loads as before, and a library from
+before them refuses a file that has them, its heads no prefix of its `Spec`'s).
+From strikes both registers' notes start where a pitch is struck, as hard
 as it was, and last while
 it sounds or until it is let go (`Release`, the pitch ringing on as far as a new
 strike goes), any number at once, in place of the two-line path, which stays on

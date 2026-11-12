@@ -1,8 +1,8 @@
 // Package ripmodel is the rip's learned front end: a transformer over log-mel
 // frames whose heads say, per frame, whether anything and which drum struck,
-// which pitches sound, are struck or let go and how hard, the note's wave and
-// genes and the family playing it, and a notes model beside it that may give the
-// notes and what plays each. stapes' rip-train trains both: Spec and NotesSpec.
+// which pitches sound, are struck or let go and how hard, the note's wave, genes
+// and family, and whether a beat or a bar line falls there, and a notes model
+// that may give the notes and what plays each. stapes' rip-train trains both.
 package ripmodel
 
 import (
@@ -30,6 +30,8 @@ const (
 	HeadRelease  = "release"  // each of the rip's pitches let go at this frame
 	HeadVelocity = "velocity" // how hard each pitch struck at this frame was struck
 	HeadFamily   = "family"   // what plays the highest note sounding, one score per RipFamilies entry
+	HeadBeat     = "beat"     // a beat of the meter falls on this frame
+	HeadDownbeat = "downbeat" // a bar line falls on this frame
 	// HeadCents is a notes model's alone: where in its cell each pitch's sound sits,
 	// in cells from the centre, then the log of the error it states for each
 	HeadCents = "cents"
@@ -53,7 +55,7 @@ func Spec() transformer.Config {
 			{Name: HeadOnset, Size: 1}, {Name: HeadDrums, Size: int(audio.InstrClap)}, {Name: HeadPitch, Size: audio.RipPitches},
 			{Name: HeadVoicing, Size: 1}, {Name: HeadWave, Size: len(audio.VoiceWaves)}, {Name: HeadVoice, Size: audio.VoiceGeneCount},
 			{Name: HeadStrike, Size: audio.RipPitches}, {Name: HeadRelease, Size: audio.RipPitches}, {Name: HeadVelocity, Size: audio.RipPitches},
-			{Name: HeadFamily, Size: len(audio.RipFamilies)},
+			{Name: HeadFamily, Size: len(audio.RipFamilies)}, {Name: HeadBeat, Size: 1}, {Name: HeadDownbeat, Size: 1},
 		},
 	}
 }
@@ -143,9 +145,9 @@ func (t *tail) Read(p []byte) (int, error) {
 }
 
 // optionalHeads is how many of Spec's last heads a model may lack: one trained
-// before the strike, release, velocity or family head loads without them, its
-// notes read from what it has
-const optionalHeads = 4
+// before the strike, release, velocity, family, beat or downbeat head loads
+// without them, its notes and its bars read from what it has
+const optionalHeads = 6
 
 // New wraps a model and a notes model, nil for none, refusing a model whose
 // inputs or heads are not a prefix of Spec's or that reads more than two
@@ -190,9 +192,9 @@ func New(m, notes *transformer.Model) (*FrontEnd, error) {
 // model when there is one, and reads their heads into frames: the onset and drum
 // scores as strengths, the pitch scores as salience, the chroma folded from them,
 // the wave scores and voice genes as they are, the strike, release and velocity
-// scores when a model has them, the family's softmax when the model has it, and
-// when the notes model has them each pitch's cents and their stated error, what
-// plays each frame's most salient pitches, and the share that names a note.
+// scores when a model has them, the family's softmax and the beat and downbeat
+// scores when the model has them, and when the notes model has them each pitch's
+// cents and their error, what plays each frame's most salient pitches, and Sure.
 func (fe *FrontEnd) Hear(x []float64, rate int, _ audio.RipParams) (*audio.RipFrames, error) {
 	in := features(audio.MelFrames(x, rate), fe.pcen())
 	out := fe.Model.Forward(fe.planes(in))
@@ -252,6 +254,12 @@ func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 	if n > 0 && head(HeadFamily, 0) != nil {
 		f.Family = make([]float32, 0, n*len(audio.RipFamilies))
 	}
+	if n > 0 && head(HeadBeat, 0) != nil {
+		f.Beat = make([]float64, n)
+	}
+	if n > 0 && head(HeadDownbeat, 0) != nil {
+		f.Downbeat = make([]float64, n)
+	}
 	if n > 0 && head(HeadCents, 0) != nil {
 		f.Cents, f.CentsError = make([]float32, 0, n*audio.RipPitches), make([]float32, 0, n*audio.RipPitches)
 	}
@@ -288,6 +296,12 @@ func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 		}
 		if f.Family != nil {
 			f.Family = appendSoftmax(f.Family, head(HeadFamily, t))
+		}
+		if f.Beat != nil {
+			f.Beat[t] = sigmoid(head(HeadBeat, t)[0])
+		}
+		if f.Downbeat != nil {
+			f.Downbeat[t] = sigmoid(head(HeadDownbeat, t)[0])
 		}
 		if f.Cents != nil {
 			c := head(HeadCents, t)
