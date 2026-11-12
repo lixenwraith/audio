@@ -1086,6 +1086,32 @@ func TestAgreementCountsEveryNoteWhateverItsLine(t *testing.T) {
 	}
 }
 
+// TestAPitchedLineMatchesByPitchBesideATappedOne: a transcript of a tapped melody
+// and a bass with pitches, against a rip whose bass is all another pitch: every
+// note as one line counts the taps by onset and the bass by pitch, timed and
+// fitted, so the bass's wrong notes are not heard.
+func TestAPitchedLineMatchesByPitchBesideATappedOne(t *testing.T) {
+	text := "at 120 bpm\nunit quarter\nstart 0s\nmelody aaaaaaaa\n"
+	var rip []RipNote
+	for i := range 8 {
+		at := 0.5 * float64(i)
+		text += fmt.Sprintf("bass %.2fs %s 0.2s\n", at+0.25, []string{"G2", "A2", "B2", "C3"}[i%4])
+		rip = append(rip, RipNote{Start: at, End: at + 0.4, MIDI: 72}, RipNote{Start: at + 0.25, End: at + 0.45, MIDI: 40, Bass: true})
+	}
+	truth, err := ParseTranscript(text, 120, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, timed := range []bool{true, false} {
+		ag := MatchNotes(rip, truth, timed)
+		melody, bass := ag.Lines[0], ag.Lines[2]
+		if ag.All.Matched != melody.Matched+bass.Matched || ag.All.Rhythm || melody.Matched != 8 || timed && bass.Matched != 0 {
+			t.Errorf("timed %v, shift %d: melody %d of %d by onset, bass %d of %d by pitch, All %d of %d (rhythm %v)",
+				timed, ag.Shift, melody.Matched, melody.B, bass.Matched, bass.B, ag.All.Matched, ag.All.B, ag.All.Rhythm)
+		}
+	}
+}
+
 // TestATimedTruthFitsNoMap: a transcript 0.15 s late and a tone up matches
 // every note under the map and the transposition the search finds, and none
 // timed, its seconds and pitches read as given, where one on the same clock

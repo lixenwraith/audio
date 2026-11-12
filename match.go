@@ -57,7 +57,7 @@ type LineAgreement struct {
 	OnlyA, OnlyB  []RipNote
 	Split, Merged int
 	Cut, Spanning []RipNote // the notes of b cut in two or more by a's, and the notes of a spanning two or more of b's
-	Rhythm        bool      // b's notes had no pitch: matched by onset, not by pitch in order
+	Rhythm        bool      // none of b's notes had a pitch: matched by onset, not by pitch
 }
 
 // ripLineNames are a transcript's lines by name, in lineOf's order
@@ -127,19 +127,10 @@ func align(a, b []RipNote, shift int, timed bool) Agreement {
 		}
 		return la, lb
 	}
-	isRhythm := func(lb []RipNote) bool { return slices.ContainsFunc(lb, func(n RipNote) bool { return n.MIDI < 0 }) }
-	ordered := func(la, lb []RipNote) [][2]int {
-		if isRhythm(lb) {
-			return onsets(la, lb)
-		}
-		return subsequence(la, lb, shift)
-	}
-	inPlace := func(la, lb []RipNote) [][2]int {
-		if isRhythm(lb) {
-			return onsets(la, lb)
-		}
-		return nearPlace(la, lb, shift, ag.At)
-	}
+	// a note given with no pitch matches by onset among the notes the pitched ones
+	// left, so a tapped line beside them leaves theirs matched by pitch
+	ordered := func(la, lb []RipNote) [][2]int { return onsets(la, lb, subsequence(la, lb, shift)) }
+	inPlace := func(la, lb []RipNote) [][2]int { return onsets(la, lb, nearPlace(la, lb, shift, ag.At)) }
 	// a further part's note is of no line above the bass, whose line is its register
 	inLine := func(line int) func(RipNote) bool {
 		return func(n RipNote) bool { return lineOf(n) == line && (line == 2 || !n.Further) }
@@ -151,6 +142,7 @@ func align(a, b []RipNote, shift int, timed bool) Agreement {
 		for _, q := range pairs(la, lb) {
 			p = append(p, [2]float64{lb[q[1]].Start, la[q[0]].Start})
 		}
+		slices.SortStableFunc(p, func(x, y [2]float64) int { return cmpFloat(x[0], y[0]) })
 		return p
 	}
 	if !timed {
@@ -174,7 +166,7 @@ func align(a, b []RipNote, shift int, timed bool) Agreement {
 	part := func(keep func(RipNote) bool) LineAgreement {
 		la, lb := split(keep)
 		pairs := inPlace(la, lb)
-		rhythm := isRhythm(lb)
+		rhythm := len(lb) > 0 && !slices.ContainsFunc(lb, func(n RipNote) bool { return n.MIDI >= 0 })
 		l := LineAgreement{A: len(la), B: len(lb), Matched: len(pairs), Rhythm: rhythm}
 		if rhythm {
 			l.Cut, l.Spanning = spans(la, lb)
@@ -247,13 +239,16 @@ func smoothed(p [][2]float64) [][2]float64 {
 	return out
 }
 
-// nearPlace pairs each note of b, in time order, with the nearest note of a not
-// yet taken, of its pitch and within matchWindow of where at places it, as index
-// pairs in b's order; a is in time order
+// nearPlace pairs each note of b with a pitch, in time order, with the nearest
+// note of a not yet taken, of its pitch and within matchWindow of where at places
+// it, as index pairs in b's order; a is in time order
 func nearPlace(a, b []RipNote, shift int, at func(float64) float64) [][2]int {
 	taken := make([]bool, len(a))
 	var pairs [][2]int
 	for j, n := range b {
+		if n.MIDI < 0 {
+			continue
+		}
 		place := at(n.Start)
 		i, _ := slices.BinarySearchFunc(a, place-matchWindow, func(x RipNote, t float64) int { return cmpFloat(x.Start, t) })
 		best, away := -1, matchWindow
@@ -271,7 +266,7 @@ func nearPlace(a, b []RipNote, shift int, at func(float64) float64) [][2]int {
 }
 
 // subsequence is the longest common subsequence of two lines' pitches, b's
-// shifted, as index pairs in order
+// shifted and its notes with no pitch left out, as index pairs in order
 func subsequence(a, b []RipNote, shift int) [][2]int {
 	n, m := len(a), len(b)
 	if n == 0 || m == 0 {
@@ -279,9 +274,10 @@ func subsequence(a, b []RipNote, shift int) [][2]int {
 	}
 	l := make([]int32, (n+1)*(m+1))
 	at := func(i, j int) *int32 { return &l[i*(m+1)+j] }
+	same := func(i, j int) bool { return b[j].MIDI >= 0 && a[i].MIDI == b[j].MIDI+shift }
 	for i := n - 1; i >= 0; i-- {
 		for j := m - 1; j >= 0; j-- {
-			if a[i].MIDI == b[j].MIDI+shift {
+			if same(i, j) {
 				*at(i, j) = *at(i+1, j+1) + 1
 			} else {
 				*at(i, j) = max(*at(i+1, j), *at(i, j+1))
@@ -291,7 +287,7 @@ func subsequence(a, b []RipNote, shift int) [][2]int {
 	var pairs [][2]int
 	for i, j := 0, 0; i < n && j < m; {
 		switch {
-		case a[i].MIDI == b[j].MIDI+shift:
+		case same(i, j):
 			pairs = append(pairs, [2]int{i, j})
 			i, j = i+1, j+1
 		case *at(i+1, j) >= *at(i, j+1):
@@ -330,7 +326,7 @@ func placed(a, b []RipNote) []RipNote {
 						lb = append(lb, x)
 					}
 				}
-				n += len(onsets(la, lb))
+				n += len(onsets(la, lb, nil))
 			}
 			// among maps that match as many, the one nearest the listener's own
 			away := math.Abs(stretch-1)*10 + math.Abs(offset)
@@ -342,27 +338,35 @@ func placed(a, b []RipNote) []RipNote {
 	return mapped(bestStretch, bestOffset)
 }
 
-// onsets matches a's notes to b's by when they start, b's notes having no
-// pitch: in time order, each note of b takes the nearest note of a that starts
-// within half of b's shortest note, once
-func onsets(a, b []RipNote) [][2]int {
-	if len(a) == 0 || len(b) == 0 {
-		return nil
-	}
+// onsets adds to pairs b's notes with no pitch, matched by when they start to
+// a's notes pairs leaves: in time order, each takes the nearest that starts
+// within half of the shortest of them, once
+func onsets(a, b []RipNote, pairs [][2]int) [][2]int {
 	tol := math.Inf(1)
 	for _, n := range b {
-		tol = math.Min(tol, (n.End-n.Start)/2)
+		if n.MIDI < 0 {
+			tol = math.Min(tol, (n.End-n.Start)/2)
+		}
+	}
+	if math.IsInf(tol, 1) || len(a) == 0 {
+		return pairs
 	}
 	tol = math.Max(tol, 0.03)
-	var pairs [][2]int
+	taken := make([]bool, len(a))
+	for _, p := range pairs {
+		taken[p[0]] = true
+	}
 	i := 0
 	for j, n := range b {
+		if n.MIDI >= 0 {
+			continue
+		}
 		for i < len(a) && a[i].Start < n.Start-tol {
 			i++
 		}
 		best := -1
 		for k := i; k < len(a) && a[k].Start <= n.Start+tol; k++ {
-			if best < 0 || math.Abs(a[k].Start-n.Start) < math.Abs(a[best].Start-n.Start) {
+			if !taken[k] && (best < 0 || math.Abs(a[k].Start-n.Start) < math.Abs(a[best].Start-n.Start)) {
 				best = k
 			}
 		}

@@ -594,7 +594,8 @@ fitted from the pairs within lines misplaces what the lines part. A transcript
 against notes given as text a listener corrects by hand (`ParseTranscript`: `at
 N bpm`, then a note a line), or as a rhythm tapped out without pitches
 (`unit eighth`, `start 0.34s`, `melody (1-2-3---4-56---)x3 ...`), matched by when
-the notes start, or as a Standard MIDI File (`ReadMIDI`): the ground truth the
+the notes start among the notes those with a pitch leave, so the lines given
+with pitches still match by pitch, or as a Standard MIDI File (`ReadMIDI`): the ground truth the
 numbers above lack. `ReadMIDI` reads type 0 or 1 under its tempo map, each note as
 played: a sustain pedal's ring is the sound's, not the note's, as a score writes
 it and as the corpus labels the loops it rings on. A track
