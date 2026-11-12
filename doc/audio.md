@@ -579,26 +579,28 @@ continue is not the bass's, and a note both registers hear goes to the line it
 continues, the one whose nearest other note is nearer in pitch, so a bass line
 that climbs over E3 is not cut and a melody that dips keeps its note.
 
-Two transcripts of one piece are compared by `MatchNotes`: the pitches in order,
-under the transposition that matches most, find a time map, each point the
-median of the matches around it with as many either side, so it lies on any
-steady tempo and follows one that drifts, and each line's notes then pair with notes of
-their pitch within 0.1 s of their place, the most pairs there are and of those
-the nearest, so a note far from its place does not count, the melody register's
-also as one line (`Agreement.Register`), and every note as one line
+Two transcripts of one piece are compared by `MatchNotes`: each line's pitches
+in order, under the transposition that matches most, find a time map, and every
+note then paired near its place finds it again, the bass's as the melody's, so a
+register of a few pairs leads no map; each point is the median of the matches
+around it with as many either side, so the map lies on any steady tempo and
+follows one that drifts, and each line's notes then pair with notes of their
+pitch within 0.1 s of their place, the most pairs there are and of those the
+nearest, so a note far from its place does not count, the melody register's also
+as one line (`Agreement.Register`), and every note as one line
 (`Agreement.All`), of notes given with a pitch never fewer than the lines, the
 count by pitch and onset: a guitar's or an ensemble's truth files its notes by
 another rule than the rip does, so a note right in pitch and place counts there
 whatever line either side filed it on, and a number that picks anything reads
 that count. A truth annotated on the recording itself is on the recording's own
 clock and is matched `timed`: no map fitted, no transposition tried, its seconds
-compared as given, since a map fitted from the pairs within lines misplaces what
-the lines part. A transcript against notes given as text a listener corrects by
-hand (`ParseTranscript`: `at N bpm`, then a note a line), or as a rhythm tapped
-out without pitches (`unit eighth`, `start 0.34s`, `melody (1-2-3---4-56---)x3
-...`), matched by when the notes start among the notes those with a pitch leave,
-so the lines given with pitches still match by pitch, or as a Standard MIDI File
-(`ReadMIDI`): the ground truth the
+compared as given, since a fitted map follows a rip's own errors of timing
+(every onset 250 ms late reads as right). A transcript against notes given as
+text a listener corrects by hand (`ParseTranscript`: `at N bpm`, then a note a
+line), or as a rhythm tapped out without pitches (`unit eighth`, `start 0.34s`,
+`melody (1-2-3---4-56---)x3 ...`), matched by when the notes start among the
+notes those with a pitch leave, so the lines given with pitches still match by
+pitch, or as a Standard MIDI File (`ReadMIDI`): the ground truth the
 numbers above lack. `ReadMIDI` reads type 0 or 1 under its tempo map, each note as
 played: a sustain pedal's ring is the sound's, not the note's, as a score writes
 it and as the corpus labels the loops it rings on. A track
@@ -625,7 +627,7 @@ annotation in the recording's own clock (`ReadJAMSBeats`, as GuitarSet's,
 position 1 a downbeat).
 `NoteLevels` reads how loud the recording plays each note given, its first
 harmonics' peak around its onset placed by the agreement's map (`Agreement.At`,
-through the notes the register matched), so the notes heard can be counted by
+through every note matched), so the notes heard can be counted by
 level as well. A file read is a rip of its own too (`MIDIScore.Rip`): its notes
 quantized on its ticks, its first tempo folded by octaves into the sequencer's
 range, bars of its first time signature read at that tempo (§8) from where it
