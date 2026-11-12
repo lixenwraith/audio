@@ -775,7 +775,11 @@ func (rp Ripper) grid(f *RipFrames, ev ripEvents, p RipParams) (ripGrid, float64
 		}
 	} else {
 		bpm, tr = rp.track(f, p)
-		if tr.heard == f.heard() && len(tr.pulses) >= (BeatsPerBar+1)*tr.k {
+		need := (BeatsPerBar + 1) * tr.k
+		if tr.heard { // heard beats' spans cut in k: the last beat starts none
+			need = BeatsPerBar*tr.k + 1
+		}
+		if tr.heard == f.heard() && len(tr.pulses) >= need {
 			var err error
 			if g, bpm, tr.rd, err = f.meter(tr.pulses, tr.k, bpm, ev.hits, ev.root%12, ev.bass, ev.melody, rp.Meter, rp.Grid != nil); err != nil {
 				return g, 0, tr, err

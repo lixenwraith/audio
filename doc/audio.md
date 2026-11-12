@@ -529,9 +529,9 @@ did.
   chance are no beat the head marks, and the onsets and the cues read the
   clip. A tempo the listener gives (`RipGrid`) stands, a quarter's.
 - **The pulses** inside a beat are the beats' spans cut in the count `tatum`
-  reads from the onsets. No decision reads them where the beat is heard: a
-  line falls on a tracked beat, and the grid cuts each bar in its meter's
-  steps.
+  reads from the onsets. No decision reads them where the beat is heard, the
+  five beats a first bar needs included: a line falls on a tracked beat, and
+  the grid cuts each bar in its meter's steps.
 - **A beat is the meter's own note**, as `Rip.Beats` lists it: a quarter in
   4/4 and 3/4, an eighth in 6/8, six to the bar, never the felt dotted
   quarter. So a reading is a bar of its meter's beats (`heardReadings`): four

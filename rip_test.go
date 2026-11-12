@@ -2540,6 +2540,18 @@ func TestATempoGivenReadsTheMeterOfTheNoteTheHeadMarks(t *testing.T) {
 	}
 }
 
+// TestFiveHeardBeatsHoldABarWhateverTheOnsetsInsideThem: five beats heard 80
+// frames apart, a line on the first and the fifth, are one bar of 4/4 read from
+// the heads, the onsets on the beats alone or on their quarters too
+func TestFiveHeardBeatsHoldABarWhateverTheOnsetsInsideThem(t *testing.T) {
+	for _, on := range []int{80, 20} {
+		g, _, tr, err := Ripper{}.grid(headFrames(380, on, 80, 0, 4, 0), ripEvents{}, DefaultRipParams())
+		if err != nil || !tr.heard || g.bars() != 1 || !every(g.lines, 0, 320) {
+			t.Errorf("an onset every %d frames, %d pulses a beat: %v, heard %v, lines %v, want one bar from the heads, lines 320 frames apart", on, tr.k, err, tr.heard, g.lines)
+		}
+	}
+}
+
 // TestABarIsReadWhereItsLinesTopMostOfItsBars: a waltz's lines marked at 0.55 or
 // 0.45 over beats at 0.01, or at 0.8 with the last three tenths of the clip
 // unmarked, and a 4/4's at 0.1 over 0.02 top most of their bars however loud the
