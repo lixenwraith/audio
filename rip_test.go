@@ -510,6 +510,27 @@ func TestRipTellsTheLeadByItsCharacter(t *testing.T) {
 	}
 }
 
+// TestATieInThePartingGoesToTheEarlierOtherLine: after a dyad, a note three
+// semitones from one and six from the other joins either at one cost, the
+// nearer dearer by a change of line, last or under a note it sounds with. Read
+// from the last note back it stays off the line whose last note came earlier,
+// every run, though a walk of the states as made meets the rival first.
+func TestATieInThePartingGoesToTheEarlierOtherLine(t *testing.T) {
+	note := func(start, end, midi int) ripNote { return ripNote{start: start, end: end, midi: midi, strength: 0.5} }
+	held, sixth, third := note(0, 16, 60), note(12, 16, 69), note(16, 80, 63)
+	for _, notes := range [][]ripNote{{held, sixth, third}, {held, sixth, third, note(17, 81, 48)}} {
+		for range 20 {
+			line := map[int]bool{}
+			for _, n := range streams(slices.Clone(notes), RipFrameSec, LeadBusy) {
+				line[n.midi] = n.second
+			}
+			if line[63] != line[69] || line[60] == line[69] || len(notes) == 4 && line[48] != line[60] {
+				t.Fatalf("%d notes: the line of each pitch, second or not: %v", len(notes), line)
+			}
+		}
+	}
+}
+
 // TestRipKeepsABassLineThatClimbs: a bass line on F3 and G3, above the E3 the
 // bass register's rows end at, stays the bass line, heard by the bass decoder
 // where it reaches over the melody's rows; and a melody that dips to G3 over a

@@ -356,14 +356,13 @@ that a document now states, and link the document instead.
   `level` and `heardLines` add `log(p/(1-p))` over a class of frames. A head
   trained with a positive weight, read through a threshold elsewhere, would
   shift every such sum by its count times log w.
-- **A change that must not move the rip is held by a digest of rips, run
-  twice.** A scratch program: every WAV of a rendered corpus ripped through the
-  analysis and through random weights of `Spec` cut to the heads before the
-  change, offline and streamed, each rip's JSON hashed; 240 rips of stapes'
-  `corpus <dir> 48 8 aug gen meters` gave one digest before and after the
-  heads. One stream rip in it flips between runs of one binary
-  ([todo](todo.md#part-the-lines-the-same-way-every-run)): a differing line is
-  run again on both sides before it is believed.
+- **A change that must not move the rip is held by a digest of rips.** A
+  scratch program: every WAV of a rendered corpus ripped through the analysis
+  and through random weights of `Spec` cut to the heads before the change,
+  offline and streamed, each rip's JSON hashed; 240 rips of stapes' `corpus
+  <dir> 48 8 aug gen meters` gave one digest before and after the heads. Ten
+  runs of its 96 rips through the analysis give one digest each, so a
+  differing line is the change's; through a model that is unmeasured.
 
 ## The matched kit
 
@@ -612,6 +611,19 @@ that a document now states, and link the document instead.
   voiced frames alone, and a test's hand-built frames need the cell beside a
   sound over `StrikeHold` of the reference before the strikes make the note a
   smear test is about; at 0.6 that test passed with nothing to drop.
+- **The parting ties by its costs' shape, and walks simultaneous notes in an
+  order it is given.** Two pairings of a dyad onto the next cost the same in
+  exact arithmetic where the level term is linear across them, the lengths'
+  logs telescope and three semitones of jump buy the change of line (0.25);
+  the floats then land on one bit pattern now and again (loop 031's stream,
+  one rip in 96, six runs in ten one way). A Go map of up to eight keys
+  iterates from a random slot, so two keys come in their slots' order seven
+  times in eight: a test of a tie needs costs exact by construction (quarters,
+  capped terms), its rival state made first and calls enough that a map's walk
+  cannot pass by chance (`streams` on maps took the rule's parting in 22% of
+  calls). Notes that start on one frame are walked as `streams`' unstable sort
+  leaves the decoders' order, and the parting follows that order with no cost
+  tied ([todo](todo.md#walk-the-notes-that-start-together-in-an-order-of-their-own)).
 
 ## A live rip
 

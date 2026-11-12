@@ -136,17 +136,19 @@ installed scores stay until one is. What the stage leaves open:
   and a tenth more of its stream's. A judge's network is scalar float32, 0.16 M
   multiply-adds a strike: 5% more of the loop's rip, 8% of its stream's.
 
-### Part the lines the same way every run
+### Walk the notes that start together in an order of their own
 
 - Priority: P2
 - Affected files: `streams.go`
 
-`streams` keeps its states in maps and walks them in map order, so where two
-arrivals cost the same the first met wins and the parting differs from run to
-run: of 48 loops of stapes' `corpus <dir> 48 8 aug gen meters`, loop 031's
-stream through the analysis gives one of two rips, its lead and its under line
-exchanged, from one binary. The smallest close: walk each state's keys in
-order, then hash that corpus's rips ten times.
+`streams` walks the melody register's notes by start, and those that start on
+one frame as its unstable sort leaves the order the decoders hand them in; a
+note joins the line of the note walked before it with no change of line, so the
+parting follows that order where no cost ties. On stapes' `corpus <dir> 48 8
+aug gen meters` through the analysis, offline and streamed, a walk by pitch at
+a shared start parts 45 of the 96 rips otherwise and a stable sort 39, 1 to 71
+notes changing line. The smallest close: an order the notes alone set, chosen
+by the lines' agreement with the corpus labels (`MatchNotes`).
 
 ### The misses and extras the ear still hears
 

@@ -571,13 +571,17 @@ is heard too, in the bar's own `Under` steps, a track of its own in the pattern
 and a voice of its own (`Rip.UnderVoice`). The decoder follows the louder line,
 and the lead is often the softer, so the two lines' notes are then parted again
 by what a line keeps, its pitch from note to note, the length of its notes, their
-strength and no two at once (`streams`), and the lead is the line a rule names
-(`Ripper.Lead`): the busier by default, the one with the most notes for its
-sounding time, or the higher, lower, louder or softer. The bass line is decoded
-up to A3, over the melody's lowest rows: a reached note the bass line does not
-continue is not the bass's, and a note both registers hear goes to the line it
-continues, the one whose nearest other note is nearer in pitch, so a bass line
-that climbs over E3 is not cut and a melody that dips keeps its note.
+strength and no two at once (`streams`). Two partings that cost the same are
+compared from the last note back by the last note so far of the line each note
+is not on: at the first note where that differs, the earlier in time order wins,
+a line not yet begun before any, so one input gives one parting every run. The
+lead is the line a rule names (`Ripper.Lead`): the busier by default, the one
+with the most notes for its sounding time, or the higher, lower, louder or
+softer. The bass line is decoded up to A3, over the melody's lowest rows: a
+reached note the bass line does not continue is not the bass's, and a note both
+registers hear goes to the line it continues, the one whose nearest other note
+is nearer in pitch, so a bass line that climbs over E3 is not cut and a melody
+that dips keeps its note.
 
 Two transcripts of one piece are compared by `MatchNotes`: the pitches in order,
 under the transposition that matches most, find a time map, a local median of the
