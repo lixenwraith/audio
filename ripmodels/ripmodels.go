@@ -1,9 +1,9 @@
-// Package ripmodel is the rip's learned front end: a transformer over log-mel
-// frames whose heads say, per frame, whether anything and which drum struck,
-// which pitches sound, are struck or let go and how hard, the note's wave, genes
-// and family, and whether a beat or a bar line falls there, and a notes model
-// that may give the notes and what plays each. stapes' rip-train trains both.
-package ripmodel
+// Package ripmodels is the rip's learned front end: a frame model, a transformer
+// over log-mel frames whose heads say, per frame, whether anything and which drum
+// struck, which pitches sound, are struck or let go and how hard, the note's wave,
+// genes and family, and whether a beat or a bar line falls there, and a notes
+// model that may give the notes and what plays each. stapes' rip-train trains both.
+package ripmodels
 
 import (
 	"encoding/binary"
@@ -45,10 +45,10 @@ const (
 	HeadSure = "sure"
 )
 
-// Spec is the model the trainer builds and a weight file must match in its
-// inputs and heads; its width, depth and window may differ, and it may read a
+// FrameSpec is the frame model the trainer builds and a weight file must match in
+// its inputs and heads; its width, depth and window may differ, and it may read a
 // second channel, each band's PCEN (features).
-func Spec() transformer.Config {
+func FrameSpec() transformer.Config {
 	return transformer.Config{
 		Inputs: audio.RipMelBands + 1, Dim: 256, Heads: 8, Layers: 4, FFN: 1024, Window: 64,
 		Outputs: []transformer.Head{
@@ -65,7 +65,7 @@ func Spec() transformer.Config {
 // must match it in its inputs and in the heads notesHeads names; its other
 // sizes may differ.
 func NotesSpec() transformer.Config {
-	heads := Spec().Outputs
+	heads := FrameSpec().Outputs
 	return transformer.Config{
 		Inputs: stackBins + 1, Channels: stackChannels,
 		Outputs: []transformer.Head{heads[2], heads[6], heads[7], heads[8], {Name: HeadCents, Size: 2 * audio.RipPitches},
@@ -78,9 +78,9 @@ func NotesSpec() transformer.Config {
 	}
 }
 
-// notesHead is a head a notes model gives: one of Spec's it gives in place of
-// the model's, or one of its own of per values a pitch and frame values a
-// frame, which a notes model trained before it may lack
+// notesHead is a head a notes model gives: one of FrameSpec's it gives in place
+// of the frame model's, or one of its own of per values a pitch and frame values
+// a frame, which a notes model trained before it may lack
 type notesHead struct {
 	name       string
 	per, frame int
@@ -91,22 +91,22 @@ var notesHeads = []notesHead{{name: HeadPitch}, {name: HeadVoicing}, {name: Head
 	{name: HeadCents, per: 2}, {name: HeadPitchFamily, per: len(audio.RipFamilies) - 1}, {name: HeadPitchWave, per: len(audio.VoiceWaves)},
 	{name: HeadPitchVoice, per: audio.VoiceGeneCount}, {name: HeadSure, frame: 1}}
 
-// FrontEnd hears with a model, and takes the notes from Notes when it has one
+// FrontEnd hears with a frame model, and takes the notes from Notes when it has one
 type FrontEnd struct {
-	Model *transformer.Model
+	Frame *transformer.Model
 	Notes *transformer.Model
 	// Ahead is the seconds a frame of an Ear waits for those after it before the
-	// model hears it, when under the model's reach: its blocks share the wait,
-	// and its heads are no longer Hear's. Zero waits the reach.
+	// frame model hears it, when under its reach: its blocks share the wait, and
+	// its heads are no longer Hear's. Zero waits the reach.
 	Ahead float64
 	// NotesSum is the checksum the file of the weights that give the notes ends
-	// in, the notes model's or else the model's: what a judge names the weights
+	// in, the notes model's or else the frame model's: what a judge names the weights
 	// it was fitted on by (audio.LoadRipJudge). Load sets it; zero from New.
 	NotesSum uint64
 }
 
-// Load reads a weight file, and a notes model's from notes when it is not nil,
-// and checks they hear and say what the rip expects.
+// Load reads a frame model's weight file, and a notes model's from notes when it
+// is not nil, and checks they hear and say what the rip expects.
 func Load(r, notes io.Reader) (*FrontEnd, error) {
 	sum := &tail{r: r}
 	m, err := transformer.Load(sum)
@@ -144,33 +144,33 @@ func (t *tail) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// optionalHeads is how many of Spec's last heads a model may lack: one trained
-// before the strike, release, velocity, family, beat or downbeat head loads
-// without them, its notes and its bars read from what it has
+// optionalHeads is how many of FrameSpec's last heads a frame model may lack: one
+// trained before the strike, release, velocity, family, beat or downbeat head
+// loads without them, its notes and its bars read from what it has
 const optionalHeads = 6
 
-// New wraps a model and a notes model, nil for none, refusing a model whose
-// inputs or heads are not a prefix of Spec's or that reads more than two
-// channels, and a notes model that does not read the harmonic stack or lacks
-// one of notesHeads that Spec has.
+// New wraps a frame model and a notes model, nil for none, refusing a frame model
+// whose inputs or heads are not a prefix of FrameSpec's or that reads more than
+// two channels, and a notes model that does not read the harmonic stack or lacks
+// one of notesHeads that FrameSpec has.
 func New(m, notes *transformer.Model) (*FrontEnd, error) {
-	want, got := Spec(), m.Config()
+	want, got := FrameSpec(), m.Config()
 	if got.Inputs != want.Inputs || got.Channels > 2 {
-		return nil, fmt.Errorf("ripmodel: model reads %d inputs in %d channels, want %d in one or two, the bands in dB over the frame's level and the level, then each band's PCEN and their mean", got.Inputs, got.Channels, want.Inputs)
+		return nil, fmt.Errorf("ripmodels: frame model reads %d inputs in %d channels, want %d in one or two, the bands in dB over the frame's level and the level, then each band's PCEN and their mean", got.Inputs, got.Channels, want.Inputs)
 	}
 	if n := len(got.Outputs); n > len(want.Outputs) || n < len(want.Outputs)-optionalHeads {
-		return nil, fmt.Errorf("ripmodel: model has %d heads, want %d", n, len(want.Outputs))
+		return nil, fmt.Errorf("ripmodels: frame model has %d heads, want %d", n, len(want.Outputs))
 	}
 	for i, h := range want.Outputs[:len(got.Outputs)] {
 		if got.Outputs[i] != h {
-			return nil, fmt.Errorf("ripmodel: head %d is %q of %d, want %q of %d", i, got.Outputs[i].Name, got.Outputs[i].Size, h.Name, h.Size)
+			return nil, fmt.Errorf("ripmodels: frame model's head %d is %q of %d, want %q of %d", i, got.Outputs[i].Name, got.Outputs[i].Size, h.Name, h.Size)
 		}
 	}
 	if notes == nil {
-		return &FrontEnd{Model: m}, nil
+		return &FrontEnd{Frame: m}, nil
 	}
 	if got := notes.Config(); got.Inputs != stackBins+1 || got.Channels != stackChannels {
-		return nil, fmt.Errorf("ripmodel: notes model reads %d inputs in %d channels, want the harmonic stack's %d in %d", got.Inputs, got.Channels, stackBins+1, stackChannels)
+		return nil, fmt.Errorf("ripmodels: notes model reads %d inputs in %d channels, want the harmonic stack's %d in %d", got.Inputs, got.Channels, stackBins+1, stackChannels)
 	}
 	for _, h := range notesHeads {
 		head := transformer.Head{Name: h.name, Size: h.per*audio.RipPitches + h.frame}
@@ -182,13 +182,13 @@ func New(m, notes *transformer.Model) (*FrontEnd, error) {
 			continue
 		}
 		if i < 0 || notes.Config().Outputs[i] != head {
-			return nil, fmt.Errorf("ripmodel: notes model has no head %q of %d", h.name, head.Size)
+			return nil, fmt.Errorf("ripmodels: notes model has no head %q of %d", h.name, head.Size)
 		}
 	}
 	if lo, hi := sureSpread(notes); lo != hi {
-		return nil, fmt.Errorf("ripmodel: notes model's %q head says %g to %g as what it hears changes; the trainer's export writes its row zero, the measure its bias", HeadSure, lo, hi)
+		return nil, fmt.Errorf("ripmodels: notes model's %q head says %g to %g as what it hears changes; the trainer's export writes its row zero, the measure its bias", HeadSure, lo, hi)
 	}
-	return &FrontEnd{Model: m, Notes: notes}, nil
+	return &FrontEnd{Frame: m, Notes: notes}, nil
 }
 
 // sureSpread is the least and the most a notes model's sure head says over a
@@ -215,16 +215,14 @@ func sureSpread(notes *transformer.Model) (lo, hi float32) {
 	return lo, hi
 }
 
-// Hear runs the recording's log-mel frames through the model, and the notes
+// Hear runs the recording's log-mel frames through the frame model, and the notes
 // model when there is one, and reads their heads into frames: the onset and drum
-// scores as strengths, the pitch scores as salience, the chroma folded from them,
-// the wave scores and voice genes as they are, the strike, release and velocity
-// scores when a model has them, the family's softmax and the beat and downbeat
-// scores when the model has them, and when the notes model has them each pitch's
-// cents and their error, what plays each frame's most salient pitches, and Sure.
+// scores as strengths, the pitch scores as salience and chroma, the wave scores
+// and voice genes, and where a model has them the strikes, releases, velocities,
+// the family's shares, the beat, the downbeat, the cents and what plays each pitch.
 func (fe *FrontEnd) Hear(x []float64, rate int, _ audio.RipParams) (*audio.RipFrames, error) {
 	in := features(audio.MelFrames(x, rate), fe.pcen())
-	out := fe.Model.Forward(fe.planes(in))
+	out := fe.Frame.Forward(fe.planes(in))
 	var notes [][]float32
 	if fe.Notes != nil {
 		notes = fe.Notes.Forward(stacked(in))
@@ -233,11 +231,11 @@ func (fe *FrontEnd) Hear(x []float64, rate int, _ audio.RipParams) (*audio.RipFr
 }
 
 // pcen says whether the models hear the PCEN channel
-func (fe *FrontEnd) pcen() bool { return fe.Model.Config().Channels == 2 || fe.Notes != nil }
+func (fe *FrontEnd) pcen() bool { return fe.Frame.Config().Channels == 2 || fe.Notes != nil }
 
-// planes is each frame of features as the model reads it, in its channels
+// planes is each frame of features as the frame model reads it, in its channels
 func (fe *FrontEnd) planes(in [][]float32) [][]float32 {
-	cfg := fe.Model.Config()
+	cfg := fe.Frame.Config()
 	planes := make([][]float32, len(in))
 	for t, f := range in {
 		planes[t] = f[:cfg.Inputs*max(cfg.Channels, 1)]
@@ -245,15 +243,15 @@ func (fe *FrontEnd) planes(in [][]float32) [][]float32 {
 	return planes
 }
 
-// read reads the heads of the model's outputs, and the notes model's for the same
-// frames when it has one, into frames
+// read reads the heads of the frame model's outputs, and the notes model's for
+// the same frames when it has one, into frames
 func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 	// head is a head's scores at frame t, from the model that gives it; nil for none
 	head := func(name string, t int) []float32 {
 		if fe.Notes != nil && slices.ContainsFunc(notesHeads, func(h notesHead) bool { return h.name == name }) {
 			return fe.Notes.Slice(notes[t], name)
 		}
-		return fe.Model.Slice(out[t], name)
+		return fe.Frame.Slice(out[t], name)
 	}
 	n := len(out)
 	f := &audio.RipFrames{Hop: audio.RipFrameSec, Flux: make([]float64, n),
@@ -387,11 +385,11 @@ const earStep = 0.5
 
 // Ear hears a recording as it plays, each frame through each model once
 // (transformer's Stream): a step of frames is given once the frames the models
-// read after them are in, the model's reach or fe.Ahead, and the notes model's
-// at least, each scaled by the loudest sample heard when it came. Its frames
-// are the same whatever the blocks; asked for the spectrum, each has its bands.
+// read after them are in, the frame model's reach or fe.Ahead, and the notes
+// model's at least, each scaled by the loudest sample heard when it came, alike
+// whatever the blocks; asked for the spectrum, each has its bands.
 func (fe *FrontEnd) Ear(_ audio.RipParams, spectrum bool) (audio.RipEar, error) {
-	e := &ear{fe: fe, spectrum: spectrum, mel: audio.NewMelStream(), step: int(math.Round(earStep / audio.RipFrameSec)), ahead: fe.Model.Reach()}
+	e := &ear{fe: fe, spectrum: spectrum, mel: audio.NewMelStream(), step: int(math.Round(earStep / audio.RipFrameSec)), ahead: fe.Frame.Reach()}
 	if fe.Ahead > 0 {
 		e.ahead = min(e.ahead, int(math.Round(fe.Ahead/audio.RipFrameSec)))
 	}
@@ -399,7 +397,7 @@ func (fe *FrontEnd) Ear(_ audio.RipParams, spectrum bool) (audio.RipEar, error) 
 		e.ahead = max(e.ahead, fe.Notes.Reach())
 		e.notes = &heard{s: fe.Notes.Stream(fe.Notes.Reach())}
 	}
-	e.model = &heard{s: fe.Model.Stream(e.ahead)}
+	e.model = &heard{s: fe.Frame.Stream(e.ahead)}
 	return e, nil
 }
 
@@ -544,10 +542,10 @@ const (
 	pcenEps   = 1e-6
 )
 
-// features is the model's input from MelFrames: each band's energy in dB over
-// melFloor less the frame's mean, and the mean itself, both over 80 dB, so a
+// features is the frame model's input from MelFrames: each band's energy in dB
+// over melFloor less the frame's mean, and the mean itself, both over 80 dB, so a
 // frame's loudness is one input and the bands are level-free: a soft phrase
-// reaches the model as clearly as a loud one. With pcen, a second channel: each
+// reaches the models as clearly as a loud one. With pcen, a second channel: each
 // band's PCEN and their mean; it only looks back, so a live rip computes it.
 func features(mel [][]float32, pcen bool) [][]float32 {
 	out, _ := featuresFrom(mel, pcen, nil)

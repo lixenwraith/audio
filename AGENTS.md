@@ -50,7 +50,7 @@ agent would otherwise rediscover, add it there in the same PR.
 - Per-kind data lives in one table indexed by its kind (`midiInstruments`, a row
   an instrument); a new kind adds a row, never a switch or a parallel field.
 - The root package imports nothing beyond the standard library and
-  `lixenwraith/toml` (its `macro` expander included); `ripmodel` adds
+  `lixenwraith/toml` (its `macro` expander included); `ripmodels` adds
   `lixenwraith/transformer`. No file carries a build tag: a backend a host lacks
   is passed over at run time, so every package builds for every target.
 - The module is at v0: a change may break the API or a document's keys, and

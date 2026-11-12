@@ -44,7 +44,7 @@ type judgeNet struct {
 }
 
 // LoadRipJudge reads a judge file for a rip whose notes weights end in the
-// checksum notes (ripmodel.FrontEnd.NotesSum), and refuses one fitted on other
+// checksum notes (ripmodels.FrontEnd.NotesSum), and refuses one fitted on other
 // weights or on a row this package does not build.
 func LoadRipJudge(r io.Reader, notes uint64) (*RipJudge, error) {
 	data, err := io.ReadAll(r)

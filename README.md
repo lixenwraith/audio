@@ -28,7 +28,7 @@ the harmony resolves at play time.
 - `audio/model` holds the identifiers an embedder's protocol carries, sound,
   instrument, pattern, scale and tier, with no mixer, backend or synthesis
   dependency, for builds that leave the engine out.
-- `audio/ripmodel` is the rip's learned front end, a transformer
+- `audio/ripmodels` is the rip's learned front end: a frame model, a transformer
   (`github.com/lixenwraith/transformer`) over mel frames, with a notes model, a
   cell net over their harmonic stack, beside it when one is given.
 - `audio/bank` is the set vif and stapes ship, embedded: the sound effects, the
@@ -126,7 +126,7 @@ checks (`RenderMusic`, `ExpectedRip`, `CompareRips`), and `Fidelity` grades a
 render against the recording itself, both heard into a `RipSound` by
 `Ripper.Sound`. The front end is a seam:
 a `Ripper` hears through the package's analysis or through any `RipFrontEnd`
-that fills `RipFrames` from `MelFrames`, as the `ripmodel` subpackage does with a
+that fills `RipFrames` from `MelFrames`, as the `ripmodels` subpackage does with a
 transformer, which also hears the voices the notes are played with
 (`VoiceDef.Genes`). A front end that hears strikes has its notes held to the
 recording, by installed scores or by a trained judge loaded beside its notes
