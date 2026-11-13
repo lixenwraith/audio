@@ -2172,6 +2172,21 @@ func TestToneReadsBackAnEQ(t *testing.T) {
 	}
 }
 
+// kitRecording is the rip's hits played on drums with the snare 6 dB up and the
+// hats 12 dB down, as a recording's stand
+func kitRecording(r *Rip, drums [InstrClap]*SoundDef) (rec []float64) {
+	for d, gain := range [InstrClap]float64{1, 2, 0.25} {
+		var one [InstrClap]*SoundDef
+		one[d] = drums[d]
+		y := beat(r.Hits(), one)
+		rec = append(rec, make([]float64, max(len(y)-len(rec), 0))...)
+		for i, v := range y {
+			rec[i] += gain * v
+		}
+	}
+	return rec
+}
+
 // TestKitStandsAsTheRecordingsDrums: a rip's kit is the registered drums each with
 // an eq, under the names its song plays them by and through a sound document, at
 // the recording's balance against the kick within the bounds.
@@ -2181,18 +2196,7 @@ func TestKitStandsAsTheRecordingsDrums(t *testing.T) {
 	for d := range drums {
 		drums[d] = SoundDefByName(drumSoundNames[d])
 	}
-	gain := [InstrClap]float64{1, 2, 0.25} // the recording's snare 6 dB up and hats 12 dB down
-	var rec []float64
-	for d := range drums {
-		var one [InstrClap]*SoundDef
-		one[d] = drums[d]
-		y := beat(r.Hits(), one)
-		rec = append(rec, make([]float64, max(len(y)-len(rec), 0))...)
-		for i, v := range y {
-			rec[i] += gain[d] * v
-		}
-	}
-	r.Tone = toneOfHits(r, rec, 0)
+	r.Tone = toneOfHits(r, kitRecording(r, drums), 0)
 	kit := r.Kit("x")
 	if len(kit) != 3 || kit[0].Name != "x_kick" || kit[1].Name != "x_snare" || kit[2].Name != "x_hihat" {
 		t.Fatalf("kit %v", kit)
@@ -2222,6 +2226,33 @@ func TestKitStandsAsTheRecordingsDrums(t *testing.T) {
 	_, song := r.Song("x", [RipParts][]int{r.Cluster(RipBeat, 0.4)})
 	if want := map[string]string{"kick": "x_kick", "snare": "x_snare", "hihat": "x_hihat"}; !reflect.DeepEqual(song.Kit, want) || ValidateSong(song) != nil {
 		t.Errorf("the song plays the kit %v", song.Kit)
+	}
+}
+
+// TestAKitsLoudestSoundSitsAtANormOfOne: a snare too short to stand against the
+// kick as the recording's does under a norm of one is the kit's loudest, at a
+// norm of exactly one with the kick brought down beside it, and the kit's
+// document loads: lowered by its own level in dB it lands a rounding off one
+func TestAKitsLoudestSoundSitsAtANormOfOne(t *testing.T) {
+	r := kitRip(t)
+	short := SoundDefByName("snare").Clone()
+	short.Layer[0].Chain[0].Tau, short.Layer[1].Chain[1].Tau = 0.015, 0.015
+	if _, err := RegisterSound(short); err != nil {
+		t.Fatal(err)
+	}
+	var drums [InstrClap]*SoundDef
+	for d := range drums {
+		drums[d] = SoundDefByName(drumSoundNames[d])
+	}
+	r.Tone = toneOfHits(r, kitRecording(r, drums), 0)
+	kit := r.Kit("x")
+	if len(kit) != 3 || kit[InstrSnare].Norm != 1 || kit[InstrKick].Norm >= drums[InstrKick].Norm {
+		t.Fatalf("the kit's norms %v, want the snare at 1 and the kick under its own %v", []float64{kit[0].Norm, kit[1].Norm, kit[2].Norm}, drums[InstrKick].Norm)
+	}
+	if data, err := MarshalSounds(kit); err != nil {
+		t.Fatal(err)
+	} else if _, err := LoadSoundsTOML(data); err != nil {
+		t.Errorf("the kit's document: %v", err)
 	}
 }
 

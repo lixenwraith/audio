@@ -983,7 +983,8 @@ from 1 kHz up only, every band within -24 and +30 dB), is the `eq` its matched
 sound `<name>_<drum>` adds to the drum's master chain. The matched sounds' norms
 then put the snare and the hihat against the kick as the recording does, held
 to -2..+5 dB and -20..-8 dB, read twice since a drum's level holds the others'
-tails, the loudest at a norm of one at most. `Rip.Song` names them in the song's
+tails, the loudest brought to a norm of one where it passes it, the others by
+as much. `Rip.Song` names them in the song's
 `kit`, so the song document and the sound document holding them play it again;
 a rip of a score reads no tone and its song plays the kit as it is.
 

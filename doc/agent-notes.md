@@ -398,6 +398,9 @@ that a document now states, and link the document instead.
   back read +8..+13 dB curves); `hitStarts` moves each hit to where the sound
   rises, on the recording and on the kit's render alike, the balance's renders
   too, since a zero-phase eq moves the rise.
+- A level taken to dB and back is not the level: `x * 10^(-20*log10(x)/20)`
+  is one for two norms in three, an ulp or two under for a fifth and over for
+  a tenth, which a sound's check refuses. Divide by the norm itself.
 - `aWeight` is the analog curve through the bilinear transform: at 44.1 kHz it
   reads 10 kHz at -4.0 dB where the standard has -2.5 (-22 at 22.05 kHz), and
   prewarping its poles is unstable under a 24.4 kHz rate. A matched kit's
