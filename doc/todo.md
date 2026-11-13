@@ -106,12 +106,6 @@ A judge can rule the accounting's verdicts ([Audio
 §9](audio.md#9-ripping-a-recording)); none is accepted or shipped yet, and the
 installed scores stay until one is. What the stage leaves open:
 
-- **A returned strike's end.** It ends at the next strike over a half of its
-  pitch, whatever became of that strike, where a reported note sounds on
-  through a dropped restrike (`accRingOn`); with the bar at a half more strikes
-  cut it short. Not taken, as the count a judge is fitted and read by is of
-  pitch and onset. The smallest close: `accRingOn` over the strikes that came
-  back and the candidates dropped, read on note lengths against a truth's.
 - **A followed sound is not cut.** A strike that comes back in the cell a
   followed note was struck in starts a note beside it; ending the followed
   note there would part its cells, which is the glides' decoding.
@@ -276,6 +270,21 @@ voice ([Audio §9](audio.md#9-ripping-a-recording)). What is left:
 - A frame's thirteenth most salient pitch and on are told nothing; a note is
   read on its other frames. How many notes of a dense recording are told on
   under half their frames is not counted yet.
+
+### Widen the pitch range to the piano's
+
+- Priority: P1
+- Affected files: `rip.go` (`RipMinMIDI`, `RipMaxMIDI`, `RipPitches`),
+  `ripmodels/ripmodels.go`; stapes' `tool/rip-train`
+
+The rip's pitches run from E1 to C7 (`RipMinMIDI` 28, `RipPitches` 69) and are
+to run from MIDI 21 to 108 after v0.26.0, decided by Lixen on 13 November 2026:
+the notes model's weights are the same at every pitch, the frame model's four
+per-pitch heads grow rows, and the corpora already hold the notes. Accuracy
+under E1 is not bought by it, since the mel's lowest band is centred at 38.9 Hz.
+The analysis is in [stapes'
+todo](https://github.com/lixenwraith/stapes/blob/main/doc/todo.md) once
+stapes#49 lands.
 
 ## The bank's music
 
