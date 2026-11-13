@@ -2911,48 +2911,75 @@ func (f *RipFrames) notes(lo, hi int, p RipParams) []ripNote {
 	return kept
 }
 
+// head is a head's score for midi at frame t, zero outside the frames and the pitches
+func (f *RipFrames) head(h []float32, t, midi int) float32 {
+	if h == nil || t < 0 || t >= f.frames() || midi < RipMinMIDI || midi >= RipMaxMIDI {
+		return 0
+	}
+	return h[t*RipPitches+midi-RipMinMIDI]
+}
+
+// peaks reports whether a head's score for midi peaks at t, at least over
+func (f *RipFrames) peaks(h []float32, t, midi int, over float64) bool {
+	v := f.head(h, t, midi)
+	return h != nil && float64(v) >= over && v >= f.head(h, t-1, midi) && v > f.head(h, t+1, midi)
+}
+
+// struck reports whether state s's strike peaks at t over the register's bar,
+// StrikeLow under the melody's register
+func (r register) struck(t, s int, p RipParams) bool {
+	bar := p.Strike
+	if r.lo < RipBassTop {
+		bar = p.StrikeLow
+	}
+	return r.f.peaks(r.f.Strike, t, r.lo+s, bar)
+}
+
+// stronger reports a stronger strike within two frames of t at one of the
+// intervals ds from midi, at or over from
+func (f *RipFrames) stronger(t, midi, from int, ds ...int) bool {
+	for _, d := range ds {
+		for u := t - 2; u <= t+2 && midi+d >= from; u++ {
+			if f.head(f.Strike, u, midi+d) > f.head(f.Strike, t, midi) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// renews reports a strike sure enough to start a sounding pitch again: another
+// note's attack sets off strikes on the pitches ringing, a tone either side as
+// sure as its own
+func (r register) renews(t, s int, p RipParams) bool {
+	f := r.f
+	return r.struck(t, s, p) && float64(f.head(f.Strike, t, r.lo+s)) >= p.StrikeAgain && !f.stronger(t, r.lo+s, RipMinMIDI, -2, -1, 1, 2)
+}
+
+// until is the frame a note of state s struck at t ends on: after MinNote, where
+// its salience falls under Voicing of the reference or its release peaks over
+// Release, or where a sure strike renews it, within MinNote or past StrikeGap
+func (r register) until(t, s int, p RipParams) int {
+	f := r.f
+	T, short, gap := f.frames(), max(int(p.MinNote/f.Hop), 1), int(p.StrikeGap/f.Hop)
+	end := t + 1
+	for end < T && !(r.renews(end, s, p) && (end-t < short || end-t >= gap)) &&
+		(end < t+short || r.sal(end, s) >= p.Voicing*r.ref && !f.peaks(f.Release, end, r.lo+s, p.Release)) {
+		end++
+	}
+	return end
+}
+
 // strikes reads a register's notes from a front end that hears each pitch struck:
 // a note starts where a strike peaks over Strike, as hard as the front end heard,
-// and lasts, any number at once, until its salience falls under Voicing of the
-// reference, its release peaks over Release or a sure strike renews it. None starts
-// where the pitch never sounds, at a stronger strike's partial, or within StrikeGap.
+// and lasts, any number at once, to its end (until). None starts where the pitch
+// never sounds, at a stronger strike's partial, or within StrikeGap.
 func (f *RipFrames) strikes(lo, hi int, p RipParams) []ripNote {
 	r, ok := f.register(lo, hi)
 	if !ok {
 		return nil
 	}
 	T, short, gap := f.frames(), max(int(p.MinNote/f.Hop), 1), int(p.StrikeGap/f.Hop)
-	at := func(h []float32, t, midi int) float32 {
-		if h == nil || t < 0 || t >= T || midi < RipMinMIDI || midi >= RipMaxMIDI {
-			return 0
-		}
-		return h[t*RipPitches+midi-RipMinMIDI]
-	}
-	// peak: a head's score for midi peaks at t, at least over
-	peak := func(h []float32, t, midi int, over float64) bool {
-		v := at(h, t, midi)
-		return h != nil && float64(v) >= over && v >= at(h, t-1, midi) && v > at(h, t+1, midi)
-	}
-	bar := p.Strike
-	if lo < RipBassTop {
-		bar = p.StrikeLow
-	}
-	struck := func(t, s int) bool { return peak(f.Strike, t, lo+s, bar) }
-	// stronger: a stronger strike within two frames at one of the intervals ds from midi, at or over from
-	stronger := func(t, midi, from int, ds ...int) bool {
-		for _, d := range ds {
-			for u := t - 2; u <= t+2 && midi+d >= from; u++ {
-				if at(f.Strike, u, midi+d) > at(f.Strike, t, midi) {
-					return true
-				}
-			}
-		}
-		return false
-	}
-	// another note's attack sets off strikes on the pitches ringing, a tone either side as sure as its own
-	renews := func(t, s int) bool {
-		return struck(t, s) && float64(at(f.Strike, t, lo+s)) >= p.StrikeAgain && !stronger(t, lo+s, RipMinMIDI, -2, -1, 1, 2)
-	}
 	sounds := func(t, s int) bool {
 		for u := t; u < min(t+short, T); u++ {
 			if r.sal(u, s) >= p.StrikeHold*r.ref {
@@ -2966,34 +2993,30 @@ func (f *RipFrames) strikes(lo, hi int, p RipParams) []ripNote {
 		last := -gap
 		for t := 0; t < T; {
 			// partials of the register's own strikes only, as a bass note often doubles a melody note
-			if !struck(t, s) || t-last < gap || stronger(t, lo+s, lo, -12, -19, -24) || !sounds(t, s) {
+			if !r.struck(t, s, p) || t-last < gap || f.stronger(t, lo+s, lo, -12, -19, -24) || !sounds(t, s) {
 				t++
 				continue
 			}
 			last = t
-			end := t + 1
-			for end < T && !(renews(end, s) && (end-t < short || end-t >= gap)) &&
-				(end < t+short || r.sal(end, s) >= p.Voicing*r.ref && !peak(f.Release, end, lo+s, p.Release)) {
-				end++
-			}
+			end := r.until(t, s, p)
 			if end-t >= short {
 				n := r.note(t, end, s)
 				if f.Velocity != nil {
-					n.vel = min(max(float64(at(f.Velocity, t, lo+s)), 0.1), 1)
+					n.vel = min(max(float64(f.head(f.Velocity, t, lo+s)), 0.1), 1)
 				}
 				notes = append(notes, n)
 			}
 			t = end
 			// let go under a pedal it rings on, and only a sure strike starts it again
-			for t < T && r.sal(t, s) >= p.Voicing*r.ref && !renews(t, s) {
+			for t < T && r.sal(t, s) >= p.Voicing*r.ref && !r.renews(t, s, p) {
 				t++
 			}
 		}
 	}
 	slices.SortFunc(notes, func(a, b ripNote) int { return cmp.Or(a.start-b.start, a.midi-b.midi) })
 	if f.Cents != nil {
-		notes = r.glides(notes, p, func(t, midi int) bool { return renews(t, midi-lo) },
-			func(t, midi int) bool { return peak(f.Release, t, midi, p.Release) })
+		notes = r.glides(notes, p, func(t, midi int) bool { return r.renews(t, midi-lo, p) },
+			func(t, midi int) bool { return f.peaks(f.Release, t, midi, p.Release) })
 	}
 	return notes
 }

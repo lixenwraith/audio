@@ -1032,7 +1032,7 @@ func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody [
 				// its pitch rings where a kept note of it sounds, never another candidate
 				st.Row = row(n, f.accInput(n, ev[i], reported, refs))
 				st.Odds = judge.odds(judgeDropped, st.Row)
-				if st.Kept = st.Odds >= accJudgeBar; st.Kept {
+				if st.Kept = st.Odds >= accJudgeBar && f.accRuns(n, p, refs); st.Kept {
 					kept = append(kept, n)
 				}
 				list(st)
@@ -1115,6 +1115,23 @@ func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody [
 	slices.SortFunc(melody, byStart)
 	slices.SortStableFunc(strikes, func(a, b RipStrike) int { return cmp.Or(a.Frame-b.Frame, a.MIDI-b.MIDI) })
 	return bass, melody, strikes
+}
+
+// accRuns makes a strike a judge brings back the note the decoder reads from a
+// strike there, to its end (register.until), and reports whether it lasts past
+// MinNote: a strike whose pitch sounds no longer is no note
+func (f *RipFrames) accRuns(n *accNote, p RipParams, refs [2]float64) bool {
+	lo, hi, ref := RipBassTop, RipMaxMIDI, refs[1]
+	if n.midi < RipBassTop {
+		lo, hi, ref = RipMinMIDI, RipBassTop, refs[0]
+	}
+	r := register{f: f, lo: lo, states: hi - lo, reach: hi - lo, ref: ref}
+	end := r.until(n.start, n.midi-lo, p)
+	if end-n.start <= max(int(p.MinNote/f.Hop), 1) {
+		return false
+	}
+	n.ripNote = r.note(n.start, end, n.midi-lo)
+	return true
 }
 
 // against fits the candidates against the notes kept, whose activations hold,

@@ -875,7 +875,11 @@ covered, held note still stays on the heads' word. Every strike over a half that
 starts no reported note is a candidate, in both registers, the strongest of its
 pitch within `StrikeGap` standing, a pitch still sounding included. It is
 measured against the kept notes as before and comes back when its odds reach a
-half, and one that comes back on a pitch still sounding ends the kept note
+half, as the note the decoder reads from a strike there (`until`): to its
+release, a sure renewal or its salience falling under `voicing`, where the
+candidate it was measured as ends at the head's next ripple over a half; one
+whose pitch sounds no longer than `min_note` is no note and is listed as not
+kept. One that comes back on a pitch still sounding ends the kept note
 before it at its start. A followed note is judged once, by the row at its
 strike, and the strikes in the cells it moved on to are no candidates; the row
 does not read the cents. With none loaded nothing changes: the candidates, the

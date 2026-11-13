@@ -551,6 +551,11 @@ that a document now states, and link the document instead.
 - `odds` stays as written beside `terms`, which scales the same inputs for a
   row: `s.rise*in.rise/10` is not `s.rise*(in.rise/10)` to the last bit, and
   the installed verdicts are held byte for byte.
+- A candidate ends at the next strike peak of its pitch over its bar, a half
+  for a judge's, which the strike head's own ripple three frames on is: a
+  strike a judge brought back was a note of the five-frame floor. The rows a
+  judge is fitted on are those candidates', so the note's end is set after the
+  verdict (`accRuns`, the decoder's `until`), never by moving the candidate.
 
 ## Decoders
 
