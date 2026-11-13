@@ -425,7 +425,7 @@ func (s *RipStream) follow(f *RipFrames, x []float64, ev ripEvents, end bool) er
 		if err != nil {
 			return err
 		}
-		lines, _, _, _, _ = f.barPath(rds[0], f.lineCues(ev.hits, s.root%12, ev.bass), true)
+		lines, _, _, _ = f.barPath(rds[0], f.lineCues(ev.hits, s.root%12, ev.bass, s.p), true)
 	}
 	g := ripGrid{lines: slices.Concat([]int{s.prev - s.w0}, lines), m: s.meter}
 	ev = s.dedup(ev, g.stepFrames()/2)

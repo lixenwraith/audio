@@ -349,13 +349,33 @@ What is left here, each to settle on trained weights:
 - **Read against truths.** GuitarSet's 120 unmet clips: 40a's heads read 24
   right through the rank decode, 39 through a plain tracker, 32 with the heads
   left out (12a's cues 37); under perfect beats its downbeat head's sum by
-  place names 89, the cues 58. The Für Elise takes against their score, and the
-  stream's twelve recordings, with the heads and with the same weights' heads
-  left out (a `FrontEnd` whose frames have `Beat` set nil).
-- **The weights the heads are read by.** `ripBarHead` (1) puts the downbeat
-  head's lines standing out over its mean beat on the cues' scale, and the
-  beat head's comb is a plain tracker's: both set by reason, to be fitted on
-  trained heads against those truths. Under the default prior a beat head
+  place names 89, the cues 58. 48a's read 38 right, and 40 since six beats
+  need the head at their lines, with 14 clips stated in six down to 1. The Für
+  Elise takes against their score, and the stream's twelve recordings, with
+  the heads and with the same weights' heads left out (a `FrontEnd` whose
+  frames have `Beat` set nil).
+- **The place of the line.** On stapes' generated evaluation (800 four-bar
+  loops, 48a and 49a) the heads' meter now states six or three beats on 29 of
+  the 728 loops in 4/4 where it stated them on 267, and 405 have their bars
+  right for 277; the same frames with the heads left out read 486. The gap is
+  the place: of the bars whose length is right the cues' path places 93% and
+  the heads' reading 75%, most of the rest on the third beat. 48a's downbeat
+  head marks the half bar as it marks the line and the drums' cues tie there;
+  the path sums its bars, so one that starts with the recording and fits a bar
+  more wins, which every rendered loop rewards and a recording cut anywhere
+  does not, where a place's mean leans on nothing. `bar_head` moves it little
+  (411 right at 0, 419 at 0.25, 405 at 1). To settle on a head trained
+  further and on truth that starts off the bar line, not by a lean on the
+  start.
+- **The repetition under six bars** is not asked of a heard reading: on those
+  four-bar loops it took 3/4 on 18 more loops in 4/4 and on 2 more of the 36
+  in 3/4 (22 right with it, 20 without), the bars right over the whole set the
+  same either way.
+- **The weights the heads are read by.** `bar_head` (1) puts the downbeat
+  head's lines standing out over its mean beat on the cues' scale, the beat
+  head's comb (`beat_comb_2` to `4`) is a plain tracker's, and `meter_head`
+  (1) is the mean beat's own level: all set by reason, for stapes' `tune ...
+  truth` to fit on trained heads against truth of every meter. Under the default prior a beat head
   marking quarters at 0.98 and eighths at 0.3 reads a loop at 70 as 140; the
   plain tracker's prior (110 over 0.9 octaves) holds 70 there and turns at
   0.35. `tempo_prior` and `tempo_width` are tune's genes.
@@ -365,13 +385,16 @@ What is left here, each to settle on trained weights:
   the tracked beats against at them) is to be measured on trained heads first.
 - **A bar that slips.** A bar holds its beats exactly, so a beat the tracker
   adds or loses in a ritardando moves every line after it; the cues' path
-  absorbs one at `ripBarMove`. A cost in the head's own units is to be fitted
+  absorbs one at `bar_move`. A cost in the head's own units is to be fitted
   on played takes (Für Elise), not set.
 - **The stream** holds the phase of its first bars, as before: the downbeat
   head is not read again once they freeze. Reading it at every bar is the
   sections thread's.
 - **Half and double bars** are not offered (2 and 8 heard beats), nor 5/4 and
-  7/8: none is measured on a head.
+  7/8: none is measured on a head. A 6/8 tracked on its dotted quarters, the
+  onsets on both their thirds, wants a bar of two heard beats: it reads 4/4 or
+  6/4 over them, and 4 of the evaluation's 36 loops in 6/8 have their bars
+  right.
 
 ### Hear the phone takes' bars
 
