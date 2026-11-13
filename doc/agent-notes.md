@@ -499,6 +499,27 @@ that a document now states, and link the document instead.
 - `RipNote` is compared with `==` (stapes' `truth` skips a note itself that
   way), so a slice field breaks a caller's build: what a note carries beyond
   scalars hangs off a pointer, as `Voice` does.
+- **Planes padded with silent pitches cannot see a range left as a constant.**
+  A decoder that still read E1 to C7 ripped piano-wide frames of the same
+  sound alike, as nothing sounds outside it; a plane indexed by the constants
+  panicked. What shows a leftover bound is a note struck at each end of the
+  frames' range, which `TestARipReadsThePitchesItsFramesSay` holds beside the
+  padding. The accounting's templates are a MIDI key's (`accKeys`), so no
+  range reaches them.
+- **A rip reads no frame head of a notes model but the measure.** `notesHeads`
+  names `voicing`, which `New` therefore asks of the file, and `read` never
+  reads it; the onset, drums, wave and voice are the frame model's. So what a
+  notes model's pooled regions hold moves no rip, only its trainer's loss.
+- A change that must leave old weight files' rips alone is held on the files
+  themselves: `NewRandom` of both specs saved by a scratch module on the last
+  tag (the sure row zeroed), then on each build every exported field of the
+  frames but `Range`, whole and from an ear in 50 ms blocks, and the rips'
+  JSON without `Range`, offline with strikes and rows, each `Write`'s frames
+  and strikes, the bars as they freeze, `Close` and `Final`, hashed. Random
+  weights strike thousands of times (6,962 strikes judged on a 16 s loop), so
+  such a rip is the accounting's cost, 3 to 5 s a second of sound, not a
+  trained pair's: four loops a configuration is twenty minutes on a busy
+  laptop.
 
 ## The accounting
 

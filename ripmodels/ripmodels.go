@@ -45,37 +45,61 @@ const (
 	HeadSure = "sure"
 )
 
-// FrameSpec is the frame model the trainer builds and a weight file must match in
-// its inputs and heads; its width, depth and window may differ, and it may read a
-// second channel, each band's PCEN (features).
-func FrameSpec() transformer.Config {
+// Lowest names the constant a weight file states its lowest pitch's MIDI number
+// by, its pitch head's size the count of them; a file without it hears E1 to C7
+const Lowest = "lowest"
+
+// FrameSpec is the frame model the trainer builds for the pitches r and a weight
+// file must match in its inputs and heads; its width, depth and window may
+// differ, and it may read a second channel, each band's PCEN (features).
+func FrameSpec(r audio.RipRange) transformer.Config {
+	n := r.Len()
 	return transformer.Config{
 		Inputs: audio.RipMelBands + 1, Dim: 256, Heads: 8, Layers: 4, FFN: 1024, Window: 64,
 		Outputs: []transformer.Head{
-			{Name: HeadOnset, Size: 1}, {Name: HeadDrums, Size: int(audio.InstrClap)}, {Name: HeadPitch, Size: audio.RipPitches},
+			{Name: HeadOnset, Size: 1}, {Name: HeadDrums, Size: int(audio.InstrClap)}, {Name: HeadPitch, Size: n},
 			{Name: HeadVoicing, Size: 1}, {Name: HeadWave, Size: len(audio.VoiceWaves)}, {Name: HeadVoice, Size: audio.VoiceGeneCount},
-			{Name: HeadStrike, Size: audio.RipPitches}, {Name: HeadRelease, Size: audio.RipPitches}, {Name: HeadVelocity, Size: audio.RipPitches},
+			{Name: HeadStrike, Size: n}, {Name: HeadRelease, Size: n}, {Name: HeadVelocity, Size: n},
 			{Name: HeadFamily, Size: len(audio.RipFamilies)}, {Name: HeadBeat, Size: 1}, {Name: HeadDownbeat, Size: 1},
 		},
+		Constants: []transformer.Constant{{Name: Lowest, Value: float32(r.Min)}},
 	}
 }
 
-// NotesSpec is the notes model the trainer builds (PitchNet), a cell net over
-// the harmonic stack (stack) whose cells are the rip's pitches. A weight file
-// must match it in its inputs and in the heads notesHeads names; its other
-// sizes may differ.
-func NotesSpec() transformer.Config {
-	heads := FrameSpec().Outputs
-	return transformer.Config{
-		Inputs: stackBins + 1, Channels: stackChannels,
-		Outputs: []transformer.Head{heads[2], heads[6], heads[7], heads[8], {Name: HeadCents, Size: 2 * audio.RipPitches},
-			{Name: HeadPitchFamily, Size: (len(audio.RipFamilies) - 1) * audio.RipPitches},
-			{Name: HeadPitchWave, Size: len(audio.VoiceWaves) * audio.RipPitches}, {Name: HeadPitchVoice, Size: audio.VoiceGeneCount * audio.RipPitches},
-			heads[0], heads[1], heads[3], heads[4], heads[5], {Name: HeadSure, Size: 1}},
-		Cells: &transformer.Cells{Bins: stackBins, Reduce: 8, Wide: 16, WideTime: 3, WideFreq: 39, Cell: 32, CellTime: 7, CellFreq: 3,
-			Stride: 3, Depth: 1, NearTime: 7, NearFreq: 3, First: audio.RipMinMIDI - stackRootMIDI, Read: audio.RipPitches, Heads: 8, Regions: 16,
-			Scalars: []int{stackBins, stackChannels/2*(stackBins+1) + stackBins}, Frame: 64, FrameTime: 5, AgainTime: 9, Dilation: 2},
+// NotesSpec is the notes model the trainer builds (PitchNet) for the pitches r,
+// a cell net over their harmonic stack (stacked) whose cells are the pitches.
+// A weight file must match it in its inputs and in the heads notesHeads names;
+// its other sizes may differ. Its regions pool the bins the stack of E1 to C7
+// holds, where r spans them: a model grown from that range keeps its frame heads.
+func NotesSpec(r audio.RipRange) transformer.Config {
+	heads, n, bins := FrameSpec(r).Outputs, r.Len(), stackBins(r)
+	cells := &transformer.Cells{Bins: bins, Reduce: 8, Wide: 16, WideTime: 3, WideFreq: 39, Cell: 32, CellTime: 7, CellFreq: 3,
+		Stride: stackStride, Depth: 1, NearTime: 7, NearFreq: 3, First: 1, Read: n, Heads: 8, Regions: 16,
+		Scalars: []int{bins, stackChannels/2*(bins+1) + bins}, Frame: 64, FrameTime: 5, AgainTime: 9, Dilation: 2}
+	if old := (audio.RipRange{Min: audio.RipMinMIDI, Max: audio.RipMaxMIDI}); r != old && r.Min <= old.Min && r.Max >= old.Max {
+		cells.PoolFirst, cells.PoolBins = stackStride*(old.Min-r.Min), stackBins(old)
 	}
+	return transformer.Config{
+		Inputs: bins + 1, Channels: stackChannels,
+		Outputs: []transformer.Head{heads[2], heads[6], heads[7], heads[8], {Name: HeadCents, Size: 2 * n},
+			{Name: HeadPitchFamily, Size: (len(audio.RipFamilies) - 1) * n},
+			{Name: HeadPitchWave, Size: len(audio.VoiceWaves) * n}, {Name: HeadPitchVoice, Size: audio.VoiceGeneCount * n},
+			heads[0], heads[1], heads[3], heads[4], heads[5], {Name: HeadSure, Size: 1}},
+		Cells: cells, Constants: FrameSpec(r).Constants,
+	}
+}
+
+// pitches is the range a model's file states: from its lowest pitch, E1 where it
+// names none, as many as its pitch head scores
+func pitches(m *transformer.Model) audio.RipRange {
+	r, cfg := audio.RipRange{Min: audio.RipMinMIDI, Max: audio.RipMinMIDI}, m.Config()
+	if v, ok := cfg.Constant(Lowest); ok {
+		r = audio.RipRange{Min: int(v), Max: int(v)}
+	}
+	if i := slices.IndexFunc(cfg.Outputs, func(o transformer.Head) bool { return o.Name == HeadPitch }); i >= 0 {
+		r.Max += cfg.Outputs[i].Size
+	}
+	return r
 }
 
 // notesHead is a head a notes model gives: one of FrameSpec's it gives in place
@@ -150,11 +174,20 @@ func (t *tail) Read(p []byte) (int, error) {
 const optionalHeads = 6
 
 // New wraps a frame model and a notes model, nil for none, refusing a frame model
-// whose inputs or heads are not a prefix of FrameSpec's or that reads more than
-// two channels, and a notes model that does not read the harmonic stack or lacks
-// one of notesHeads that FrameSpec has.
+// whose inputs or heads are not a prefix of FrameSpec's for the pitches it states
+// or that reads more than two channels, and a notes model that does not read its
+// pitches' harmonic stack or lacks one of notesHeads that FrameSpec has.
 func New(m, notes *transformer.Model) (*FrontEnd, error) {
-	want, got := FrameSpec(), m.Config()
+	for _, model := range []*transformer.Model{m, notes} {
+		if model == nil {
+			continue
+		}
+		r := pitches(model)
+		if v, stated := model.Config().Constant(Lowest); stated && v != float32(r.Min) || r.Min < 0 || r.Max > 128 {
+			return nil, fmt.Errorf("ripmodels: a model's pitches run MIDI %d to %d, its file stating the lowest as %g", r.Min, r.Max-1, v)
+		}
+	}
+	want, got := FrameSpec(pitches(m)), m.Config()
 	if got.Inputs != want.Inputs || got.Channels > 2 {
 		return nil, fmt.Errorf("ripmodels: frame model reads %d inputs in %d channels, want %d in one or two, the bands in dB over the frame's level and the level, then each band's PCEN and their mean", got.Inputs, got.Channels, want.Inputs)
 	}
@@ -169,11 +202,13 @@ func New(m, notes *transformer.Model) (*FrontEnd, error) {
 	if notes == nil {
 		return &FrontEnd{Frame: m}, nil
 	}
-	if got := notes.Config(); got.Inputs != stackBins+1 || got.Channels != stackChannels {
-		return nil, fmt.Errorf("ripmodels: notes model reads %d inputs in %d channels, want the harmonic stack's %d in %d", got.Inputs, got.Channels, stackBins+1, stackChannels)
+	r := pitches(notes)
+	if got := notes.Config(); got.Inputs != stackBins(r)+1 || got.Channels != stackChannels {
+		return nil, fmt.Errorf("ripmodels: notes model reads %d inputs in %d channels, want the harmonic stack's %d in %d for its %d pitches", got.Inputs, got.Channels, stackBins(r)+1, stackChannels, r.Len())
 	}
+	want = FrameSpec(r)
 	for _, h := range notesHeads {
-		head := transformer.Head{Name: h.name, Size: h.per*audio.RipPitches + h.frame}
+		head := transformer.Head{Name: h.name, Size: h.per*r.Len() + h.frame}
 		if head.Size == 0 {
 			head = want.Outputs[slices.IndexFunc(want.Outputs, func(o transformer.Head) bool { return o.Name == h.name })]
 		}
@@ -200,7 +235,7 @@ func sureSpread(notes *transformer.Model) (lo, hi float32) {
 	}
 	probe := make([][]float32, 4)
 	for t := range probe {
-		probe[t] = make([]float32, stackChannels*(stackBins+1))
+		probe[t] = make([]float32, stackChannels*notes.Config().Inputs)
 		for i := range probe[t] {
 			probe[t][i] = float32(math.Sin(float64((t + 1) * (i + 1))))
 		}
@@ -225,9 +260,18 @@ func (fe *FrontEnd) Hear(x []float64, rate int, _ audio.RipParams) (*audio.RipFr
 	out := fe.Frame.Forward(fe.planes(in))
 	var notes [][]float32
 	if fe.Notes != nil {
-		notes = fe.Notes.Forward(stacked(in))
+		notes = fe.Notes.Forward(stacked(in, fe.Pitches()))
 	}
 	return fe.read(out, notes), nil
+}
+
+// Pitches is the pitches fe's frames tell apart: those of the model that gives
+// the notes, the notes model's or else the frame model's
+func (fe *FrontEnd) Pitches() audio.RipRange {
+	if fe.Notes != nil {
+		return pitches(fe.Notes)
+	}
+	return pitches(fe.Frame)
 }
 
 // pcen says whether the models hear the PCEN channel
@@ -253,9 +297,9 @@ func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 		}
 		return fe.Frame.Slice(out[t], name)
 	}
-	n := len(out)
-	f := &audio.RipFrames{Hop: audio.RipFrameSec, Flux: make([]float64, n),
-		Salience:   make([]float32, 0, n*audio.RipPitches),
+	n, rg := len(out), fe.Pitches()
+	f := &audio.RipFrames{Hop: audio.RipFrameSec, Range: rg, Flux: make([]float64, n),
+		Salience:   make([]float32, 0, n*rg.Len()),
 		Chroma:     make([][12]float64, n),
 		BassChroma: make([][12]float64, n),
 		Wave:       make([]float32, 0, n*len(audio.VoiceWaves)),
@@ -272,7 +316,7 @@ func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 		into *[]float32
 	}{{HeadStrike, &f.Strike}, {HeadRelease, &f.Release}, {HeadVelocity, &f.Velocity}} {
 		if n > 0 && head(h.head, 0) != nil {
-			*h.into = make([]float32, 0, n*audio.RipPitches)
+			*h.into = make([]float32, 0, n*rg.Len())
 			per = append(per, h)
 		}
 	}
@@ -286,7 +330,7 @@ func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 		f.Downbeat = make([]float64, n)
 	}
 	if n > 0 && head(HeadCents, 0) != nil {
-		f.Cents, f.CentsError = make([]float32, 0, n*audio.RipPitches), make([]float32, 0, n*audio.RipPitches)
+		f.Cents, f.CentsError = make([]float32, 0, n*rg.Len()), make([]float32, 0, n*rg.Len())
 	}
 	if n > 0 && head(HeadPitchFamily, 0) != nil && head(HeadPitchWave, 0) != nil && head(HeadPitchVoice, 0) != nil {
 		f.VoiceAt, f.Voices = make([]uint8, 0, n*audio.RipVoiceCells), make([]uint8, 0, n*audio.RipVoiceCells*audio.RipVoiceSize)
@@ -302,7 +346,7 @@ func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 		for i, v := range head(HeadPitch, t) {
 			s := sigmoid(v)
 			f.Salience = append(f.Salience, float32(s))
-			midi := audio.RipMinMIDI + i
+			midi := rg.Min + i
 			f.Chroma[t][midi%12] += s
 			if midi < audio.RipBassTop {
 				f.BassChroma[t][midi%12] += s
@@ -330,9 +374,9 @@ func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 		}
 		if f.Cents != nil {
 			c := head(HeadCents, t)
-			for i, v := range c[:audio.RipPitches] {
+			for i, v := range c[:rg.Len()] {
 				f.Cents = append(f.Cents, 100*v)
-				f.CentsError = append(f.CentsError, float32(100*math.Exp(float64(c[audio.RipPitches+i]))))
+				f.CentsError = append(f.CentsError, float32(100*math.Exp(float64(c[rg.Len()+i]))))
 			}
 		}
 		if f.Voices != nil {
@@ -364,7 +408,7 @@ func appendVoices(at, to []uint8, pitch, family, wave, voice []float32) ([]uint8
 		at = append(at, uint8(cell))
 		for _, h := range [][]float32{family, wave} {
 			shares = shares[:0]
-			for i := cell; i < len(h); i += audio.RipPitches {
+			for i := cell; i < len(h); i += len(pitch) {
 				shares = append(shares, h[i])
 			}
 			n := len(shares)
@@ -373,7 +417,7 @@ func appendVoices(at, to []uint8, pitch, family, wave, voice []float32) ([]uint8
 				to = append(to, uint8(math.Round(255*float64(v))))
 			}
 		}
-		for i := cell; i < len(voice); i += audio.RipPitches {
+		for i := cell; i < len(voice); i += len(pitch) {
 			to = append(to, uint8(math.Round(255*sigmoid(voice[i]))))
 		}
 	}
@@ -521,7 +565,7 @@ func (e *ear) hear(upto int, end bool) (out, notes [][]float32) {
 	e.model.take(e.fe.planes(in), end)
 	out = e.model.give(upto - e.next)
 	if e.notes != nil {
-		e.notes.take(stacked(in), end)
+		e.notes.take(stacked(in, e.fe.Pitches()), end)
 		notes = e.notes.give(upto - e.next)
 	}
 	e.next = upto
@@ -594,15 +638,18 @@ func featuresFrom(mel [][]float32, pcen bool, avg []float64) ([][]float32, []flo
 	return out, avg
 }
 
-// The harmonic stack a notes model reads: both planes on a log-frequency axis of
-// three bins a semitone from MIDI stackRootMIDI, interpolated from the mel
-// bands, each plane a channel for each harmonic of a half and one to seven,
-// shifted so a pitch's harmonics lie at its own bin, ending in the plane's scalar
+// The harmonic stack a notes model reads of its pitches: both planes on a
+// log-frequency axis of stackStride bins a semitone from the semitone under the
+// lowest to the one over the highest, interpolated from the mel bands, each
+// plane a channel for each harmonic of a half and one to seven, shifted so a
+// pitch's harmonics lie at its own bin, ending in the plane's scalar
 const (
 	stackChannels = 16
-	stackBins     = 213
-	stackRootMIDI = 27
+	stackStride   = 3
 )
+
+// stackBins is the bins of the stack of the pitches r
+func stackBins(r audio.RipRange) int { return stackStride * (r.Len() + 2) }
 
 // stackShifts are the bins each harmonic lies above the fundamental, 36·log2 h
 var stackShifts = [...]int{-36, 0, 36, 57, 72, 84, 93, 101}
@@ -615,7 +662,14 @@ type stackBin struct {
 	ok   bool
 }
 
-var stackAxis = sync.OnceValue(func() []stackBin {
+// stackAxes holds each range's long axis once made
+var stackAxes sync.Map
+
+// stackAxis is the long axis the stack of the pitches r is cut from
+func stackAxis(r audio.RipRange) []stackBin {
+	if axis, ok := stackAxes.Load(r); ok {
+		return axis.([]stackBin)
+	}
 	mel := func(hz float64) float64 { return 2595 * math.Log10(1+hz/700) }
 	hz := func(m float64) float64 { return 700 * (math.Pow(10, m/2595) - 1) }
 	bands := audio.RipMelBands
@@ -623,18 +677,21 @@ var stackAxis = sync.OnceValue(func() []stackBin {
 	for b := range centers {
 		centers[b] = math.Log(hz(mel(30) + (mel(audio.RipRate/2)-mel(30))*float64(b+1)/float64(bands+1)))
 	}
-	axis := make([]stackBin, stackBins+stackShifts[len(stackShifts)-1]-stackShifts[0])
+	axis := make([]stackBin, stackBins(r)+stackShifts[len(stackShifts)-1]-stackShifts[0])
 	for k := range axis {
-		f := math.Log(440) + math.Ln2*(float64(stackRootMIDI)+float64(k+stackShifts[0])/3-69)/12
+		f := math.Log(440) + math.Ln2*(float64(r.Min-1)+float64(k+stackShifts[0])/stackStride-69)/12
 		b := max(min(sort.SearchFloat64s(centers, math.Nextafter(f, math.Inf(1)))-1, bands-2), 0)
 		axis[k] = stackBin{b, (f - centers[b]) / (centers[b+1] - centers[b]), f >= centers[0] && f < centers[bands-1]}
 	}
+	stackAxes.Store(r, axis)
 	return axis
-})
+}
 
-// stacked is each frame of features, both planes, as its harmonic channels
-func stacked(in [][]float32) [][]float32 {
-	axis, per := stackAxis(), stackChannels*(stackBins+1)
+// stacked is each frame of features, both planes, as the harmonic channels of
+// the pitches r
+func stacked(in [][]float32, r audio.RipRange) [][]float32 {
+	axis, stackBins := stackAxis(r), stackBins(r)
+	per := stackChannels * (stackBins + 1)
 	flat, long := make([]float32, len(in)*per), make([]float32, len(axis))
 	out := make([][]float32, len(in))
 	for t, f := range in {

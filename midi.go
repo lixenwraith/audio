@@ -372,7 +372,8 @@ func foldMeter(num, den int, fold float64) (Meter, bool) {
 // folded by octaves into the sequencer's range with its first meter read at that
 // tempo (foldMeter; 4/4 when the grid plays none), bars from where that signature
 // starts with a pickup bar for notes before it, and the key keyOf its pitch classes.
-// A note outside the rip's range is dropped, and counted; a Further one left out.
+// A note outside E1 to C7, the Range a score's rip keeps, is dropped, and counted;
+// a Further one left out.
 func (m *MIDIScore) Rip() (*Rip, int) {
 	const fine = 64 // the grid's units a tick, so a folded beat is whole
 	at := func(sec float64) int { return int(math.Round(m.ticks(sec) * fine)) }
@@ -385,7 +386,7 @@ func (m *MIDIScore) Rip() (*Rip, int) {
 	}
 	meter, _ := foldMeter(m.Meter.Beats(), m.Meter.norm().Den, float64(m.division*fine)/quarter)
 	beat := quarter * float64(meter.Beat()) / StepsPerBeat
-	r := &Rip{BPM: int(math.Round(bpm)), Meter: meter}
+	r := &Rip{BPM: int(math.Round(bpm)), Meter: meter, Range: RipRange{RipMinMIDI, RipMaxMIDI}}
 	var c, b [12]float64
 	var notes []ripNote
 	dropped := 0

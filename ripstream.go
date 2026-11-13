@@ -53,7 +53,7 @@ type RipStream struct {
 	// register's loudest row a frame, over the frames up to counted
 	loud    [InstrClap]float64
 	peak    [3]float64
-	levels  [len(ripRegisters)]ripLevels
+	levels  [ripRegisters]ripLevels
 	counted int
 	// held from the first bars frozen: the beat tracked and the reading the
 	// bars are decoded in, the meter and tempo they are named, the key and the
@@ -332,7 +332,7 @@ func (s *RipStream) count(upto int) {
 				s.peak[b] = max(s.peak[b], f.bands[b][t])
 			}
 		}
-		for i, lh := range ripRegisters {
+		for i, lh := range f.registers() {
 			r := register{f: f, lo: lh[0], reach: registerReach(lh[0], lh[1])}
 			s.levels[i].add(r.peak(t))
 		}
@@ -368,7 +368,7 @@ func (s *RipStream) decode(upto int, end bool) error {
 	if s.fluxes.n > 0 {
 		f.fluxRef = s.fluxes.at(s.fluxes.n * accRowFlux / 100)
 	}
-	for i, lh := range ripRegisters { // the ninetieth percentile, as register reads it
+	for i, lh := range f.registers() { // the ninetieth percentile, as register reads it
 		f.refs[lh] = s.levels[i].at(s.levels[i].n * 9 / 10)
 	}
 	if f.bands[0] != nil { // against the loudest heard, on a copy: the window's stay as heard
@@ -404,7 +404,7 @@ func (s *RipStream) hold(f *RipFrames, x []float64, ev ripEvents, end bool) erro
 	}
 	s.held, s.track, s.meter, s.tempo = true, tr, g.m, bpm
 	s.root, s.scale, s.start = ev.root, ev.scale, s.w0+t
-	s.rip = &Rip{BPM: int(math.Round(bpm)), Meter: g.m, Tuning: f.Tuning, Root: ev.root, Scale: ev.scale, Downbeat: float64(s.w0+g.lines[0]) * f.Hop, Params: s.p}
+	s.rip = &Rip{BPM: int(math.Round(bpm)), Meter: g.m, Tuning: f.Tuning, Range: f.Pitches(), Root: ev.root, Scale: ev.scale, Downbeat: float64(s.w0+g.lines[0]) * f.Hop, Params: s.p}
 	shift := int(math.Round(g.lag(slices.Concat(ev.melody, ev.bass)) * g.stepFrames()))
 	return s.freeze(f, x, g, ev, 0, shift, end)
 }

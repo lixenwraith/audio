@@ -15,6 +15,7 @@ import (
 // unexplained. The constants are the measurement's shape; accScore holds the fit.
 const (
 	accHarmonics = 16     // harmonics measured a note
+	accKeys      = 128    // MIDI's keys, a template each: whatever range the frames have
 	accMaxHz     = 6000.0 // under this frequency
 	accBefore    = 6      // frames measured before a note's start, for its rise
 	accAfter     = 8      // and after its end
@@ -430,7 +431,7 @@ func accTerms(notes []*accNote) {
 // share of each harmonic in a note's sound, and a floor a frame under them all
 type accFit struct {
 	notes []*accNote
-	w     [RipPitches][accHarmonics]float32
+	w     [accKeys][accHarmonics]float32
 	b     []float32
 	local []int // a note's frame index at the frame being fitted, -1 when not sounding
 }
@@ -468,7 +469,7 @@ func (f *accFit) predict(i, h, t int) (p, own, ring float32) {
 			continue
 		}
 		o := f.notes[tm.j]
-		v := o.g[u] * f.w[o.midi-RipMinMIDI][tm.k] * tm.c
+		v := o.g[u] * f.w[o.midi][tm.k] * tm.c
 		p += v
 		switch {
 		case int(tm.j) == i:
@@ -485,7 +486,7 @@ func (f *accFit) predict(i, h, t int) (p, own, ring float32) {
 // templates are updated after it unless held, from what the frames accumulated
 func (f *accFit) sweep(frozen func(*accNote) bool, templates bool) {
 	notes := f.notes
-	var numW, denW [RipPitches][accHarmonics]float64
+	var numW, denW [accKeys][accHarmonics]float64
 	var active []int
 	next := 0
 	for t := range f.b {
@@ -528,7 +529,7 @@ func (f *accFit) sweep(frozen func(*accNote) bool, templates bool) {
 
 // accTemplates accumulates what a frame says of each template's harmonics
 type accTemplates struct {
-	num, den *[RipPitches][accHarmonics]float64
+	num, den *[accKeys][accHarmonics]float64
 }
 
 // settle fits the activations of the notes active at frame t, their local
@@ -561,12 +562,12 @@ func (f *accFit) settle(t int, active []int, skip int, frozen func(*accNote) boo
 						continue
 					}
 					o := notes[tm.j]
-					wk := f.w[o.midi-RipMinMIDI][tm.k] * tm.c
+					wk := f.w[o.midi][tm.k] * tm.c
 					num[tm.j] += r * wk
 					den[tm.j] += wk
 					if last && acc != nil {
-						acc.num[o.midi-RipMinMIDI][tm.k] += float64(r * o.g[u] * tm.c)
-						acc.den[o.midi-RipMinMIDI][tm.k] += float64(o.g[u] * tm.c)
+						acc.num[o.midi][tm.k] += float64(r * o.g[u] * tm.c)
+						acc.den[o.midi][tm.k] += float64(o.g[u] * tm.c)
 					}
 				}
 			}
@@ -584,20 +585,20 @@ func (f *accFit) settle(t int, active []int, skip int, frozen func(*accNote) boo
 // share applies the templates' update, each pitch's shared with its neighbours
 // within two semitones at half their weight where its own notes are few, and
 // renormalizes each to a unit sum with the activations scaled to match
-func (f *accFit) share(numW, denW *[RipPitches][accHarmonics]float64) {
+func (f *accFit) share(numW, denW *[accKeys][accHarmonics]float64) {
 	const eps = 1e-9
-	var count [RipPitches]float64
+	var count [accKeys]float64
 	for _, n := range f.notes {
-		count[n.midi-RipMinMIDI]++
+		count[n.midi]++
 	}
-	var next [RipPitches][accHarmonics]float32
+	var next [accKeys][accHarmonics]float32
 	for p := range next {
 		var sum float64
 		for h := range next[p] {
 			var acc, wt float64
 			for d := -2; d <= 2; d++ {
 				q := p + d
-				if q < 0 || q >= RipPitches || count[q] == 0 {
+				if q < 0 || q >= accKeys || count[q] == 0 {
 					continue
 				}
 				share := count[q]
@@ -619,7 +620,7 @@ func (f *accFit) share(numW, denW *[RipPitches][accHarmonics]float64) {
 		}
 		if sum > 0 && count[p] > 0 {
 			for _, n := range f.notes {
-				if n.midi-RipMinMIDI == p {
+				if n.midi == p {
 					for u := range n.g {
 						n.g[u] *= float32(sum)
 					}
@@ -840,13 +841,7 @@ func (f *RipFrames) row(row []float32, n *accNote, in accInput, ref float64, ref
 	for _, v := range in.terms(ref) {
 		row = append(row, float32(v))
 	}
-	T := f.frames()
-	at := func(h []float32, t, midi int) float32 {
-		if h == nil || t < 0 || t >= T || midi < RipMinMIDI || midi >= RipMaxMIDI {
-			return 0
-		}
-		return h[t*RipPitches+midi-RipMinMIDI]
-	}
+	T, at := f.frames(), f.head
 	reg := refs[1]
 	if in.low {
 		reg = refs[0]
@@ -1018,7 +1013,7 @@ func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody [
 	var aloneG [][]float32
 	gap := int(p.StrikeGap / f.Hop)
 	for _, n := range cands {
-		under := float64(f.Strike[n.start*RipPitches+n.midi-RipMinMIDI]) < accStrike
+		under := float64(f.Strike[f.cell(n.start, n.midi)]) < accStrike
 		if ask.strikes && under && !slices.ContainsFunc(every, func(e *accNote) bool { return e.midi == n.midi && max(e.start-n.start, n.start-e.start) < gap }) {
 			alone, aloneG = append(alone, n), append(aloneG, slices.Clone(n.g))
 		}
@@ -1121,9 +1116,9 @@ func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody [
 // strike there, to its end (register.until), and reports whether it lasts past
 // MinNote: a strike whose pitch sounds no longer is no note
 func (f *RipFrames) accRuns(n *accNote, p RipParams, refs [2]float64) bool {
-	lo, hi, ref := RipBassTop, RipMaxMIDI, refs[1]
+	lo, hi, ref := RipBassTop, f.Pitches().Max, refs[1]
 	if n.midi < RipBassTop {
-		lo, hi, ref = RipMinMIDI, RipBassTop, refs[0]
+		lo, hi, ref = f.Pitches().Min, RipBassTop, refs[0]
 	}
 	r := register{f: f, lo: lo, states: hi - lo, reach: hi - lo, ref: ref}
 	end := r.until(n.start, n.midi-lo, p)
@@ -1158,10 +1153,10 @@ func byFrame(a, b *accNote) int { return cmp.Or(a.t0-b.t0, a.midi-b.midi) }
 // accRefs is each register's reference loudness, the bass's then the melody's
 func (f *RipFrames) accRefs() [2]float64 {
 	var refs [2]float64
-	if r, ok := f.register(RipMinMIDI, RipBassTop); ok {
+	if r, ok := f.register(f.Pitches().Min, RipBassTop); ok {
 		refs[0] = r.ref
 	}
-	if r, ok := f.register(RipBassTop, RipMaxMIDI); ok {
+	if r, ok := f.register(RipBassTop, f.Pitches().Max); ok {
 		refs[1] = r.ref
 	}
 	return refs
@@ -1218,7 +1213,7 @@ func (f *RipFrames) accInput(n *accNote, ev accEvidence, notes []*accNote, refs 
 		if h == nil || t < 0 || t >= f.frames() {
 			return 0
 		}
-		return float64(h[t*RipPitches+midi-RipMinMIDI])
+		return float64(h[f.cell(t, midi)])
 	}
 	for t := n.start - 2; t <= n.start+2; t++ {
 		in.strike = math.Max(in.strike, at(f.Strike, t, n.midi))
@@ -1260,10 +1255,11 @@ func (f *RipFrames) accCandidates(p RipParams, reported []*accNote, refs [2]floa
 		if t < 0 || t >= T {
 			return 0
 		}
-		return h[t*RipPitches+midi-RipMinMIDI]
+		return h[f.cell(t, midi)]
 	}
 	var out []ripNote
-	for reg, lo, hi := 0, RipMinMIDI, RipBassTop; lo < RipMaxMIDI; reg, lo, hi = reg+1, hi, RipMaxMIDI {
+	rg := f.Pitches()
+	for reg, lo, hi := 0, rg.Min, RipBassTop; lo < rg.Max; reg, lo, hi = reg+1, hi, rg.Max {
 		r := register{f: f, lo: lo, states: hi - lo, reach: hi - lo, ref: refs[reg]}
 		if r.ref <= 0 {
 			continue

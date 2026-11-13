@@ -110,6 +110,107 @@ func (e *struckEar) strike(f *RipFrames, err error) (*RipFrames, error) {
 	return f, nil
 }
 
+// widened is struck heard over the piano's pitches: each plane a pitch has a
+// value in padded with those under E1 and over C7, which never sound
+type widened struct{}
+
+func (widened) Hear(x []float64, rate int, p RipParams) (*RipFrames, error) {
+	return widen(struck{}.Hear(x, rate, p))
+}
+
+func (widened) Ear(p RipParams, spectrum bool) (RipEar, error) {
+	ear, err := struck{}.Ear(p, spectrum)
+	return widenedEar{ear}, err
+}
+
+type widenedEar struct{ RipEar }
+
+func (e widenedEar) Hear(x []float64) (*RipFrames, error) { return widen(e.RipEar.Hear(x)) }
+func (e widenedEar) Close() (*RipFrames, error)           { return widen(e.RipEar.Close()) }
+
+func widen(f *RipFrames, err error) (*RipFrames, error) {
+	if err != nil {
+		return nil, err
+	}
+	from, to := f.Pitches(), RipPiano
+	for _, h := range [...]*[]float32{&f.Salience, &f.Strike, &f.Release, &f.Velocity} {
+		wide := make([]float32, f.frames()*to.Len())
+		for t := range f.frames() {
+			copy(wide[t*to.Len()+from.Min-to.Min:], (*h)[t*from.Len():][:from.Len()])
+		}
+		*h = wide
+	}
+	f.Range = to
+	return f, nil
+}
+
+// TestARipReadsThePitchesItsFramesSay: the decoders, the accounting and a
+// judge's rows take the pitches from the frames: the same sound in planes of
+// the piano's pitches, those outside E1 to C7 silent, rips to the same bars,
+// notes and strikes, row for row, with and without a judge, offline and from a
+// stream, each rip saying its range; and a note at either end of it is read.
+func TestARipReadsThePitchesItsFramesSay(t *testing.T) {
+	ae, slots := startLoopEngine(t)
+	buf, err := ae.RenderMusic(slots, 176, Meter{}, 4, DefaultRootNote, ScalePhrygian, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	same := func(how string, narrow, wide *Rip, err error) {
+		t.Helper()
+		if err != nil || narrow.Range != (RipRange{RipMinMIDI, RipMaxMIDI}) || wide.Range != RipPiano {
+			t.Fatalf("%s: the rips say their pitches are %v and %v: %v", how, narrow.Range, wide.Range, err)
+		}
+		w := *wide
+		if w.Range = narrow.Range; len(narrow.Notes) == 0 || !reflect.DeepEqual(narrow, &w) {
+			t.Errorf("%s: %d notes and %d strikes of E1 to C7's planes, %d and %d of the piano's", how, len(narrow.Notes), len(narrow.Strikes), len(wide.Notes), len(wide.Strikes))
+		}
+	}
+	for how, judge := range map[string]*RipJudge{"by the installed scores": nil, "under a judge": judgeSaying([judgeStages]float64{0.9, 0.2})} {
+		rp := Ripper{Params: DefaultRipParams(), FrontEnd: struck{}, Judge: judge, Strikes: true, Rows: true}
+		narrow, err := rp.Samples(buf, AudioSampleRate)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rp.FrontEnd = widened{}
+		wide, err := rp.Samples(buf, AudioSampleRate)
+		same(how, narrow, wide, err)
+	}
+	var live [2]*Rip
+	for i, fe := range []RipFrontEnd{struck{}, widened{}} {
+		s, err := NewRipStream(Ripper{Params: DefaultRipParams(), FrontEnd: fe, Judge: judgeSaying([judgeStages]float64{0.9, 0.2}), Strikes: true, Rows: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for at, block := 0, AudioSampleRate/2; at < len(buf); at += block {
+			if err := s.Write(buf[at:min(at+block, len(buf))], AudioSampleRate); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if live[i], err = s.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	same("from a stream", live[0], live[1], nil)
+
+	// and a note struck at either end of the piano's pitches is a note of its line
+	const frames = 300
+	f := &RipFrames{Hop: RipFrameSec, Range: RipPiano, Flux: make([]float64, frames)}
+	for _, h := range [...]*[]float32{&f.Salience, &f.Strike, &f.Release, &f.Velocity} {
+		*h = make([]float32, frames*RipPiano.Len())
+	}
+	x := make([]float64, frames*RipHop)
+	for _, midi := range []int{23, 105} {
+		accTone(x, midi, 50, 250, 0.3, 8)
+		for t := 50; t < 250; t++ {
+			f.Salience[f.cell(t, midi)] = 0.9
+		}
+		f.Strike[f.cell(50, midi)], f.Velocity[f.cell(50, midi)] = 0.95, 0.5
+	}
+	if bass, melody := f.lines(x, DefaultRipParams()); !slices.Equal(accPitches(bass), []int{23}) || !slices.Equal(accPitches(melody), []int{105}) {
+		t.Errorf("a B0 and an A7 struck in the piano's planes read as the bass %v and the melody %v", accPitches(bass), accPitches(melody))
+	}
+}
+
 func accPitches(notes []ripNote) []int {
 	var out []int
 	for _, n := range notes {

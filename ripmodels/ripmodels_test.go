@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"encoding/binary"
 	"flag"
+	"fmt"
 	"io"
 	"maps"
 	"math"
@@ -17,13 +18,24 @@ import (
 	"github.com/lixenwraith/transformer"
 )
 
+// e1c7 is the pitches of a weight file that states none
+var e1c7 = audio.RipRange{Min: audio.RipMinMIDI, Max: audio.RipMaxMIDI}
+
 // TestAnUntrainedModelHearsFramesTheRipReads is the contract between the models
-// and the decoders: FrameSpec's yields frames the rip runs on, every field read, a
-// family's shares summing to one, with or without its last heads back to the
-// strike's, in one channel or two; a notes model gives the notes, each pitch's
-// cents and what plays a frame's most salient pitches, unless trained before those.
+// and the decoders, for a file that states no pitches and for the piano's:
+// FrameSpec's yields frames of its range the rip runs on, every field read, with
+// or without its last heads, in one channel or two; a notes model gives the notes,
+// each pitch's cents and what plays a frame's most salient, unless trained before.
 func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
-	cfg := FrameSpec()
+	t.Run("a file that states no pitches", func(t *testing.T) { hearsFramesTheRipReads(t, e1c7, false) })
+	t.Run("the piano's", func(t *testing.T) { hearsFramesTheRipReads(t, audio.RipPiano, true) })
+}
+
+func hearsFramesTheRipReads(t *testing.T, r audio.RipRange, stated bool) {
+	cfg, notes := FrameSpec(r), NotesSpec(r)
+	if !stated {
+		cfg.Constants, notes.Constants = nil, nil
+	}
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window = 16, 2, 1, 32, 8 // a small one for the test's sake
 	m, err := transformer.NewRandom(cfg, 1)
 	if err != nil {
@@ -49,13 +61,13 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n := len(f.Flux)
-	per := n * audio.RipPitches
-	if n < 400 || len(f.Salience) != per || len(f.Strike) != per || len(f.Release) != per || len(f.Velocity) != per ||
+	n, pitches := len(f.Flux), r.Len()
+	per := n * pitches
+	if n < 400 || f.Range != r || len(f.Salience) != per || len(f.Strike) != per || len(f.Release) != per || len(f.Velocity) != per ||
 		len(f.Voice) != n*audio.VoiceGeneCount || len(f.Wave) != n*len(audio.VoiceWaves) || len(f.Onset[2]) != n ||
 		len(f.Family) != n*len(audio.RipFamilies) || len(f.Beat) != n || len(f.Downbeat) != n {
-		t.Fatalf("frames %d, salience %d, strikes %d, releases %d, velocities %d, voice %d, wave %d, family %d, beat %d, downbeat %d",
-			n, len(f.Salience), len(f.Strike), len(f.Release), len(f.Velocity), len(f.Voice), len(f.Wave), len(f.Family), len(f.Beat), len(f.Downbeat))
+		t.Fatalf("frames %d of %v, salience %d, strikes %d, releases %d, velocities %d, voice %d, wave %d, family %d, beat %d, downbeat %d",
+			n, f.Range, len(f.Salience), len(f.Strike), len(f.Release), len(f.Velocity), len(f.Voice), len(f.Wave), len(f.Family), len(f.Beat), len(f.Downbeat))
 	}
 	if out := m.Forward(fe.planes(features(audio.MelFrames(x, audio.AudioSampleRate), false))); f.Beat[n/2] != sigmoid(m.Slice(out[n/2], HeadBeat)[0]) ||
 		f.Downbeat[n/2] != sigmoid(m.Slice(out[n/2], HeadDownbeat)[0]) {
@@ -115,7 +127,6 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 		t.Error("a frame model without the voice heads passed")
 	}
 
-	notes := NotesSpec()
 	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
 	nm := exported(t, notes, 2, 0.7)
 	var nb bytes.Buffer
@@ -130,26 +141,29 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 		t.Errorf("the notes weights' checksum %x, want the notes model's file's %x", nfe.NotesSum, sum)
 	}
 	nf, err := nfe.Hear(x, audio.AudioSampleRate, audio.DefaultRipParams())
-	if err != nil || len(nf.Flux) != n {
-		t.Fatalf("a frame model and a notes model heard %d frames of %d: %v", len(nf.Flux), n, err)
+	if err != nil || len(nf.Flux) != n || nf.Range != r {
+		t.Fatalf("a frame model and a notes model heard %d frames of %d, of %v: %v", len(nf.Flux), n, nf.Range, err)
 	}
-	heard := nm.Forward(stacked(features(audio.MelFrames(x, audio.AudioSampleRate), true)))
+	if rip, err := (audio.Ripper{Params: audio.DefaultRipParams(), FrontEnd: nfe}).Samples(x, audio.AudioSampleRate); err != nil || rip.Range != r {
+		t.Errorf("the rip of the two models' frames says its pitches are %v: %v", rip.Range, err)
+	}
+	heard := nm.Forward(stacked(features(audio.MelFrames(x, audio.AudioSampleRate), true), r))
 	for i, v := range nm.Slice(heard[n/2], HeadStrike) {
-		if s := float32(sigmoid(v)); nf.Strike[n/2*audio.RipPitches+i] != s || nf.Salience[n/2*audio.RipPitches+i] == f.Salience[n/2*audio.RipPitches+i] {
-			t.Fatalf("pitch %d struck at %g, the notes model says %g", i, nf.Strike[n/2*audio.RipPitches+i], s)
+		if s := float32(sigmoid(v)); nf.Strike[n/2*pitches+i] != s || nf.Salience[n/2*pitches+i] == f.Salience[n/2*pitches+i] {
+			t.Fatalf("pitch %d struck at %g, the notes model says %g", i, nf.Strike[n/2*pitches+i], s)
 		}
 	}
 	if !slices.Equal(nf.Voice, f.Voice) || !slices.Equal(nf.Onset[0], f.Onset[0]) || !slices.Equal(nf.Family, f.Family) {
 		t.Error("the notes model moved the voice, the kicks or the family")
 	}
-	at, c := n/2*audio.RipPitches+7, nm.Slice(heard[n/2], HeadCents)
+	at, c := n/2*pitches+7, nm.Slice(heard[n/2], HeadCents)
 	if f.Cents != nil || len(nf.Cents) != per || len(nf.CentsError) != per || nf.Cents[at] != 100*c[7] ||
-		nf.CentsError[at] != float32(100*math.Exp(float64(c[audio.RipPitches+7]))) {
+		nf.CentsError[at] != float32(100*math.Exp(float64(c[pitches+7]))) {
 		t.Errorf("%d cents and %d errors of %d, the frame model alone %d", len(nf.Cents), len(nf.CentsError), per, len(f.Cents))
 	}
 	// the pitches told are a frame's most salient, the most salient first, each family's shares and each wave's a whole
 	told, row := nf.VoiceAt[n/2*audio.RipVoiceCells:][:audio.RipVoiceCells], nf.Voices[n/2*audio.RipVoiceCells*audio.RipVoiceSize:]
-	sal, names, waves := nf.Salience[n/2*audio.RipPitches:][:audio.RipPitches], len(audio.RipFamilies)-1, len(audio.VoiceWaves)
+	sal, names, waves := nf.Salience[n/2*pitches:][:pitches], len(audio.RipFamilies)-1, len(audio.VoiceWaves)
 	rest := slices.DeleteFunc(slices.Clone(sal), func(v float32) bool {
 		return slices.ContainsFunc(told, func(c uint8) bool { return sal[c] == v })
 	})
@@ -159,7 +173,7 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 		}
 		return n
 	}
-	gene := nm.Slice(heard[n/2], HeadPitchVoice)[3*audio.RipPitches+int(told[0])]
+	gene := nm.Slice(heard[n/2], HeadPitchVoice)[3*pitches+int(told[0])]
 	if len(nf.VoiceAt) != n*audio.RipVoiceCells || len(nf.Voices) != n*audio.RipVoiceCells*audio.RipVoiceSize || f.Voices != nil ||
 		!slices.IsSortedFunc(told, func(a, b uint8) int { return cmp.Compare(sal[b], sal[a]) }) || sal[told[len(told)-1]] < slices.Max(rest) ||
 		math.Abs(float64(total(row[:names]))-255) > 4 || math.Abs(float64(total(row[names:names+waves]))-255) > 3 ||
@@ -167,7 +181,7 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 		t.Errorf("%d pitches told and %d values of %d frames, the frame model alone %d; frame %d tells %v, the first's shares %v, a name sure past %v",
 			len(nf.VoiceAt), len(nf.Voices), n, len(f.Voices), n/2, told, row[:names+waves], nf.Sure)
 	}
-	before := NotesSpec()
+	before := NotesSpec(r)
 	before.Cells.Reduce, before.Cells.Wide, before.Cells.Cell, before.Cells.Frame, before.Cells.Heads = 2, 3, 4, 5, 4
 	before.Outputs = slices.DeleteFunc(before.Outputs, func(h transformer.Head) bool {
 		return slices.Contains([]string{HeadCents, HeadPitchFamily, HeadPitchWave, HeadPitchVoice, HeadSure}, h.Name)
@@ -188,6 +202,18 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 	}
 	if _, err := New(m, m); err == nil {
 		t.Error("a notes model that reads no harmonic stack passed")
+	}
+	// a line grows alone: a frame model of other pitches beside it gives the notes model's
+	other := FrameSpec(e1c7)
+	if r == e1c7 {
+		other = FrameSpec(audio.RipPiano)
+	}
+	other.Dim, other.Heads, other.Layers, other.FFN, other.Window = 16, 2, 1, 32, 8
+	om, _ := transformer.NewRandom(other, 1)
+	if mfe, err := New(om, nm); err != nil {
+		t.Errorf("a frame model of other pitches beside the notes model: %v", err)
+	} else if mf, _ := mfe.Hear(x, audio.AudioSampleRate, audio.DefaultRipParams()); mf.Range != r || len(mf.Strike) != per {
+		t.Errorf("a frame model of other pitches beside the notes model hears %v, want the notes model's %v", mf.Range, r)
 	}
 	notes.Outputs = slices.DeleteFunc(notes.Outputs, func(h transformer.Head) bool { return h.Name == HeadVoicing })
 	nv, _ := transformer.NewRandom(notes, 2)
@@ -239,10 +265,10 @@ func exported(t testing.TB, cfg transformer.Config, seed uint64, sure float32) *
 // says another measure at every frame, and is refused; one written as the
 // trainer's export writes it, the row zero and the measure its bias, loads
 func TestANotesModelsMeasureIsOneNumber(t *testing.T) {
-	cfg := FrameSpec()
+	cfg := FrameSpec(e1c7)
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window = 16, 2, 1, 32, 8
 	m, _ := transformer.NewRandom(cfg, 1)
-	notes := NotesSpec()
+	notes := NotesSpec(e1c7)
 	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
 	random, _ := transformer.NewRandom(notes, 2)
 	if _, err := New(m, random); err == nil {
@@ -257,10 +283,10 @@ func TestANotesModelsMeasureIsOneNumber(t *testing.T) {
 // model whose measure is 0.7 gives frames carrying it after every Write, in
 // blocks of a second and of 1,024 samples, many of which complete no step
 func TestAStreamsFramesCarryTheMeasureWhateverTheBlocks(t *testing.T) {
-	cfg := FrameSpec()
+	cfg := FrameSpec(audio.RipPiano)
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window, cfg.Channels = 16, 2, 2, 32, 32, 2
 	m, _ := transformer.NewRandom(cfg, 1)
-	notes := NotesSpec()
+	notes := NotesSpec(audio.RipPiano)
 	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
 	fe, err := New(m, exported(t, notes, 2, 0.7))
 	if err != nil {
@@ -286,8 +312,19 @@ func TestAStreamsFramesCarryTheMeasureWhateverTheBlocks(t *testing.T) {
 // TestTheStackLaysAPitchsHarmonicsOnItsBin: a plane reading each band's log
 // frequency, which the interpolation keeps exact, reads in the channel of
 // harmonic h at a pitch's bin that pitch's frequency 2^(shift/36) times, each
-// channel ending in its plane's scalar and holding zero past the bands.
+// channel ending in its plane's scalar and holding zero past the bands, from a
+// semitone under the range's lowest pitch to one over its highest.
 func TestTheStackLaysAPitchsHarmonicsOnItsBin(t *testing.T) {
+	for _, r := range []audio.RipRange{e1c7, audio.RipPiano} {
+		stackLaysAPitchsHarmonicsOnItsBin(t, r)
+	}
+	if c := NotesSpec(audio.RipPiano).Cells; c.Bins != 270 || c.First != 1 || c.Read != 88 || c.PoolFirst != 21 || c.PoolBins != NotesSpec(e1c7).Cells.Bins {
+		t.Errorf("the piano's cells %+v: want 270 bins, 88 read from the second, the regions over E1 to C7's bins", *c)
+	}
+}
+
+func stackLaysAPitchsHarmonicsOnItsBin(t *testing.T, r audio.RipRange) {
+	stackBins := stackBins(r)
 	mel := func(hz float64) float64 { return 2595 * math.Log10(1+hz/700) }
 	hz := func(m float64) float64 { return 700 * (math.Pow(10, m/2595) - 1) }
 	n := audio.RipMelBands
@@ -297,7 +334,7 @@ func TestTheStackLaysAPitchsHarmonicsOnItsBin(t *testing.T) {
 		frame[b], frame[n+1+b] = float32(c), float32(2*c)
 	}
 	frame[n], frame[2*n+1] = 0.25, 0.5
-	got := stacked([][]float32{frame})[0]
+	got := stacked([][]float32{frame}, r)[0]
 	lo, hi := math.Log(hz(mel(30)+(mel(audio.RipRate/2)-mel(30))/float64(n+1))), math.Log(hz(mel(30)+(mel(audio.RipRate/2)-mel(30))*float64(n)/float64(n+1)))
 	var reached int
 	for c := range stackChannels {
@@ -307,7 +344,7 @@ func TestTheStackLaysAPitchsHarmonicsOnItsBin(t *testing.T) {
 			t.Fatalf("channel %d ends in %g", c, row[stackBins])
 		}
 		for k, v := range row[:stackBins] {
-			f := math.Log(440) + math.Ln2*(float64(stackRootMIDI)+float64(k+shift)/3-69)/12
+			f := math.Log(440) + math.Ln2*(float64(r.Min-1)+float64(k+shift)/3-69)/12
 			want := plane * f
 			if f < lo || f >= hi {
 				want = 0
@@ -434,7 +471,7 @@ func byHead(to map[string][]float32, f *audio.RipFrames) {
 	}
 	// what plays each pitch told as a share, zero for a pitch not told
 	for t := 0; t < len(f.VoiceAt); t += audio.RipVoiceCells {
-		plane := make([]float32, audio.RipPitches*audio.RipVoiceSize)
+		plane := make([]float32, f.Pitches().Len()*audio.RipVoiceSize)
 		for k, cell := range f.VoiceAt[t:][:audio.RipVoiceCells] {
 			for i, b := range f.Voices[(t+k)*audio.RipVoiceSize:][:audio.RipVoiceSize] {
 				plane[int(cell)*audio.RipVoiceSize+i] = float32(b) / 255
@@ -481,10 +518,10 @@ func apart(a, b []float32, frames, from int) (rms, worst, of float64) {
 // heads as heard whole, to rounding, what plays a pitch to a byte's. Waiting half
 // a second it holds the notes model's so; -model, -notes, -wav log both.
 func TestTheEarHearsAsTheWholeRecording(t *testing.T) {
-	cfg := FrameSpec()
+	cfg := FrameSpec(audio.RipPiano)
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window, cfg.Channels = 16, 2, 2, 32, 32, 2
 	m, _ := transformer.NewRandom(cfg, 1)
-	notes := NotesSpec()
+	notes := NotesSpec(audio.RipPiano)
 	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
 	notes.Cells.Long = []int{3, 9, 27} // the trainer's
 	fe := &FrontEnd{Frame: m, Notes: exported(t, notes, 2, 0.7)}
@@ -579,13 +616,20 @@ func trainedEar(t *testing.T) (*FrontEnd, []float64, int) {
 
 // BenchmarkEar is a core's seconds a second of audio (-cpu 1) through the models
 // of FrameSpec over two channels and of NotesSpec with the trainer's long
-// convolutions: thirty seconds heard whole, and through an ear in 50 ms blocks
-// waiting the frame model's reach and waiting half a second.
+// convolutions, for E1 to C7 and for the piano's pitches: thirty seconds heard
+// whole, and through an ear in 50 ms blocks waiting the frame model's reach and
+// waiting half a second.
 func BenchmarkEar(b *testing.B) {
-	cfg := FrameSpec()
+	for _, r := range []audio.RipRange{e1c7, audio.RipPiano} {
+		benchmarkEar(b, r)
+	}
+}
+
+func benchmarkEar(b *testing.B, r audio.RipRange) {
+	cfg := FrameSpec(r)
 	cfg.Channels = 2
 	m, _ := transformer.NewRandom(cfg, 1)
-	notes := NotesSpec()
+	notes := NotesSpec(r)
 	notes.Cells.Long = []int{3, 9, 27}
 	nm := exported(b, notes, 2, 0.7)
 	const sec = 30
@@ -594,7 +638,7 @@ func BenchmarkEar(b *testing.B) {
 		name  string
 		ahead float64
 	}{{"whole", 0}, {"reach", 0}, {"half", 0.5}} {
-		b.Run(c.name, func(b *testing.B) {
+		b.Run(fmt.Sprintf("%s/%d", c.name, r.Len()), func(b *testing.B) {
 			fe := &FrontEnd{Frame: m, Notes: nm, Ahead: c.ahead}
 			for b.Loop() {
 				if c.name == "whole" {

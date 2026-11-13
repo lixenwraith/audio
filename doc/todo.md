@@ -251,19 +251,19 @@ voice ([Audio §9](audio.md#9-ripping-a-recording)). What is left:
   register's mean: `freeze` lays its notes out without it. The smallest close:
   the frozen notes keep `ripNote.said` and `Final` parts the register as
   `Samples` does.
-- `Hear` holds the notes model's whole output while it reads it: 3,562 values a
-  frame with these heads against 456 without, 221 MB over three minutes against
-  28 MB, beside the stack's 212 MB, though the frames keep 552 bytes of it. The
+- `Hear` holds the notes model's whole output while it reads it: at E1 to C7
+  3,562 values a frame with these heads against 456 without, 221 MB over three
+  minutes against 28 MB, beside the stack's 212 MB, though the frames keep 552
+  bytes of it; the piano's 88 pitches make each 88/69 of that. The
   smallest close: `Hear` in stretches of frames with the notes model's reach
   either side, as the ear already hears; or a cell net that gives a head only at
   the cells asked for, in `transformer`.
 - The measure is one number for every family, written in the weight file as a
   frame head of no weights, and a measure a family fits the same head at eight
-  values. Not taken: a file version with named constants, which needs
-  `transformer`'s format, loader and both exporters changed and a file an older
-  audio refuses. What brings it is a constant that is not the notes model's
-  own, one on the frame model say, or one a caller needs before any frame is
-  heard.
+  values. A file states constants by name since `transformer`'s version 6, as
+  it states its lowest pitch (`ripmodels.Lowest`), and the measure belongs
+  there: it stays a head while trained files carry it so, and moves once the
+  trainer's export writes the constant, `New` reading either.
 - A note keeps the name and not the share: `RipVoice` has no field for how far
   past the measure its family was, or for the second family. A caller that
   ranks notes by sureness needs one.
@@ -271,20 +271,21 @@ voice ([Audio §9](audio.md#9-ripping-a-recording)). What is left:
   read on its other frames. How many notes of a dense recording are told on
   under half their frames is not counted yet.
 
-### Widen the pitch range to the piano's
+### Read a score and the analysis over the piano's pitches
 
-- Priority: P1
-- Affected files: `rip.go` (`RipMinMIDI`, `RipMaxMIDI`, `RipPitches`),
-  `ripmodels/ripmodels.go`; stapes' `tool/rip-train`
+- Priority: P3
+- Affected files: `midi.go` (`MIDIScore.Rip`), `rip.go` (`analysisEar`)
 
-The rip's pitches run from E1 to C7 (`RipMinMIDI` 28, `RipPitches` 69) and are
-to run from MIDI 21 to 108 after v0.26.0, decided by Lixen on 13 November 2026:
-the notes model's weights are the same at every pitch, the frame model's four
-per-pitch heads grow rows, and the corpora already hold the notes. Accuracy
-under E1 is not bought by it, since the mel's lowest band is centred at 38.9 Hz.
-The analysis is in [stapes'
-todo](https://github.com/lixenwraith/stapes/blob/main/doc/todo.md) once
-stapes#49 lands.
+The models tell apart the pitches their weight files state, the piano's for one
+built now, while a score's rip still drops a note outside E1 to C7 and the
+analysis hears no other ([Audio §9](audio.md#9-ripping-a-recording)).
+
+- `MIDIScore.Rip` keeps its bound because stapes' corpus draws its MIDI loops
+  through it: a wider one changes every such corpus's bytes, so it goes with
+  the next corpus rendered, as a range the caller gives.
+- The analysis's bass is the strongest pitch of its register by its first
+  partials, so more pitches under E1 move its rips; nothing is gained there
+  until its long window reads them apart.
 
 ## The bank's music
 

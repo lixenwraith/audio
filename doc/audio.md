@@ -426,6 +426,19 @@ renders and hears a render against the recording (`Fidelity`). The whole is
 drawn, with the searches stapes runs over it, in stapes' [rip design
 §2](https://github.com/lixenwraith/stapes/blob/main/doc/rip-design.md#2-stages).
 
+A front end tells apart the pitches of a range (`RipRange`) and its frames say
+which (`RipFrames.Range`, `Pitches`): the analysis E1 to C7 (`RipMinMIDI`,
+`RipMaxMIDI`), a model those its weight file states, from its lowest pitch
+(`ripmodels.Lowest`, a constant of the file) as many as its pitch head scores,
+and E1 to C7 where the file states none, as no file trained before it does.
+The decoders, the accounting, a judge's rows, the stream and `Fidelity` take the
+pitches from the frames and from no constant, so such a file rips as it did, and
+a rip says its own (`Rip.Range`). The models are built for the piano's, A0 to C8
+(`RipPiano`); `ripmodels.FrameSpec` and `NotesSpec` are a range's specs. The
+analysis keeps E1 to C7: its bass is the strongest pitch of its register, so
+more pitches there would move its rips. The mel's lowest band is centred at
+38.9 Hz, so a model tells a note under E1 by its harmonics alone.
+
 `Patterns` writes a rip as patterns of up to four bars, named `<name>_beat_<n>`,
 `<name>_melody_<n>` and `<name>_bass_<n>` in a group of their own and no tier.
 `ReadWAV` reads the file, any PCM or float width. A `Ripper` with a `Grid` pins
@@ -802,11 +815,17 @@ notes model (`ripmodels.NotesSpec`, the trainer's PitchNet), a cell net
 (`transformer.Cells`) of convolutions alone with the same weights at every
 pitch, gives the pitch, voicing, strike, release and velocity heads, and the
 frame model the onsets, the drums, the wave and voice genes, the family, the
-beat and the bar line. It reads the harmonic stack (`stacked`): both planes
-interpolated onto a log-frequency axis of three bins a semitone from MIDI 27,
-each a channel for each harmonic of a half and one to seven, shifted so a
-pitch's harmonics lie at its own bin, 16 channels of 213 bins, each ending in
-its plane's scalar. Without it the frame model gives those five heads too.
+beat and the bar line. It reads the harmonic stack of its pitches (`stacked`):
+both planes interpolated onto a log-frequency axis of three bins a semitone,
+from the semitone under its lowest pitch to the one over its highest, each a
+channel for each harmonic of a half and one to seven, shifted so a pitch's
+harmonics lie at its own bin, 16 channels of 213 bins for E1 to C7 and 270 for
+the piano's, each ending in its plane's scalar. Its frame heads pool the stack
+in 16 regions over the bins E1 to C7's holds, whatever its range
+(`transformer.Cells.PoolFirst`), so a model grown to more pitches keeps what
+they read. Without it the frame model gives those five heads too. The two
+models' ranges need not agree: the frames have the range of the one that gives
+the notes.
 
 A notes model trained with one has a cents head too (`ripmodels.HeadCents`, two
 values a pitch): how far each pitch's sound sits from its cell's centre, and the
@@ -920,12 +939,12 @@ voice and family heads say one thing a frame: three more heads of values a pitch
 (`ripmodels.HeadPitchFamily`, a score for each of `RipFamilies` but unknown,
 which is the absence of a name and no class; `HeadPitchWave`, one for each of
 `VoiceWaves`; `HeadPitchVoice`, the genes). Their planes are 45 values a pitch,
-3,105 a frame, so the front end keeps them at each frame's twelve most salient
+3,105 a frame at E1 to C7, so the front end keeps them at each frame's twelve most salient
 pitches alone (`RipVoiceCells`; `RipFrames.VoiceAt` names them, most salient
 first), a byte a value (`RipFrames.Voices`, `RipVoiceSize` a pitch, 255 a
 whole): each family's and each wave's share, a softmax over its head's scores
 at the pitch, and each gene. That is 552 bytes a frame, twice the salience
-plane's 276: a three-minute recording's 15,504 frames keep 8.6 MB of them
+plane's 276 there: a three-minute recording's 15,504 frames keep 8.6 MB of them
 beside the 32 MB of their other fields.
 
 Each note of the registers is then told its voice (`tell`, `RipNote.Voice`):

@@ -245,6 +245,9 @@ type Rip struct {
 	Beats       []float64 // seconds of each beat of the meter, the first bar's downbeat through the last bar's end
 	Bars        []RipBar
 	Params      RipParams
+	// Range is the pitches its notes lie in: those its front end tells apart, or
+	// those a score's are kept in; zero where nothing bounds them
+	Range RipRange
 	// MelodyVoice, UnderVoice and BassVoice are the voices a front end heard the
 	// melody, the line under it and the bass played with: each line's notes' own
 	// (RipNote.Voice), their mean, where it tells them, else its voice head's over
@@ -354,8 +357,9 @@ type RipBar struct {
 }
 
 // The analysis rate and transform, 93 ms frames of 10.8 Hz bins every 11.6 ms,
-// the bands the drums are told apart by, the pitches the salience spans and the
-// log-mel bands a front-end model hears: the frame grid every front end keeps.
+// the bands the drums are told apart by, the pitches the analysis's salience
+// spans, which a front end that names none has too, and the log-mel bands a
+// front-end model hears: the frame grid every front end keeps.
 const (
 	RipRate     = 22050
 	RipN        = 2048
@@ -385,6 +389,16 @@ const (
 	ripBrightSpread   = 0.03
 )
 
+// RipRange is the pitches a front end tells apart, MIDI Min up to Max exclusive
+type RipRange struct{ Min, Max int }
+
+// RipPiano is the piano's keys, A0 to C8, the range the rip's models are built for
+var RipPiano = RipRange{21, 109}
+
+func (r RipRange) Len() int { return r.Max - r.Min }
+
+func (r RipRange) Holds(midi int) bool { return midi >= r.Min && midi < r.Max }
+
 // RipFamilies names the instrument families a frame model's family head scores,
 // in its order: what plays a frame's highest sounding note, unknown for a sound of
 // none of the others. A note is named one of the others or none: unknown is the
@@ -400,8 +414,8 @@ const RipVoiceCells = 12
 var RipVoiceSize = len(RipFamilies) - 1 + len(VoiceWaves) + VoiceGeneCount
 
 // RipFrames is a recording as the rip's decoders read it, a value per frame every
-// Hop seconds: onset strength, each drum's (kick, snare, hihat), each pitch's
-// salience from E1 to C7 (the bass's by its first partials, the melody's with the
+// Hop seconds: onset strength, each drum's (kick, snare, hihat), the salience of
+// each pitch of its Range (the bass's by its first partials, the melody's with the
 // bass cancelled) and each register's chroma, as the analysis or the rip's models
 // (ripmodels) fill it; the models may also say what plays, the beats and bar lines.
 type RipFrames struct {
@@ -409,19 +423,22 @@ type RipFrames struct {
 	Tuning             float64 // cents the recording's pitches sit off A440, as the front end heard them
 	Flux               []float64
 	Onset              [InstrClap][]float64
-	Salience           []float32 // frames × RipPitches, MIDI RipMinMIDI up
+	Salience           []float32 // frames × pitches, each pitch of Pitches from its first
 	Chroma, BassChroma [][12]float64
 	Wave               []float32 // frames × len(VoiceWaves), or nil
 	Voice              []float32 // frames × VoiceGeneCount, or nil
-	Strike             []float32 // frames × RipPitches, how surely each pitch is struck there, or nil
-	Release            []float32 // frames × RipPitches, how surely each pitch is let go there, or nil
-	Velocity           []float32 // frames × RipPitches, how hard a pitch struck there was struck, or nil
-	Cents              []float32 // frames × RipPitches, the cents each pitch's sound sits from its cell's centre, or nil
-	CentsError         []float32 // frames × RipPitches, the error in cents the front end states for each, nil as Cents is
+	Strike             []float32 // frames × pitches, how surely each pitch is struck there, or nil
+	Release            []float32 // frames × pitches, how surely each pitch is let go there, or nil
+	Velocity           []float32 // frames × pitches, how hard a pitch struck there was struck, or nil
+	Cents              []float32 // frames × pitches, the cents each pitch's sound sits from its cell's centre, or nil
+	CentsError         []float32 // frames × pitches, the error in cents the front end states for each, nil as Cents is
 	Family             []float32 // frames × len(RipFamilies), how surely each family plays there, summing to 1, or nil
-	// VoiceAt is each frame's RipVoiceCells most salient pitches, from RipMinMIDI,
+	// VoiceAt is each frame's RipVoiceCells most salient pitches, from the range's first,
 	// and Voices what plays each, RipVoiceSize values of 255 a whole; or nil
 	VoiceAt, Voices []uint8
+	// Range is the pitches the planes of a value a pitch hold; zero is the
+	// analysis's, E1 to C7 (Pitches)
+	Range RipRange
 	// Sure is the share a family must pass over a note's frames to name it, as
 	// the front end measured it; zero where it measured none, and no note is named
 	Sure float64
@@ -438,7 +455,7 @@ type RipFrames struct {
 	bands [3][]float64
 	// loud is each drum's loudest onset strength over the recording heard so
 	// far, past these frames' own, refs each register's reference loudness
-	// (ripRegisters) and fluxRef the flux's level (fluxLevel): what a live rip's
+	// (registers) and fluxRef the flux's level (fluxLevel): what a live rip's
 	// frames are read against
 	loud    [InstrClap]float64
 	refs    map[[2]int]float64
@@ -446,6 +463,21 @@ type RipFrames struct {
 }
 
 func (f *RipFrames) frames() int { return len(f.Flux) }
+
+// Pitches is the range of the per-pitch planes: the front end's, or the
+// analysis's where it names none
+func (f *RipFrames) Pitches() RipRange {
+	if f.Range == (RipRange{}) {
+		return RipRange{RipMinMIDI, RipMaxMIDI}
+	}
+	return f.Range
+}
+
+// cell is where pitch midi's value at frame t lies in a per-pitch plane
+func (f *RipFrames) cell(t, midi int) int {
+	r := f.Pitches()
+	return t*r.Len() + midi - r.Min
+}
 
 // fields hands visit each of f's per-frame fields, a pointer to its slice, and
 // how many values a frame holds in it: every field a front end fills, so frames
@@ -456,7 +488,7 @@ func (f *RipFrames) fields(visit func(field any, per int)) {
 		visit(&f.Onset[d], 1)
 	}
 	for _, h := range [...]*[]float32{&f.Salience, &f.Strike, &f.Release, &f.Velocity, &f.Cents, &f.CentsError} {
-		visit(h, RipPitches)
+		visit(h, f.Pitches().Len())
 	}
 	visit(&f.Chroma, 1)
 	visit(&f.BassChroma, 1)
@@ -473,14 +505,14 @@ func (f *RipFrames) fields(visit func(field any, per int)) {
 	}
 }
 
-// extend appends g's frames to f's, and takes its hop, tuning and measure where
-// it holds frames: an ear's step that gave none says nothing of them
+// extend appends g's frames to f's, and takes its hop, tuning, measure and
+// range where it holds frames: an ear's step that gave none says nothing of them
 func (f *RipFrames) extend(g *RipFrames) {
 	if g == nil {
 		return
 	}
 	if g.frames() > 0 {
-		f.Hop, f.Tuning, f.Sure = g.Hop, g.Tuning, g.Sure
+		f.Hop, f.Tuning, f.Sure, f.Range = g.Hop, g.Tuning, g.Sure, g.Range
 	}
 	from := make([]any, 0, 24) // every field's, at one allocation
 	g.fields(func(field any, _ int) { from = append(from, field) })
@@ -738,13 +770,13 @@ func (f *RipFrames) tell(notes []ripNote) {
 		}
 		said, total := make([]float64, RipVoiceSize), 0.0
 		for _, v := range cells {
-			cell := v.midi - RipMinMIDI
+			cell := v.midi - f.Pitches().Min
 			for t := max(v.start, 0); t < min(v.end, f.frames()); t++ {
 				k := slices.Index(f.VoiceAt[t*RipVoiceCells:][:RipVoiceCells], uint8(cell))
 				if k < 0 {
 					continue
 				}
-				w := float64(f.Salience[t*RipPitches+cell])
+				w := float64(f.Salience[f.cell(t, v.midi)])
 				for j, b := range f.Voices[(t*RipVoiceCells+k)*RipVoiceSize:][:RipVoiceSize] {
 					said[j] += w * float64(b) / 255
 				}
@@ -940,7 +972,7 @@ func (f *RipFrames) claims(beats []int) (on, halves float64) {
 // transcript of every note heard; loud is each drum's loudest hit, the hits'
 // own where zero
 func (g ripGrid) lay(f *RipFrames, x []float64, ev ripEvents, bpm float64, shift int, loud [InstrClap]float64, p RipParams) *Rip {
-	r := &Rip{BPM: int(math.Round(bpm)), Meter: g.m, Tuning: f.Tuning, Root: ev.root, Scale: ev.scale, Downbeat: float64(g.lines[0]) * f.Hop, Bars: make([]RipBar, g.bars()), Params: p}
+	r := &Rip{BPM: int(math.Round(bpm)), Meter: g.m, Tuning: f.Tuning, Range: f.Pitches(), Root: ev.root, Scale: ev.scale, Downbeat: float64(g.lines[0]) * f.Hop, Bars: make([]RipBar, g.bars()), Params: p}
 	r.Progression = f.progression(g, r.Root, r.Scale)
 	r.Beats = make([]float64, g.m.Beats()*g.bars()+1)
 	for i := range r.Beats {
@@ -1307,7 +1339,7 @@ func newAnalysisEar(p RipParams) *analysisEar {
 		longHrow: make([]float64, longBins), longProw: make([]float64, longBins), longC: make([]float64, longBins),
 		weights: make([]float64, max(p.Harmonics, 1)), pitchHz: make([]float64, RipPitches),
 		subBin: int(ripSubHz / binHz), loBin: int(ripKickHz / binHz), midBin: int(ripSnareHz / binHz), hatBin: int(ripHatHz / binHz),
-		out: &RipFrames{Hop: RipFrameSec}, peak: [3]float64{1e-9, 1e-9, 1e-9}}
+		out: &RipFrames{Hop: RipFrameSec, Range: RipRange{RipMinMIDI, RipMaxMIDI}}, peak: [3]float64{1e-9, 1e-9, 1e-9}}
 	for range ripKernel {
 		e.ring = append(e.ring, make([]float64, bins))
 		e.longRing = append(e.longRing, make([]float64, longBins))
@@ -2930,10 +2962,10 @@ func (f *RipFrames) notes(lo, hi int, p RipParams) []ripNote {
 
 // head is a head's score for midi at frame t, zero outside the frames and the pitches
 func (f *RipFrames) head(h []float32, t, midi int) float32 {
-	if h == nil || t < 0 || t >= f.frames() || midi < RipMinMIDI || midi >= RipMaxMIDI {
+	if h == nil || t < 0 || t >= f.frames() || !f.Pitches().Holds(midi) {
 		return 0
 	}
-	return h[t*RipPitches+midi-RipMinMIDI]
+	return h[f.cell(t, midi)]
 }
 
 // peaks reports whether a head's score for midi peaks at t, at least over
@@ -2970,7 +3002,7 @@ func (f *RipFrames) stronger(t, midi, from int, ds ...int) bool {
 // sure as its own
 func (r register) renews(t, s int, p RipParams) bool {
 	f := r.f
-	return r.struck(t, s, p) && float64(f.head(f.Strike, t, r.lo+s)) >= p.StrikeAgain && !f.stronger(t, r.lo+s, RipMinMIDI, -2, -1, 1, 2)
+	return r.struck(t, s, p) && float64(f.head(f.Strike, t, r.lo+s)) >= p.StrikeAgain && !f.stronger(t, r.lo+s, f.Pitches().Min, -2, -1, 1, 2)
 }
 
 // until is the frame a note of state s struck at t ends on: after MinNote, where
@@ -3045,7 +3077,7 @@ const ripHalfCell = 50.0
 // named is the frequency pitch midi's cell names at frame t, in cents from MIDI
 // 0, and the error the front end states for it
 func (f *RipFrames) named(t, midi int) (cents, err float64) {
-	i := t*RipPitches + midi - RipMinMIDI
+	i := f.cell(t, midi)
 	return 100*float64(midi) + float64(f.Cents[i]), float64(f.CentsError[i])
 }
 
@@ -3093,7 +3125,7 @@ func (f *RipFrames) stood(a, b, midi int) (cents, err float64) {
 func (r register) glides(notes []ripNote, p RipParams, sure, released func(t, midi int) bool) []ripNote {
 	f, T, short := r.f, r.f.frames(), max(int(p.MinNote/r.f.Hop), 1)
 	voiced := func(t, midi int) bool {
-		return midi >= RipMinMIDI && midi < RipMaxMIDI && float64(f.Salience[t*RipPitches+midi-RipMinMIDI]) >= p.Voicing*r.ref
+		return f.Pitches().Holds(midi) && float64(f.Salience[f.cell(t, midi)]) >= p.Voicing*r.ref
 	}
 	taken := make([]bool, len(notes)) // read into a sound, its own or another's
 	starts := map[[2]int]int{}        // a pitch and a frame: the note starting there
@@ -3270,14 +3302,14 @@ func (r register) glided(struck ripNote, g []ripVisit, short int) ripNote {
 			rest = i
 		}
 		for t := v.start; t < v.end; t++ {
-			n.strength += float64(f.Salience[t*RipPitches+v.midi-RipMinMIDI])
+			n.strength += float64(f.Salience[f.cell(t, v.midi)])
 		}
 	}
 	n.strength /= float64(end-start) * r.ref
 	if rest >= 0 {
 		level, n.midi = g[rest].level, g[rest].midi
 		if math.Abs(level-100*float64(n.midi))-g[rest].err > ripHalfCell {
-			n.midi = min(max(int(math.Round(level/100)), RipMinMIDI), RipMaxMIDI-1)
+			n.midi = min(max(int(math.Round(level/100)), f.Pitches().Min), f.Pitches().Max-1)
 		}
 	}
 	if len(g) > 1 || n.midi != g[0].midi {
@@ -3306,11 +3338,12 @@ func (r register) glided(struck ripNote, g []ripVisit, short int) ripNote {
 // A low note with little sound at its own pitch is a higher note's shadow, and one
 // that rises over none of its partials' steady levels is a tone that never stops.
 func (f *RipFrames) lines(x []float64, p RipParams) (bass, melody []ripNote) {
-	line := f.notes(RipMinMIDI, RipBassReach, p)
+	rg := f.Pitches()
+	line := f.notes(rg.Min, RipBassReach, p)
 	if f.Strike == nil {
-		return line, f.notes(RipMelodyLow, RipMaxMIDI, p)
+		return line, f.notes(RipMelodyLow, rg.Max, p)
 	}
-	melody, bass = f.strikes(RipBassTop, RipMaxMIDI, p), f.strikes(RipMinMIDI, RipBassTop, p)
+	melody, bass = f.strikes(RipBassTop, rg.Max, p), f.strikes(rg.Min, RipBassTop, p)
 	struck := slices.Clone(bass)
 	for _, n := range line {
 		if n.midi >= RipBassTop || float64(n.end-n.start)*f.Hop < ripLineNote || n.strength < ripLineStrength {
@@ -3509,9 +3542,15 @@ type register struct {
 // reachShare is what a reached row's salience counts for against the register's own
 const reachShare = 0.75
 
-// ripRegisters are the registers the decoders read, as register takes them:
+// ripRegisters is how many registers the decoders read
+const ripRegisters = 4
+
+// registers are the registers the decoders read of f, as register takes them:
 // those a live rip carries a reference loudness for
-var ripRegisters = [...][2]int{{RipMinMIDI, RipBassReach}, {RipMelodyLow, RipMaxMIDI}, {RipMinMIDI, RipBassTop}, {RipBassTop, RipMaxMIDI}}
+func (f *RipFrames) registers() [ripRegisters][2]int {
+	rg := f.Pitches()
+	return [...][2]int{{rg.Min, RipBassReach}, {RipMelodyLow, rg.Max}, {rg.Min, RipBassTop}, {RipBassTop, rg.Max}}
+}
 
 // register is the register of the pitches lo to hi, its reference the one the
 // frames carry for it, a live rip's over the recording heard, or else read
@@ -3549,7 +3588,7 @@ func (r register) peak(t int) (v float64) {
 }
 
 func (r register) sal(t, s int) float64 {
-	return float64(r.f.Salience[t*RipPitches+r.lo+s-RipMinMIDI])
+	return float64(r.f.Salience[r.f.cell(t, r.lo+s)])
 }
 
 // emit is a state's score at a frame: the salience against the reference, one
@@ -3813,7 +3852,7 @@ func (r register) note(start, end, s int) ripNote {
 	n := ripNote{start: start, end: end, midi: r.lo + s, strength: sum / float64(end-start) / r.ref}
 	n.vel = min(max(0.3, n.strength), 1)
 	if v := r.f.Velocity; v != nil {
-		if i := start*RipPitches + r.lo + s - RipMinMIDI; i >= 0 && i < len(v) {
+		if i := r.f.cell(start, r.lo+s); i >= 0 && i < len(v) {
 			n.vel = min(max(float64(v[i]), 0.1), 1)
 		}
 	}
