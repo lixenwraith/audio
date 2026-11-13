@@ -458,8 +458,8 @@ spanning 140 ms at least, else the beat itself (`tatum`). A hit is a kick by
 its rise under 100 Hz, a hihat by its rise above 5 kHz, a snare by the middle
 with some noise above 5 kHz, and may be two drums at once. The bars are a path
 over the pulses (`barPath`): each a whole bar's pulses, or within two of them
-where the tracker added or lost one, at a cost per pulse that only the bar's
-own cues pay, since a slipped bar moves every line after it, scored for the time
+where the tracker added or lost one, at a cost per pulse (`bar_move`) that only
+the bar's own cues pay, since a slipped bar moves every line after it, scored for the time
 it covers by its comb, the mean onset on its sixteenths read as fractions of
 its span, and its line's cues, a kick and no snare on it, the snare on the
 felt backbeats, the key's root in the bass over the first beat, the change of
@@ -481,28 +481,29 @@ compound bar's dotted quarters). Pulses two or four a beat read 4/4 then
 3/4; three a beat, the beat a dotted quarter, read them at three halves of
 the tempo (the pulses sixteenths at three quarters when that passes 200);
 6/8 is read beside 3/4 as a name for its bar, never as a bar of its own. The
-first reading holds unless another's path scores over it by 0.35, or by
-twice that for a bar a whole number of the best's. Within that margin, a reading at the best's tempo
-whose bar is no whole number of the best's takes it when the music repeats
-more at its own bars (`repeats`): one minus the cosine of each sixteenth's
-chroma and onset with the one a bar, two and four bars on, averaged, lower by
-0.03; or when its bars lie nearer their nearest other bar by 7% (`nearest`:
-each bar's `BarDistance` to its nearest, over the notes and hits quantized
-on the reading's bars, averaged) and it repeats more by 0.015. Music repeats
-at its bar and the bar's doubles, where another meter's bars fall out of
-step, so a waltz whose kick and bass strike every quarter, which leaves its
-lines no cue, still reads 3/4, and a played Für Elise, whose bars cut right
+first reading holds unless another's path scores over it by `meter_margin`
+(0.35), or by twice that for a bar a whole number of the best's. Within that
+margin, a reading at the best's tempo whose bar is no whole number of the
+best's takes it when the music repeats more at its own bars (`repeats`): one
+minus the cosine of each sixteenth's chroma and onset with the one a bar, two
+and four bars on, averaged, lower by `repeat_margin` (0.03); or when its bars
+lie nearer their nearest other bar by the share `near_margin` (7%; `nearest`:
+each bar's `BarDistance` to its nearest, over the notes and hits quantized on
+the reading's bars, averaged) and it repeats more by `near_repeat` (0.015).
+Music repeats at its bar and the bar's doubles, where another meter's bars fall
+out of step, so a waltz whose kick and bass strike every quarter, which leaves
+its lines no cue, still reads 3/4, and a played Für Elise, whose bars cut right
 find near twins and cut across the bars do not, reads in three on every take.
-The margins are set over labeled sets (the engine's corpus of loops, drum
-performances in 3/4 and 6/8, recorded guitar in 4/4, Für Elise through two
-models): at these, 160 of 170 recordings in 4/4 read 4/4, as before, four
-corpus loops and a guitar solo gained and four guitar takes lost, and 62 of
-123 in the other meters against 34.
+The path's weights (`bar_line`, its line's cues beside its comb; `bar_beat`,
+its pulse standing out as a beat; `bar_accent`, the bass on it; `bar_move`) and
+these margins are parameters, their defaults the values the decoders were
+written with, for a search over truth of every meter to set (stapes' `tune ...
+truth`).
 A bar read as 3/4 is named 6/8 when the 6/8 reading of the same bar scores
 higher once the onsets on its other felt beats are added, its second dotted
 quarter against the waltz's second and third beat (a cue kept out of the
-path's score, where it read strummed 4/4 as 6/8). Under six bars of 4/4 a clip reads 4/4 as tracked. A pinned meter is read
-alone.
+path's score, where it read strummed 4/4 as 6/8). Under six bars of 4/4
+(`ripMeterBars`) a clip reads 4/4 as tracked. A pinned meter is read alone.
 
 The bars are then named (`name`), the bar the audio's and the name a
 convention, since a 6-pulse bar at 1.2 s is one sound as 3/4 at 147, 3/8 at
@@ -529,7 +530,8 @@ heard: offline the rip is that of the frames without them.
 
 - **The tempo and the beats.** The tempo is how the beat head repeats: its
   autocorrelation over a lag's first four multiples, weighed 1, 0.8, 0.5 and
-  0.6 as a plain tracker weighs them (`ripCombs`), under the same prior, over
+  0.6 as a plain tracker weighs them (`beat_comb_2` to `beat_comb_4`; the
+  onsets' double is `tempo_comb`, 0.5), under the same prior, over
   the head on the onsets' scale (above its local mean, at unit deviation, so
   `tightness` weighs it as it weighs them). Half the beat's lag, whose odd
   multiples fall between the beats, scores under half the beat's, and no fold
@@ -560,14 +562,24 @@ heard: offline the rip is that of the frames without them.
   them (`bar`: the kick, the snare on the backbeats, the key's root in the bass,
   the chroma's change, the bass's accent) and the downbeat head summed by
   place, how far its mean at the place's lines stands over its mean at every
-  beat (`ripBarHead`), each beat read at the head's highest within three frames
-  (`ripHeadReach`). Where its margin between two places is small the cues
+  beat (`bar_head`), each beat read at the head's highest within three frames
+  (`ripHeadReach`). A beat on the recording's last frames is read at none: the
+  head has not heard it, and counted as a line it sinks the place that tiles
+  the recording. Where its margin between two places is small the cues
   decide, and a stretch where it is quiet adds little to any place. The comb
   is left out, its steps finer in one meter than another over the same beats.
-  The meter is chosen as the cues' readings choose it, 4/4 first and another
-  taken by `ripMeterMargin` over it, twice for whole bars of the best's, so a
-  waltz read 3/4 keeps it over 6/8's every other line; six heard beats are a
-  bar of their own, not a name for 3/4's.
+- **The meter** is chosen as the cues' readings choose it, 4/4 first and
+  another taken by `meter_margin` over it, twice for whole bars of the best's,
+  so a waltz read 3/4 keeps it over 6/8's every other line; six heard beats
+  are a bar of their own, not a name for 3/4's. Two rules are the heads' own.
+  A longer bar that is no whole number of the best's, six beats against four,
+  is read only where the head at its lines stands over the head at the best's
+  by `meter_head` (1, in its mean beat's level): a longer bar has fewer lines
+  and more places for them, so its best place scores higher by chance, and a
+  head that marks the half bar as it marks the line marks every line of six
+  beats as of four. And how a reading repeats (`repeats`, `nearest`) says
+  nothing under six bars of 4/4, where the cues read no other meter at all:
+  there the score alone takes a meter.
 - **A bar holds its beats**, no more and no fewer: the path's slack of a pulse
   or two is not taken here, since what a slipped bar should cost against a
   head's posterior is a number nothing fits yet
@@ -684,8 +696,13 @@ place in a gene vector (`Genes`, `RipParamsFromGenes`), among them `compress`,
 the power the harmonic spectrum is raised to before the salience, under one to
 flatten the partials a saturated mix piles on every note; a `[rip]` table in a
 TOML document carries a set (`LoadRipParams`, `MarshalRipParams`), each key in
-its range but `onset_min`, which a document may set to 0.9 past the search's 0.3:
-a frame model sure of its drum hits wants its bar near 0.7.
+its range: `onset_min`'s reaches 0.9, as a frame model sure of its drum hits
+wants its bar near 0.7 where the analysis wants 0.1. The bars' weights and
+margins are among them (`tempo_comb`, `beat_comb_2` to `4`, `bar_line`,
+`bar_beat`, `bar_accent`, `bar_head`, `bar_move`, `meter_margin`, `meter_head`,
+`repeat_margin`, `near_margin`, `near_repeat`), each at the value the decoders
+were written with, so a document that names none leaves a rip without the
+heads as it was.
 `DefaultRipParams` is the hand-set start. The engine grades a set itself:
 `RenderMusic` plays registered patterns offline in a meter, `ExpectedRip` is the
 rip a perfect listener would make of them, and `CompareRips` scores a rip against
@@ -875,7 +892,11 @@ covered, held note still stays on the heads' word. Every strike over a half that
 starts no reported note is a candidate, in both registers, the strongest of its
 pitch within `StrikeGap` standing, a pitch still sounding included. It is
 measured against the kept notes as before and comes back when its odds reach a
-half, and one that comes back on a pitch still sounding ends the kept note
+half, as the note the decoder reads from a strike there (`until`): to its
+release, a sure renewal or its salience falling under `voicing`, where the
+candidate it was measured as ends at the head's next ripple over a half; one
+whose pitch sounds no longer than `min_note` is no note and is listed as not
+kept. One that comes back on a pitch still sounding ends the kept note
 before it at its start. A followed note is judged once, by the row at its
 strike, and the strikes in the cells it moved on to are no candidates; the row
 does not read the cents. With none loaded nothing changes: the candidates, the
@@ -983,7 +1004,8 @@ from 1 kHz up only, every band within -24 and +30 dB), is the `eq` its matched
 sound `<name>_<drum>` adds to the drum's master chain. The matched sounds' norms
 then put the snare and the hihat against the kick as the recording does, held
 to -2..+5 dB and -20..-8 dB, read twice since a drum's level holds the others'
-tails, the loudest at a norm of one at most. `Rip.Song` names them in the song's
+tails, the loudest brought to a norm of one where it passes it, the others by
+as much. `Rip.Song` names them in the song's
 `kit`, so the song document and the sound document holding them play it again;
 a rip of a score reads no tone and its song plays the kit as it is.
 

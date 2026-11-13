@@ -324,10 +324,13 @@ func TestAJudgeRulesEveryStrike(t *testing.T) {
 	accDrone(x, 69, 100, 400, 0.02, 8)
 	accNoise(x, 1e-3)
 	reported := []ripNote{{start: 50, end: 750, midi: 57, vel: 0.5}, {start: 100, end: 400, midi: 69, vel: 0.3}, {start: 500, end: 520, midi: 69, vel: 0.3}}
-	// a strike on a silent pitch, one on the A3 still sounding and one under E3
+	// a strike under the decoder's bar, one on the A3 still sounding and one under E3
 	f := accFrames(frames, reported, map[int]float32{200*1000 + 62: 0.6, 300*1000 + 57: 0.7, 400*1000 + 40: 0.55})
 	for u := 100; u < 780; u++ {
 		f.Salience[u*RipPitches+40-RipMinMIDI] = 0.9
+	}
+	for u := 200; u < 260; u++ {
+		f.Salience[u*RipPitches+62-RipMinMIDI] = 0.6
 	}
 	for _, n := range reported[1:] {
 		f.Strike[n.start*RipPitches+69-RipMinMIDI] = 0.8
@@ -350,6 +353,34 @@ func TestAJudgeRulesEveryStrike(t *testing.T) {
 	}
 }
 
+// TestAStrikeAJudgeBringsBackRunsToItsRelease: a strike the decoder dropped,
+// its head rippling over a half three frames on, comes back under a judge as a
+// note to its release, as one the decoder struck there would run, where the
+// ripple once cut it; a strike on a pitch that never sounds is no note, and is
+// listed as not kept
+func TestAStrikeAJudgeBringsBackRunsToItsRelease(t *testing.T) {
+	const frames = 400
+	x := make([]float64, frames*RipHop)
+	accTone(x, 57, 50, 350, 0.3, 8)
+	accTone(x, 62, 150, 300, 0.3, 8)
+	reported := []ripNote{{start: 50, end: 350, midi: 57, vel: 0.5}}
+	f := accFrames(frames, reported, map[int]float32{150*1000 + 62: 0.6, 153*1000 + 62: 0.55, 200*1000 + 71: 0.6})
+	for u := 150; u < 300; u++ {
+		f.Salience[u*RipPitches+62-RipMinMIDI] = 0.9
+	}
+	f.Release[250*RipPitches+62-RipMinMIDI] = 0.9
+	yes := accAsk{judge: judgeSaying([judgeStages]float64{0.9, 0.9}), strikes: true}
+	_, melody, strikes := f.account(x, DefaultRipParams(), yes, nil, reported)
+	if len(melody) != 2 || melody[1].midi != 62 || melody[1].start != 150 || melody[1].end != 250 {
+		t.Errorf("notes %v, want the A3 and the D4 from its strike at 150 to its release at 250", melody)
+	}
+	for _, st := range strikes {
+		if kept := st.MIDI != 71; st.Kept != kept {
+			t.Errorf("the strike of %d at %d listed kept %v, want %v", st.MIDI, st.Frame, st.Kept, kept)
+		}
+	}
+}
+
 // TestTheStrikesAFollowedSoundTookInAreNoCandidates: a judge is asked once of a
 // note the decoder followed across cells, and not of the strikes in the cells
 // it moved on to, while a strike beside them is a candidate as any.
@@ -358,6 +389,9 @@ func TestTheStrikesAFollowedSoundTookInAreNoCandidates(t *testing.T) {
 	scoop, f, followed := accScoop(frames, from, end)
 	for at, midi := range map[int]int{from + 22: 66, from + 60: 67, from + 61: 72} {
 		f.Strike[at*RipPitches+midi-RipMinMIDI] = 0.7
+	}
+	for u := from + 61; u < end; u++ {
+		f.Salience[u*RipPitches+72-RipMinMIDI] = 0.9
 	}
 	yes := accAsk{judge: judgeSaying([judgeStages]float64{0.9, 0.9})}
 	_, melody, _ := f.account(scoop, DefaultRipParams(), yes, nil, []ripNote{followed})

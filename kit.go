@@ -478,15 +478,19 @@ func (r *Rip) Kit(name string) []*SoundDef {
 			gain[d] *= math.Pow(10, db/20)
 		}
 	}
-	var loud float64
+	var loud float64 // the loudest norm, divided by: its level in dB does not round back to one
 	for _, m := range out {
 		if !m.Raw {
-			loud = max(loud, 20*math.Log10(m.Norm))
+			loud = max(loud, m.Norm)
 		}
 	}
 	for _, m := range out {
-		if loud > 0 {
-			louder(m, -loud)
+		switch {
+		case loud <= 1:
+		case m.Raw:
+			m.Chain = append(m.Chain, Proc{Kind: "gain", Amount: 1 / loud})
+		default:
+			m.Norm = normOf(m.Norm) / loud
 		}
 	}
 	return out

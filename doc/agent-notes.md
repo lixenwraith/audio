@@ -371,12 +371,36 @@ that a document now states, and link the document instead.
   which keep a waltz from 6/8's every other line. A heard bar's score leaves
   the comb out (6/8's steps over heard beats are eighths, 4/4's sixteenths, and
   a coarser grid's mean onset is higher) and counts the head at every line, the
-  last bar's end too, or one bar reads 3/4 and 4/4 alike.
+  last bar's end too, or one bar reads 3/4 and 4/4 alike; but not at a beat on
+  the recording's last frames, which the head has not heard: on a four-bar
+  loop that silent fifth line took a fifth off the right place's sum.
+- **A trained downbeat head marks the half bar as it marks the line**, 48a's
+  on most 4/4 loops, so every line of a six-beat bar falls on a mark as every
+  line of four does, and the longer bar, fewer lines and more places for them,
+  has the higher best place by chance: 267 of 728 generated 4/4 loops read in
+  six or three until six beats needed the head at their lines over four's
+  (`meter_head`). A test of it writes the half bar's marks too, and the marks
+  six beats apart highest; a head marking every fourth beat alone never failed.
+- **The cues' path leans on the recording's start, the heads' reading on
+  nothing.** The path sums its bars, so one from the first pulse that fits a
+  bar more wins: on loops that start on a bar line it places 93% of the bars
+  whose length it reads, the heads' mean by place 75% on the same frames. Do
+  not read that gap as the head's, nor close it by a lean a live rip lacks.
+- **A bar decoder is iterated on dumped frames.** A scratch program dumps a
+  set's frames once (`ripmodels.Load`, `Ripper.Hear`, gob), and a scratch test
+  in the package keeps each recording's events (`Ripper.events`: hits, key,
+  notes) beside the fields the bars read (`Flux`, `Onset`, both chromas, the
+  two heads): `Ripper.grid` over them grades 800 loops in two seconds where a
+  rip of each takes ten, by the audit's own measure (`MatchBars`' `Same` and
+  0.8 of the downbeats), against a base that must reproduce the audit's count.
 - **A head written by hand marks every beat alike**, so its beat and its half
   tie on the comb and the prior parts them: a test's beats run 85 to 170 a
   minute, the eighths marked low (at 0.3 of the quarters 70 reads as 140). A
   rendered loop at 136 has a 38-frame beat, so `every`'s whole-frame step
-  holds; at 120 a bar is 172.3 frames and twelve bars drift off it.
+  holds; at 120 a bar is 172.3 frames and twelve bars drift off it. Its marks
+  sit `ripOnsetLead` frames early (`heardLoop`), so the first beat's falls
+  before the recording and is not written: a place that needs the first
+  line's mark to win does not.
 - **A change that must not move the rip is held by a digest of rips.** A scratch
   program: every WAV of a rendered corpus ripped through the analysis and
   through random weights of `FrameSpec` cut to the heads before the change,
@@ -398,6 +422,9 @@ that a document now states, and link the document instead.
   back read +8..+13 dB curves); `hitStarts` moves each hit to where the sound
   rises, on the recording and on the kit's render alike, the balance's renders
   too, since a zero-phase eq moves the rise.
+- A level taken to dB and back is not the level: `x * 10^(-20*log10(x)/20)`
+  is one for two norms in three, an ulp or two under for a fifth and over for
+  a tenth, which a sound's check refuses. Divide by the norm itself.
 - `aWeight` is the analog curve through the bilinear transform: at 44.1 kHz it
   reads 10 kHz at -4.0 dB where the standard has -2.5 (-22 at 22.05 kHz), and
   prewarping its poles is unstable under a 24.4 kHz rate. A matched kit's
@@ -548,6 +575,11 @@ that a document now states, and link the document instead.
 - `odds` stays as written beside `terms`, which scales the same inputs for a
   row: `s.rise*in.rise/10` is not `s.rise*(in.rise/10)` to the last bit, and
   the installed verdicts are held byte for byte.
+- A candidate ends at the next strike peak of its pitch over its bar, a half
+  for a judge's, which the strike head's own ripple three frames on is: a
+  strike a judge brought back was a note of the five-frame floor. The rows a
+  judge is fitted on are those candidates', so the note's end is set after the
+  verdict (`accRuns`, the decoder's `until`), never by moving the candidate.
 
 ## Decoders
 
