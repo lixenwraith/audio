@@ -177,8 +177,8 @@ tolerance, long in a dense rip), the two kinds together where they meet.
 - Affected files: `account.go`, `rip.go`
 
 Sheet 13, on the memory's build, scored Für Elise clean 4 on the melody, the
-low notes, the timing and overall and 5 on note length, the study 3 and Billie
-Jean 3 to 4, every ask Better, and by ear better overall with misses and
+low notes, the timing and overall and 5 on note length, the study 3 and the pop
+song 3 to 4, every ask Better, and by ear better overall with misses and
 extras still. What is left, by ear and by the truths: on Für Elise clean some
 melody notes are missing, the under voice's soft notes of the bass figures
 above all (E3-D#4 right 162 of 246 where the decoder reported 175, the note
