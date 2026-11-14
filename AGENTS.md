@@ -82,6 +82,11 @@ agent would otherwise rediscover, add it there in the same PR.
 - A gap you are deferring goes in `doc/todo.md`: extend the item it belongs to, or
   add a concise one in the file's pattern.
 - PR bodies: what changed, why, how it was verified.
+- Open the PR at the first push, its title final and its body as far as it is,
+  saying what is still owed: Lixen merges a pushed branch he is waiting on. A
+  PR another session must measure before it merges opens as a draft and says so
+  in its first line. Before calling a PR ready, check that its head is the
+  commit pushed (`gh api repos/<owner>/<repo>/pulls/<n> -q .head.sha`).
 - A change made for performance reports its measurement, before and after, in the
   PR body: the benchmark or the reading, the shape it was taken in, and the
   benefit in the unit the user feels (CPU, bytes, allocations, latency). A
@@ -93,8 +98,12 @@ agent would otherwise rediscover, add it there in the same PR.
   render changes what vif plays and what stapes' corpus and bench read.
 - Commits are versions: each commit on main starts with the version it makes
   (`v0.1.1 bank: ...`), the next minor for a break or a new feature and the next
-  patch otherwise, and Lixen tags it. A PR's title is its squashed commit's
-  message, so it starts with the version too.
+  patch otherwise, and Lixen tags it. Lixen squash-merges: a PR of one commit
+  lands under that commit's message and a PR of several under its title, so
+  the title and every commit's message start with the version.
+- A change that needs another of these modules' new version names it in
+  `go.mod` in the same PR, before the tag exists: the PR bodies state the merge
+  order, and a bump is never a PR of its own.
 - One task, one branch, one PR. Divide the work into commits on that branch; do not
   split it across stacked PRs or multiple branches.
 - Work that continues after its PR merged starts again from the latest main; never
