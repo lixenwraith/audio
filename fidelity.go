@@ -150,10 +150,11 @@ func (s *RipSound) mel(t int) []float32 {
 }
 
 func (s *RipSound) salience(t int) []float32 {
-	if t < 0 || (t+1)*RipPitches > len(s.Frames.Salience) {
+	n := s.Frames.Pitches().Len()
+	if t < 0 || (t+1)*n > len(s.Frames.Salience) {
 		return nil
 	}
-	return s.Frames.Salience[t*RipPitches : (t+1)*RipPitches]
+	return s.Frames.Salience[t*n : (t+1)*n]
 }
 
 func (s *RipSound) flux(t int) float64 {
