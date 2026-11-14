@@ -519,3 +519,28 @@ a half seconds behind, though its `MelStream` holds each band 46 ms after the
 sound: a
 view that wants it sooner needs the bands handed on before the frames they
 belong to.
+
+## The repository
+
+### Rewrite the history without the third-party names
+
+- Priority: P1
+- Affected files: every commit
+
+v0.27.2 took a game's name, a drum machine's and a song's out of the bank and
+the docs, and gave the coin a cue of its own. Older trees, commit messages and
+squash titles still carry them. One `git filter-repo` pass with
+`--replace-text` and `--replace-message`, from the list of names kept in the
+project's files outside the repository since it spells them, closes it. What it
+costs:
+
+- Every hash changes: each clone re-clones, open branches are rebased by hand,
+  and every tag is set again on its rewritten commit.
+- proxy.golang.org and sum.golang.org keep each published version as it was
+  tagged, so the proxy keeps serving the old text whatever the rewrite does, and
+  a re-set tag whose tree changed fails `go`'s checksum check for anyone who
+  fetches it directly. Rewrite only the messages under tagged trees, or let the
+  old versions' trees stand in the proxy.
+- GitHub keeps every PR's `refs/pull/<n>/head`, which no push deletes, so the
+  old commits stay reachable there and in cached views until GitHub Support
+  purges them. PR titles and bodies are edited on GitHub by hand.
