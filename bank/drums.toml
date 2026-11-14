@@ -128,7 +128,7 @@ chain = [
 
 [[sound]]
 name = "hihat"
-desc = "a closed hihat: the TR-808's six square partials and noise through the plates' band, choked as they close"
+desc = "a closed hihat: six square partials and noise through the plates' band, choked as they close"
 duration = 0.3
 norm = 0.55
 variants = 6
