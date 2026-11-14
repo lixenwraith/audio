@@ -106,42 +106,51 @@ release = 0.07
 [sound.layer.source]
 kind = "noise"
 
-# Two notes in sequence: offset replaces concatenation.
+# Three quick notes up a major triad, on sines: offset replaces concatenation.
 [[sound]]
 name = "coin"
 norm = 0.85
 
-[[sound.chain]]
-freq = 6000.0
-kind = "lp"
-q = 0.707
-
 [[sound.layer]]
-length = 0.08
+length = 0.04
 
 [[sound.layer.chain]]
-attack = 0.005
+attack = 0.002
 kind = "ar"
-release = 0.04
+release = 0.015
 
 [sound.layer.source]
-freq = 987.77
+freq = 1046.5
 kind = "osc"
-wave = "square"
+wave = "sine"
+
+[[sound.layer]]
+length = 0.04
+offset = 0.04
+
+[[sound.layer.chain]]
+attack = 0.002
+kind = "ar"
+release = 0.015
+
+[sound.layer.source]
+freq = 1318.51
+kind = "osc"
+wave = "sine"
 
 [[sound.layer]]
 length = 0.16
 offset = 0.08
 
 [[sound.layer.chain]]
-attack = 0.005
+attack = 0.002
 kind = "ar"
 release = 0.11
 
 [sound.layer.source]
-freq = 1318.51
+freq = 1567.98
 kind = "osc"
-wave = "square"
+wave = "sine"
 
 # The one preset that needs a bus: overdrive is nonlinear and must see the
 # sweep+sub sum, but not the noise texture. Length walks with pitch across the
