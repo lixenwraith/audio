@@ -442,15 +442,27 @@ that a document now states, and link the document instead.
 - The rip's front end is a seam: `analysis` and `ripmodels` both fill `RipFrames`,
   and the decoders read nothing else, so a front end is checked by the frames it
   makes and the rip they give, as `ripmodels`' test does with an untrained model.
-- The harmonic stack (`stacked`) interpolates in float64 where the trainer's
-  `PitchNet.stack` does in float32, so some floats differ in the last bit, and
-  through PitchNet at the trainer's shape the heads differ from PyTorch's by
-  rounding. Dump `model.stack(x)` beside the outputs to tell the stack from the
+- The harmonic stack (`stacked`) is the features' bands shifted, no
+  arithmetic, so it is the trainer's `PitchNet.stack` bit for bit on the same
+  features. Dump `model.stack(x)` beside the outputs to tell the stack from the
   notes model.
-- The trainer's `features` and `ripmodels`' agree bit for bit on the PCEN plane,
-  but the dB plane's floats near zero can differ in the last bits: numpy's
-  `mean` sums pairwise, Go in order. Compare the planes with that in mind, not
-  the whole frame for equality.
+- numpy's `mean` sums pairwise and Go in order, so a plane's mean in dB, and
+  every band less it, can differ from the trainer's `features` in the last
+  bits. Compare planes to rounding, as `TestTheTrainersFixtureHoldsTheseFrames`
+  and the trainer's test of the fixture do, never a whole frame for equality.
+- The fixture the trainer pins its port on (`ripmodels/testdata/frames.bin`) is
+  this code's: a change to the band frames, the features or the stack rewrites
+  it (`go test ./ripmodels -run TestTheTrainersFixture -update`), and stapes'
+  trainer test must pass on it in the same pair of PRs.
+- **The sharp plane counts a low band's energy many times over.** A band's
+  triangle reaches a bin either side at least, so under about 270 Hz the sharp
+  plane's bands share bins, about twenty a bin at A0: a sum of linear energies
+  over the planes is those bins, and under a held note it read a struck A0 two
+  frames late where the mel frames read it on time. Read a rise in dB over the
+  bands, as the models do (`TestAStruckLowNoteRisesWhereTheMelFramesDo`).
+- The tests of every key and semitone pair are 263 recordings of 3.2 s, so a
+  few frames' every window lies within each tone: in parallel subtests about
+  40 s of a core, 10 s on four. One key alone: `-run 'TestEveryKey/21'`.
 - A head trained with a positive weight w (`bce(..., pos_weight)` in
   `train.py`) scores a posterior p as wp/(wp + 1 - p): the strike head's
   (w 20) half-sure is 0.95 and the pitch head's (w 12) 0.92. Sweep a
@@ -475,7 +487,7 @@ that a document now states, and link the document instead.
   tuning (`SongDef.Tuning`, `SetTuning`, `RenderNoteAt`); the rip reads it.
 - A notes model's head of values a pitch is priced twice: by what the frames
   keep, and by `Forward`'s output, which `Hear` holds whole while it reads it.
-  What plays each pitch is 3,105 floats a frame there, 193 MB over three
+  What plays each pitch is 3,960 floats a frame there, 246 MB over three
   minutes, though the frames keep 552 bytes a frame of it. State both for a new
   head, and read a wide one at the cells that need it, as `appendVoices` does.
 - What plays each pitch is checked against PyTorch as bytes as well as scores,
@@ -708,11 +720,11 @@ that a document now states, and link the document instead.
   blocks; a new ear goes through both. The ear test feeds a hop a block and
   counts the frames given after each: at 50 ms a step given a hop late passed.
 - **A model's ear is the whole's to rounding, never bit for bit, and only from a
-  reach past the loudest sample.** `MelFrames` divides the samples by the peak
-  before the transform and the ear scales the energies after, so the features
-  differ in their last bits (heads within 6e-7 on the test's models, 5e-7 at
-  `FrameSpec`'s shapes). A frame is run once, scaled by the loudest sample heard
-  when it came: a test recording whose loudest sample falls near its end
+  reach past the loudest sample.** The band frames are the whole's bit for bit
+  and scaled alike, but the PCEN average is rescaled as the loudest sample
+  grows and a model's stream sums in another order than `Forward`, so the heads
+  differ in their last bits. A frame is run once, scaled by the loudest sample
+  heard when it came: a test recording whose loudest sample falls near its end
   compares nothing, so `struck` drops its level after four and a half seconds.
 - **The ear test's frame model is small, so its distances are not
   `FrameSpec`'s.** Two blocks of window 32 share a 46-frame wait as 23 and 23

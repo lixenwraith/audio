@@ -359,7 +359,7 @@ type RipBar struct {
 // The analysis rate and transform, 93 ms frames of 10.8 Hz bins every 11.6 ms,
 // the bands the drums are told apart by, the pitches the analysis's salience
 // spans, which a front end that names none has too, and the log-mel bands a
-// front-end model hears: the frame grid every front end keeps.
+// sound's timbre and spectrum are read in: the frame grid every front end keeps.
 const (
 	RipRate     = 22050
 	RipN        = 2048
@@ -446,8 +446,8 @@ type RipFrames struct {
 	// line fall on each frame, a posterior a front end that hears them states; nil
 	// from the analysis and from a model without the heads
 	Beat, Downbeat []float64
-	// Spectrum is what the frames were read from, frames × RipMelBands, each
-	// band's energy as MelStream gives it: a stream's whose Ripper asks, else nil
+	// Spectrum is the recording's mel bands at each frame, frames × RipMelBands,
+	// each band's energy as MelStream gives it: a stream's whose Ripper asks, else nil
 	Spectrum []float32
 	// bands are the analysis's onset bands per frame, under 200 Hz, to 4 kHz and
 	// over 5 kHz, the onset strength read from them against each one's loudest;
@@ -1644,8 +1644,8 @@ func (m *slidingMedian) reset() {
 	m.sorted = m.sorted[:0]
 }
 
-// MelFrames is a recording as the log-mel frames a front-end model hears: the
-// rip's frame grid, RipMelBands triangular bands from 30 Hz to the top of the
+// MelFrames is a recording as log-mel frames, which a fit and a fidelity compare:
+// the rip's frame grid, RipMelBands triangular bands from 30 Hz to the top of the
 // band on the mel scale, the energy under each as log1p of a hundred times it,
 // the recording's peak at one so a level change is not a different sound.
 func MelFrames(x []float64, rate int) [][]float32 {

@@ -209,17 +209,16 @@ voice ([Audio §9](audio.md#9-ripping-a-recording)). What is left:
   register's mean: `freeze` lays its notes out without it. The smallest close:
   the frozen notes keep `ripNote.said` and `Final` parts the register as
   `Samples` does.
-- `Hear` holds the notes model's whole output while it reads it: at E1 to C7
-  3,562 values a frame with these heads against 456 without, 221 MB over three
-  minutes against 28 MB, beside the stack's 212 MB, though the frames keep 552
-  bytes of it; the piano's 88 pitches make each 88/69 of that. The
-  smallest close: `Hear` in stretches of frames with the notes model's reach
+- `Hear` holds the notes model's whole output while it reads it: 4,531 values
+  a frame with these heads against 571 without, 281 MB over three minutes
+  against 35 MB, beside the stack's 538 MB, though the frames keep 552 bytes of
+  it. The smallest close: `Hear` in stretches of frames with the notes model's reach
   either side, as the ear already hears; or a cell net that gives a head only at
   the cells asked for, in `transformer`.
 - The measure is one number for every family, written in the weight file as a
   frame head of no weights, and a measure a family fits the same head at eight
   values. A file states constants by name since `transformer`'s version 6, as
-  it states its lowest pitch (`ripmodels.Lowest`), and the measure belongs
+  it states its frames' layout (`ripmodels.Layout`), and the measure belongs
   there: it moves once the trainer's export writes the constant, `New` reading
   either.
 - A note keeps the name and not the share: `RipVoice` has no field for how far
@@ -234,9 +233,9 @@ voice ([Audio §9](audio.md#9-ripping-a-recording)). What is left:
 - Priority: P3
 - Affected files: `midi.go` (`MIDIScore.Rip`), `rip.go` (`analysisEar`)
 
-The models tell apart the pitches their weight files state, the piano's for one
-built now, while a score's rip still drops a note outside E1 to C7 and the
-analysis hears no other ([Audio §9](audio.md#9-ripping-a-recording)).
+The models tell apart the piano's pitches, while a score's rip still drops a
+note outside E1 to C7 and the analysis hears no other
+([Audio §9](audio.md#9-ripping-a-recording)).
 
 - `MIDIScore.Rip` keeps its bound because stapes' corpus draws its MIDI loops
   through it: a wider one changes every such corpus's bytes, so it goes with
