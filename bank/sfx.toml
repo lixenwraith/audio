@@ -4,7 +4,7 @@
 # edit, go test ./bank -resave writes it so again.
 
 [macros.Tone]
-doc = "A Simon tone at freq: a sine under a low-passed square, one take at concert pitch"
+doc = "A tone to repeat at freq: a sine under a low-passed square, one take at concert pitch"
 params = { name = "string", freq = "float" }
 body = { name = "${name}", duration = 0.42, fixed_length = true, variants = 1, pitch_walk = 0.0001, norm = 0.85, chain = [{ kind = "ar", attack = 0.008, release = 0.14 }], layer = [
   { source = { kind = "osc", wave = "sine", freq = "${freq}" } },
@@ -106,42 +106,51 @@ release = 0.07
 [sound.layer.source]
 kind = "noise"
 
-# Two notes in sequence: offset replaces concatenation.
+# Three quick notes up a major triad, on sines: offset replaces concatenation.
 [[sound]]
 name = "coin"
 norm = 0.85
 
-[[sound.chain]]
-freq = 6000.0
-kind = "lp"
-q = 0.707
-
 [[sound.layer]]
-length = 0.08
+length = 0.04
 
 [[sound.layer.chain]]
-attack = 0.005
+attack = 0.002
 kind = "ar"
-release = 0.04
+release = 0.015
 
 [sound.layer.source]
-freq = 987.77
+freq = 1046.5
 kind = "osc"
-wave = "square"
+wave = "sine"
+
+[[sound.layer]]
+length = 0.04
+offset = 0.04
+
+[[sound.layer.chain]]
+attack = 0.002
+kind = "ar"
+release = 0.015
+
+[sound.layer.source]
+freq = 1318.51
+kind = "osc"
+wave = "sine"
 
 [[sound.layer]]
 length = 0.16
 offset = 0.08
 
 [[sound.layer.chain]]
-attack = 0.005
+attack = 0.002
 kind = "ar"
 release = 0.11
 
 [sound.layer.source]
-freq = 1318.51
+freq = 1567.98
 kind = "osc"
-wave = "square"
+wave = "sine"
 
 # The one preset that needs a bus: overdrive is nonlinear and must see the
 # sweep+sub sum, but not the noise texture. Length walks with pitch across the
@@ -494,7 +503,7 @@ depth = 0.06
 phase = 0.25
 rate = 2.5
 
-# Simon tones: one take at concert pitch. A zero pitch_walk means the 10% default,
+# Tones to repeat: one take at concert pitch. A zero pitch_walk means the 10% default,
 # which leaves a lone take 5% flat, so a negligible walk pins the pitch.
 [[sound]]
 macro = "Tone"

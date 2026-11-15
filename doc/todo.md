@@ -177,8 +177,8 @@ tolerance, long in a dense rip), the two kinds together where they meet.
 - Affected files: `account.go`, `rip.go`
 
 Sheet 13, on the memory's build, scored Für Elise clean 4 on the melody, the
-low notes, the timing and overall and 5 on note length, the study 3 and Billie
-Jean 3 to 4, every ask Better, and by ear better overall with misses and
+low notes, the timing and overall and 5 on note length, the study 3 and the pop
+song 3 to 4, every ask Better, and by ear better overall with misses and
 extras still. What is left, by ear and by the truths: on Für Elise clean some
 melody notes are missing, the under voice's soft notes of the bass figures
 above all (E3-D#4 right 162 of 246 where the decoder reported 175, the note
@@ -519,3 +519,38 @@ a half seconds behind, though its `MelStream` holds each band 46 ms after the
 sound: a
 view that wants it sooner needs the bands handed on before the frames they
 belong to.
+
+## The repository
+
+### Rewrite the history without the third-party names
+
+- Priority: P1
+- Affected files: every commit
+
+v0.27.2 took a game's name, a drum machine's and a song's out of the bank and
+the docs, and gave the coin a cue of its own. Older trees, commit messages and
+squash titles still carry them. A `git filter-repo` pass with
+`--replace-message`, from the list of names kept in the project's files outside
+the repository since it spells them, takes them out of every message. Whether
+the same pass takes them out of the old trees too, with `--replace-text` from
+the same list, is the choice to make first, since 44 of main's commits are
+tagged versions:
+
+- Messages only: every tree stays as it is, so each tag set again on its
+  rewritten commit gives a module with the checksum `go` already holds. The old
+  trees keep the names.
+- Messages and trees: the names leave every branch and tag, but each published
+  version's tree changes, and its re-set tag then fails `go`'s checksum check
+  for anyone who fetches it directly.
+
+Either way:
+
+- Every hash changes: each clone re-clones, open branches are rebased by hand,
+  every commit on main, each a squash merge GitHub signed, loses its signature,
+  and every tag is set again on its rewritten commit.
+- proxy.golang.org and sum.golang.org keep each published version as it was
+  tagged, so the proxy keeps serving the old trees, names and all.
+- GitHub keeps every PR's `refs/pull/<n>/head`, which no push deletes, so the
+  old commits stay reachable there and by hash in cached views. GitHub Support
+  removes only sensitive data that rotating a credential cannot make safe, so it
+  will not purge them. PR titles and bodies are edited on GitHub by hand.

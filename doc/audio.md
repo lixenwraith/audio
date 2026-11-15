@@ -290,8 +290,8 @@ kick's fundamental falls from 92 to 52 Hz as the head's tension settles, from
 higher the harder it is struck, with two upper modes, the beater's pulse and its
 felt. The snare is its (0,1) mode split in two by the coupled heads and three
 upper modes under the stick's crack and the wires, a soft stroke ringing
-shorter. The hihat is the TR-808's six square partials and noise through the
-plates' band, choked as they close, the clap four noise bursts a few
+shorter. The hihat is six square partials and noise through the plates' band,
+choked as they close, the clap four noise bursts a few
 milliseconds apart and then the room. A drum plays the sound of its own name
 unless `SetKit` binds it to another, live and in `RenderLines` alike, as a song
 plays the kit its rip matched (`SongDef.Kit`, §9). Strokes differ where they land (centre or
