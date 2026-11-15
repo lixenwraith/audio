@@ -84,10 +84,50 @@ func (d *SongDef) Signature() Meter {
 }
 
 // BarHead is what a bar plays in: its meter and tempo, the song's unless the
-// bar or one before it named others
+// bar or one before it named others. Beats, when set, is each beat's tempo in
+// place of BPM, one a beat, which RenderBars plays: a tempo that drifts.
 type BarHead struct {
 	Meter Meter
 	BPM   int
+	Beats []int
+}
+
+// Tempo is the tempo beat b of the bar plays at
+func (h BarHead) Tempo(b int) int {
+	if len(h.Beats) > 0 {
+		return h.Beats[b]
+	}
+	return h.BPM
+}
+
+// check holds a head to what RenderBars plays: a meter that passes its check,
+// and a tempo, or one a beat, within the sequencer's
+func (h BarHead) check() error {
+	if err := h.Meter.check(); err != nil {
+		return err
+	}
+	if len(h.Beats) > 0 && len(h.Beats) != h.Meter.Beats() {
+		return fmt.Errorf("%d beat tempos for a bar of %d beats", len(h.Beats), h.Meter.Beats())
+	}
+	for b := range h.Meter.Beats() {
+		if t := h.Tempo(b); t < MinBPM || t > MaxBPM {
+			return fmt.Errorf("%d bpm out of range", t)
+		}
+	}
+	return nil
+}
+
+// BeatStarts is the sample each beat of heads starts on as RenderBars plays
+// them, bar after bar, and last the sample the render ends on: a beat is its
+// steps of its tempo's whole samples
+func BeatStarts(heads []BarHead) []int {
+	out := []int{0}
+	for _, h := range heads {
+		for b := range h.Meter.Beats() {
+			out = append(out, out[len(out)-1]+h.Meter.Beat()*SamplesPerStep(h.Tempo(b)))
+		}
+	}
+	return out
 }
 
 // barWords parts a bar's leading meter and tempo words from its pattern names:
@@ -127,7 +167,7 @@ func (d *SongDef) Patterns(bar int) []string {
 // Heads is each bar's meter and tempo, the song's where none is named
 func (d *SongDef) Heads() []BarHead {
 	heads := make([]BarHead, len(d.Bars))
-	head := BarHead{d.Signature(), d.BPM}
+	head := BarHead{Meter: d.Signature(), BPM: d.BPM}
 	for i, b := range d.Bars {
 		m, bpm, _, _ := barWords(b)
 		if m != nil {

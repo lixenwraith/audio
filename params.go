@@ -97,6 +97,12 @@ func SamplesPerStep(bpm int) int {
 	return AudioSampleRate * 60 / (bpm * StepsPerBeat)
 }
 
+// LateSamples is the samples a step's onset sounds after its position, late
+// the share of a step of samplesPerStep: under a step, so it fires in its own
+func LateSamples(late float64, samplesPerStep int) int {
+	return int(late * float64(samplesPerStep))
+}
+
 // SamplesPerBar returns samples per bar of meter m at the given tempo
 func SamplesPerBar(bpm int, m Meter) int {
 	return SamplesPerStep(bpm) * m.Steps()

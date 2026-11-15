@@ -749,13 +749,14 @@ func (ae *AudioEngine) RenderTimeline(timeline [][MusicSlots]PatternID, bpm int,
 func (ae *AudioEngine) RenderLines(timeline [][MusicSlots]PatternID, bpm int, m Meter, root int, scale ScaleID, prog []int, seed int64, only []InstrumentType) ([]float64, error) {
 	heads := make([]BarHead, len(timeline))
 	for i := range heads {
-		heads[i] = BarHead{m, bpm}
+		heads[i] = BarHead{Meter: m, BPM: bpm}
 	}
 	return ae.RenderBars(timeline, heads, root, scale, prog, seed, only)
 }
 
 // RenderBars plays a timeline offline, bar by bar, each in its head's meter and
-// at its tempo, and returns the mix as mono float samples; only, when not nil,
+// at its tempo, or beat by beat at each beat's, and returns the mix as mono
+// float samples, the beats where BeatStarts puts them; only, when not nil,
 // leaves every other instrument silent. The patterns change at the bar lines
 // under the notes still ringing, as a song's do.
 func (ae *AudioEngine) RenderBars(timeline [][MusicSlots]PatternID, heads []BarHead, root int, scale ScaleID, prog []int, seed int64, only []InstrumentType) ([]float64, error) {
@@ -766,10 +767,7 @@ func (ae *AudioEngine) RenderBars(timeline [][MusicSlots]PatternID, heads []BarH
 		return nil, fmt.Errorf("render: %d bars, %d heads", len(timeline), len(heads))
 	}
 	for _, h := range heads {
-		if h.BPM < MinBPM || h.BPM > MaxBPM {
-			return nil, fmt.Errorf("render: %d bpm out of range", h.BPM)
-		}
-		if err := h.Meter.check(); err != nil {
+		if err := h.check(); err != nil {
 			return nil, fmt.Errorf("render: %w", err)
 		}
 	}
@@ -786,7 +784,7 @@ func (ae *AudioEngine) RenderBars(timeline [][MusicSlots]PatternID, heads []BarH
 		}
 	}
 	k.bind(ae.drumSet(shapes))
-	s := NewSequencer(heads[0].BPM, k)
+	s := NewSequencer(heads[0].Tempo(0), k)
 	s.SetMeter(heads[0].Meter, false)
 	s.autoFill = false
 	s.Reseed(seed)
@@ -803,23 +801,27 @@ func (ae *AudioEngine) RenderBars(timeline [][MusicSlots]PatternID, heads []BarH
 	place(0)
 	s.Start()
 	s.startGain, s.startInc = 1, 0
-	var buf []float64
+	starts := BeatStarts(heads)
+	buf := make([]float64, starts[len(starts)-1])
+	beat, tempo := 0, heads[0].Tempo(0)
 	for bar, h := range heads {
 		if bar > 0 {
-			// quantized, the change lands as the bar's first step fires; set at
-			// once, the new step length is held against the old step's count
-			// and the bar starts late by their difference
 			if h.Meter != heads[bar-1].Meter {
 				s.SetMeter(h.Meter, true)
 			}
-			if h.BPM != heads[bar-1].BPM {
-				s.SetBPM(h.BPM, true)
-			}
 			place(bar)
 		}
-		n := SamplesPerBar(h.BPM, h.Meter)
-		buf = append(buf, make([]float64, n)...)
-		s.Generate(buf[len(buf)-n:])
+		for b := range h.Meter.Beats() {
+			// quantized, the change lands as the beat's first step fires; set at
+			// once, the new step length is held against the old step's count
+			// and the beat starts late by their difference
+			if t := h.Tempo(b); t != tempo {
+				s.SetBPM(t, true)
+				tempo = t
+			}
+			s.Generate(buf[starts[beat]:starts[beat+1]])
+			beat++
+		}
 	}
 	return buf, nil
 }

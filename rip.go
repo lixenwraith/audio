@@ -3900,40 +3900,55 @@ func (g *ripGrid) place(r *Rip, n ripNote, part func(*RipBar) *[]Step) {
 	slices.SortFunc(*evs, func(a, b Step) int { return a.Pos - b.Pos })
 }
 
-// RipEvent is one step of patterns placed in the slots as they would sound: a
-// drum's hit, or a note's pitch, length, instrument and glide (Step.Bend).
+// RipEvent is one step of patterns played as they would sound: a drum's hit, or
+// a note's pitch, length, instrument and glide (Step.Bend). At and For are the
+// sample it sounds on and the samples it is held, as RenderBars plays them, and
+// Slot and Track the slot and the pattern's track that play it.
 type RipEvent struct {
 	Bar, Step, Dur int
 	Instr          InstrumentType
 	MIDI           int // 0 for a drum
 	Vel            float64
 	Bend, BendAt   float64
+	At, For        int
+	Slot, Track    int
 }
 
-// ExpectedEvents is what patterns placed in the slots and played for bars bars of
-// meter m under the harmony given would sound, step by step, a pattern shorter
-// than a bar as often as it plays, chance steps left out since they may not. It
-// is the truth a rendered loop is labelled with.
-func ExpectedEvents(slots [MusicSlots]PatternID, m Meter, bars, root int, scale ScaleID, prog []int) []RipEvent {
+// ExpectedEvents is what a timeline played by RenderBars under heads and the
+// harmony given would sound, step by step, a pattern shorter than a bar as often
+// as it plays, chance steps left out since they may not, each at the sample its
+// beat's tempo and its late put it on: the truth a rendered loop is labelled
+// with. A humanized track's lag is drawn as it plays, and left out.
+func ExpectedEvents(timeline [][MusicSlots]PatternID, heads []BarHead, root int, scale ScaleID, prog []int) []RipEvent {
+	heads = heads[:min(len(heads), len(timeline))]
 	h := newHarmony()
 	h.set(root, scale, prog)
+	starts := BeatStarts(heads)
 	var out []RipEvent
-	for bar := range bars {
+	beat, from := 0, 0 // the bar's first beat, and the bar its meter began on, where the patterns count from
+	for bar, head := range heads {
+		m := head.Meter
 		if bar > 0 {
 			h.advanceBar()
+			if m != heads[bar-1].Meter {
+				from = bar
+			}
 		}
-		for _, id := range slots {
+		for slot, id := range timeline[bar] {
 			p := GetPattern(id)
 			if p == nil || p.Steps <= 0 {
 				continue
 			}
-			for _, tr := range p.Tracks {
+			for ti, tr := range p.Tracks {
 				for _, ev := range tr.Events {
 					if ev.Prob > 0 && ev.Prob < 1 || ev.Vel <= 0 {
 						continue
 					}
-					for step := ((ev.Pos-bar*m.Steps())%p.Steps + p.Steps) % p.Steps; step < m.Steps(); step += p.Steps {
-						e := RipEvent{Bar: bar, Step: step, Dur: max(ev.Dur, 1), Instr: tr.Instr, Vel: ev.Vel}
+					for step := ((ev.Pos-(bar-from)*m.Steps())%p.Steps + p.Steps) % p.Steps; step < m.Steps(); step += p.Steps {
+						sps := SamplesPerStep(head.Tempo(step / m.Beat()))
+						e := RipEvent{Bar: bar, Step: step, Dur: max(ev.Dur, 1), Instr: tr.Instr, Vel: ev.Vel, Slot: slot, Track: ti}
+						e.At = starts[beat+step/m.Beat()] + step%m.Beat()*sps + LateSamples(ev.Late, sps)
+						e.For = e.Dur * sps
 						if !tr.Instr.IsDrum() {
 							e.MIDI = h.resolve(ev.Deg, ev.Oct, ev.Acc, tr.FollowChord)
 							e.Bend, e.BendAt = ev.Bend, ev.BendAt
@@ -3943,27 +3958,70 @@ func ExpectedEvents(slots [MusicSlots]PatternID, m Meter, bars, root int, scale 
 				}
 			}
 		}
+		beat += m.Beats()
 	}
 	return out
 }
 
 // ExpectedRip is the rip a perfect listener would make of patterns placed in the
-// slots and played for bars bars of meter m under the harmony given: each bar's
-// drum hits by instrument and its tonal notes by pitch, a note under E3 a bass
-// note, as the rip reports them. It is what CompareRips grades a rip of
-// RenderMusic's output against.
+// slots and played for bars bars of meter m at bpm under the harmony given, as
+// ExpectedRipBars makes it of RenderMusic's output: what CompareRips grades a
+// rip of that output against.
 func ExpectedRip(slots [MusicSlots]PatternID, bpm int, m Meter, bars, root int, scale ScaleID, prog []int) *Rip {
-	r := &Rip{BPM: bpm, Meter: m, Root: root, Scale: scale, Bars: make([]RipBar, bars)}
-	for _, e := range ExpectedEvents(slots, m, bars, root, scale, prog) {
-		b := &r.Bars[e.Bar]
+	timeline, heads := steady(slots, bpm, m, bars)
+	return ExpectedRipBars(timeline, heads, root, scale, prog)
+}
+
+// steady is the timeline and heads RenderMusic plays: the slots for bars bars
+// of meter m at bpm
+func steady(slots [MusicSlots]PatternID, bpm int, m Meter, bars int) ([][MusicSlots]PatternID, []BarHead) {
+	timeline, heads := make([][MusicSlots]PatternID, max(bars, 0)), make([]BarHead, max(bars, 0))
+	for i := range timeline {
+		timeline[i], heads[i] = slots, BarHead{Meter: m, BPM: bpm}
+	}
+	return timeline, heads
+}
+
+// ExpectedRipBars is the rip a perfect listener would make of a timeline
+// RenderBars plays under heads: each bar's drum hits by instrument and its tonal
+// notes by pitch, a note under E3 a bass note, each at the step sounding nearest
+// its onset, so a late note lies where it is heard and one heard past the last
+// step is left out. A rip has one tempo and meter, the first bar's.
+func ExpectedRipBars(timeline [][MusicSlots]PatternID, heads []BarHead, root int, scale ScaleID, prog []int) *Rip {
+	heads = heads[:min(len(heads), len(timeline))]
+	r := &Rip{Root: root, Scale: scale, Bars: make([]RipBar, len(heads))}
+	if len(heads) == 0 {
+		return r
+	}
+	r.BPM, r.Meter = heads[0].BPM, heads[0].Meter
+	type place struct{ at, bar, step int }
+	starts, grid := BeatStarts(heads), []place{}
+	for bar, beat := 0, 0; bar < len(heads); bar++ {
+		m := heads[bar].Meter
+		for step := range m.Steps() {
+			b := beat + step/m.Beat()
+			grid = append(grid, place{starts[b] + step%m.Beat()*SamplesPerStep(heads[bar].Tempo(step/m.Beat())), bar, step})
+		}
+		beat += m.Beats()
+	}
+	grid = append(grid, place{starts[len(starts)-1], -1, 0}) // the end, where nothing is laid
+	for _, e := range ExpectedEvents(timeline, heads, root, scale, prog) {
+		i, _ := slices.BinarySearchFunc(grid, e.At, func(p place, at int) int { return cmp.Compare(p.at, at) })
+		if i == len(grid) || i > 0 && e.At-grid[i-1].at < grid[i].at-e.At {
+			i--
+		}
+		if grid[i].bar < 0 {
+			continue
+		}
+		b, pos := &r.Bars[grid[i].bar], grid[i].step
 		if e.Instr.IsDrum() {
 			if e.Instr < InstrClap {
-				b.Drums[e.Instr] = append(b.Drums[e.Instr], Step{Pos: e.Step, Vel: e.Vel})
+				b.Drums[e.Instr] = append(b.Drums[e.Instr], Step{Pos: pos, Vel: e.Vel})
 			}
 			continue
 		}
 		deg, oct, acc := PitchStep(root, scale, e.MIDI)
-		s := Step{Pos: e.Step, Vel: e.Vel, Deg: deg, Oct: oct, Acc: acc, Dur: e.Dur}
+		s := Step{Pos: pos, Vel: e.Vel, Deg: deg, Oct: oct, Acc: acc, Dur: e.Dur}
 		if e.MIDI < RipBassTop {
 			b.Bass = append(b.Bass, s)
 		} else {

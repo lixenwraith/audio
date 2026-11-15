@@ -220,15 +220,21 @@ meter or a tempo of its own at the head of its list (`["2/8", "72bpm",
 rubato, which a rip's song writes where a bar's tempo moves three per cent
 from the last named; the sequencer takes them at the bar line as it takes the
 slots (`RenderBars`, and stapes' `song play`), and the MIDI file carries them
-as events there. The tempo a player reads is the beat the meter is felt in
+as events there. An offline render's head may give each beat a tempo
+(`BarHead.Beats`), which `RenderBars` sets as the beat's first step fires: a
+tempo that drifts. A beat is its steps of its tempo's whole samples, and
+`BeatStarts` is the sample each starts on. The tempo a player reads is the beat the meter is felt in
 (`Meter.FeltTempo`): a 3/8 at 73 is eighth 147, a 6/8 at 140 dotted quarter
 93. The bank's music is 4/4.
 
 A pattern has up to 64 steps, 32 tracks, and 512 events per track. A track sets
 its instrument, chord-following, and humanization; its events set step position,
 velocity, scale degree, octave, an accidental (`acc`, the semitones off the
-degree, so a note outside the key is written exactly), duration, and
-probability. A step may glide: `bend` is the semitones its pitch reaches by the
+degree, so a note outside the key is written exactly), duration, probability,
+and `late`, the share of a step its onset sounds after its position: a note
+behind the beat, a swung or a triplet one, a strum's later strings. It waits in
+its player's ring of 16 and fires within its own step, so a step holds at most
+16 late onsets, every track's. A step may glide: `bend` is the semitones its pitch reaches by the
 end of its duration, up to 24 either way, from `bend_at`, the share of the
 duration before it moves (0 the whole note, 0.75 a scoop at its end), linear in
 semitones on top of the pitch the harmony resolves, and every voice follows it:
@@ -714,8 +720,10 @@ were written with, so a document that names none leaves a rip without the
 heads as it was.
 `DefaultRipParams` is the hand-set start. The engine grades a set itself:
 `RenderMusic` plays registered patterns offline in a meter, `ExpectedRip` is the
-rip a perfect listener would make of them, and `CompareRips` scores a rip against
-it, tempo within two BPM, the bar lines it shares, and the drums, melody and bass
+rip a perfect listener would make of them (`ExpectedRipBars` of a timeline under
+its heads, each note at the step sounding nearest its onset, from `ExpectedEvents`,
+every note and hit with the sample it sounds on and the samples it is held, the
+truth a rendered loop is labelled with), and `CompareRips` scores a rip against it, tempo within two BPM, the bar lines it shares, and the drums, melody and bass
 as the harmonic mean of recall and precision per step and pitch, the steps
 counted from each one's first bar, so a rip in another meter is graded on where
 its notes sound. `Fidelity` grades a render

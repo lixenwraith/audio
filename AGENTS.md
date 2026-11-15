@@ -82,6 +82,9 @@ agent would otherwise rediscover, add it there in the same PR.
 - A gap you are deferring goes in `doc/todo.md`: extend the item it belongs to, or
   add a concise one in the file's pattern.
 - PR bodies: what changed, why, how it was verified.
+- A commit message and a PR's title and body carry no Claude Code session id
+  or link: no `Claude-Session:` trailer, no `claude.ai/code/session_...`
+  address.
 - Open the PR at the first push, its title final and its body as far as it is,
   saying what is still owed: Lixen merges a pushed branch he is waiting on. A
   PR another session must measure before it merges opens as a draft and says so

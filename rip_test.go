@@ -1541,7 +1541,8 @@ func TestMIDIScoreRipsAsTheLoop(t *testing.T) {
 	step := 60.0 / bpm / StepsPerBeat
 	var notes []RipNote
 	var hits []RipHit
-	for _, e := range ExpectedEvents(slots, Meter{}, bars, DefaultRootNote, ScalePhrygian, nil) {
+	timeline, heads := steady(slots, bpm, Meter{}, bars)
+	for _, e := range ExpectedEvents(timeline, heads, DefaultRootNote, ScalePhrygian, nil) {
 		at := float64(e.Bar*StepsPerBar+e.Step) * step
 		if e.Instr.IsDrum() {
 			hits = append(hits, RipHit{Start: at, Drum: e.Instr, Vel: e.Vel})
@@ -2305,7 +2306,7 @@ func TestARenderedBarStartsOnItsHead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	heads := []BarHead{{Meter{}, 120}, {Meter{}, 60}, {Meter{}, 60}, {Meter{}, 180}, {Meter{}, 90}}
+	heads := []BarHead{{Meter: Meter{}, BPM: 120}, {Meter: Meter{}, BPM: 60}, {Meter: Meter{}, BPM: 60}, {Meter: Meter{}, BPM: 180}, {Meter: Meter{}, BPM: 90}}
 	timeline := make([][MusicSlots]PatternID, len(heads))
 	for b := range timeline {
 		timeline[b] = [MusicSlots]PatternID{id, PatternSilence, PatternSilence, PatternSilence}
@@ -2328,6 +2329,89 @@ func TestARenderedBarStartsOnItsHead(t *testing.T) {
 			t.Errorf("bar %d at %d bpm: its kick sounds %d samples after its line", b, h.BPM, first-at)
 		}
 		at += n
+	}
+}
+
+// TestALateStepSoundsWhereItsEventSays: hats late by shares of a step, in bars
+// whose tempo drifts a beat at a time and in a bar of 7/8, read from a document's
+// late and written back to one, each sound on the sample ExpectedEvents gives,
+// and the render ends where BeatStarts' last beat does
+func TestALateStepSoundsWhereItsEventSays(t *testing.T) {
+	ae, _ := startLoopEngine(t)
+	doc := `
+[[pattern]]
+name = "even"
+steps = 16
+[[pattern.track]]
+instr = "hihat"
+event = [{ pos = 0, vel = 1 }, { pos = 9, vel = 1, late = 0.5 }]
+[[pattern]]
+name = "behind"
+steps = 16
+[[pattern.track]]
+instr = "hihat"
+event = [{ pos = 5, vel = 1, late = 0.25 }, { pos = 14, vel = 1, late = 0.75 }]
+[[pattern]]
+name = "seven"
+steps = 14
+meter = "7/8"
+[[pattern.track]]
+instr = "hihat"
+event = [{ pos = 3, vel = 1, late = 0.5 }, { pos = 12, vel = 1, late = 0.1 }]
+[[pattern]]
+name = "three"
+steps = 12
+meter = "3/4"
+[[pattern.track]]
+instr = "hihat"
+event = [{ pos = 0, vel = 1 }, { pos = 7, vel = 1, late = 0.9 }]
+`
+	pats, err := LoadPatternsTOML([]byte(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := MarshalPatterns(pats)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back, err := LoadPatternsTOML(data); err != nil || !reflect.DeepEqual(back, pats) {
+		t.Fatalf("written and read again: %v\n%s", err, data)
+	}
+	heads := []BarHead{
+		{BPM: 120},
+		{BPM: 120, Beats: []int{120, 126, 131, 128}},
+		{Meter: Meter{7, 8}, BPM: 110, Beats: []int{110, 104, 98, 101, 107, 113, 116}},
+		{Meter: Meter{3, 4}, BPM: 96},
+	}
+	timeline := make([][MusicSlots]PatternID, len(pats))
+	for b, p := range pats {
+		id, err := ae.DefinePattern(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		timeline[b][0] = id
+	}
+	buf, err := ae.RenderBars(timeline, heads, DefaultRootNote, ScaleMajor, nil, 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if starts := BeatStarts(heads); len(buf) != starts[len(starts)-1] {
+		t.Fatalf("%d samples rendered, the beats end at %d", len(buf), starts[len(starts)-1])
+	}
+	var onsets []int // a sample sounding after 10 ms of silence
+	for i, v := range buf {
+		if v != 0 && slices.IndexFunc(buf[max(i-441, 0):i], func(x float64) bool { return x != 0 }) < 0 {
+			onsets = append(onsets, i)
+		}
+	}
+	evs := ExpectedEvents(timeline, heads, DefaultRootNote, ScaleMajor, nil)
+	if len(onsets) != len(evs) {
+		t.Fatalf("%d onsets for %d events", len(onsets), len(evs))
+	}
+	for i, e := range evs {
+		if d := onsets[i] - e.At; d < 0 || d > 1 {
+			t.Errorf("bar %d step %d: sounds at %d, its event says %d", e.Bar, e.Step, onsets[i], e.At)
+		}
 	}
 }
 
@@ -2499,7 +2583,7 @@ func TestRipFollowsABarThatSlows(t *testing.T) {
 	timeline := make([][MusicSlots]PatternID, bars)
 	heads := make([]BarHead, bars)
 	for b := range timeline {
-		timeline[b], heads[b] = slots, BarHead{three, 130}
+		timeline[b], heads[b] = slots, BarHead{Meter: three, BPM: 130}
 		if b == 9 || b == 10 {
 			heads[b].BPM = 104
 		}
