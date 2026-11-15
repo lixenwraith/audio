@@ -217,6 +217,13 @@ func TestPatternValidationRejects(t *testing.T) {
 		{"bend NaN", func(p *Pattern) { p.Tracks[0].Events[0].Bend = math.NaN() }},
 		{"bend_at at the step's end", func(p *Pattern) { p.Tracks[0].Events[0].BendAt = 1 }},
 		{"bend_at negative", func(p *Pattern) { p.Tracks[0].Events[0].BendAt = -0.25 }},
+		{"late by a whole step", func(p *Pattern) { p.Tracks[0].Events[0].Late = 1 }},
+		{"late negative", func(p *Pattern) { p.Tracks[0].Events[0].Late = -0.1 }},
+		{"more late onsets at a step than a player's ring holds", func(p *Pattern) {
+			for range MaxPendingTrigs + 1 {
+				p.Tracks = append(p.Tracks, Track{Instr: InstrHihat, Events: []Step{{Pos: 3, Vel: 1, Late: 0.5}}})
+			}
+		}},
 	}
 	for _, c := range cases {
 		p := base()

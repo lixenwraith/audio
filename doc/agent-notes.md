@@ -50,6 +50,15 @@ that a document now states, and link the document instead.
   the render gives every bar the last one's notes. Stapes' corpus exported
   whole and in `part`s must match byte for byte; that comparison found it, 43
   loops in 9468.
+- A player's ring of pending onsets fires a wait of w on the w-th sample from the
+  one it is scheduled on, 1 being that sample, so a humanized lag of h sounds h-1
+  late and a **late** step waits `max(lag, 1)` plus its samples. `SetPattern`
+  empties the ring; `RenderBars` places a bar's patterns before its first step
+  fires and a late onset is floored under its step, so none is lost at a line. A
+  late step on a humanized track can spill past its step; label renders use none.
+- `RenderBars` generates beat by beat, setting a beat's tempo quantized just before
+  it: splitting `Generate`'s buffer moves no sample, so a render of heads without
+  beat tempos is the one it made bar by bar (the snapshot holds it).
 
 ## The snapshot
 

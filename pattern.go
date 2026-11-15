@@ -17,6 +17,9 @@ type Step struct {
 	// Bend is the semitones the pitch reaches by the step's end, BendAt the share
 	// of its duration before the glide begins, linear in semitones (tonal only)
 	Bend, BendAt float64
+	// Late is the share of a step the onset sounds after Pos, in [0,1): a note
+	// behind the beat, a swung or a triplet one, a strum's later strings
+	Late float64
 }
 
 // Track is one instrument lane within a pattern

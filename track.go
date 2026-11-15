@@ -77,6 +77,10 @@ func (p *PatternPlayer) TriggerStep(step, samplesPerStep int, h *harmony, rng *r
 					delay = rng.IntN(int(tr.Humanize*HumanizeMaxDelaySamples) + 1)
 				}
 			}
+			if ev.Late > 0 {
+				// a wait of w fires on the w-th sample from this one: 1 is now
+				delay = max(delay, 1) + LateSamples(ev.Late, samplesPerStep)
+			}
 
 			note := VoiceParams{Velocity: vel, Instrument: tr.Instr}
 			if !tr.Instr.IsDrum() {

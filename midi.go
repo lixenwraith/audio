@@ -692,7 +692,7 @@ func (m *MIDIScore) Song(name string) ([]*PatternDef, *SongDef, []string) {
 	song := &SongDef{Name: name, BPM: int(math.Round(bpm)), Meter: main.Doc(), Root: root, Scale: ScaleName(scale), Bars: make([][]string, len(bars))}
 	var pats []*PatternDef
 	var named [RipParts]map[string]string // a pattern's name by what it holds
-	head := BarHead{main, song.BPM}
+	head := BarHead{Meter: main, BPM: song.BPM}
 	for bi, br := range bars {
 		// a bar of another meter or tempo names it, and holds it for the bars after
 		var words []string
