@@ -38,10 +38,8 @@ The kit ([Audio §7](audio.md#7-music-sequencer)) was measured against CC0 MP3
 previews and Iowa's hihat, at three velocities each. What is left: an open hihat,
 which the MIDI drum map's 46 reads as the closed one; a kick recorded several
 times at one pressure, to set its strokes' spread (the Sonor set has one take a
-pressure); and the analysis's bass and melody under the natural kit (stapes'
-`bench 12 4` clean 0.15 to 0.03 and 0.17 to 0.11, augmented 0.04 to 0.08 and
-0.13 to 0.13), a kick ringing at 52 Hz read as bass, which a model trained on
-the new corpus is to be benched against.
+pressure); and the analysis reading the natural kit's kick, ringing at 52 Hz, as
+bass, which a model trained on the new corpus is to be benched against.
 
 ### Read a matched kit's weak bands
 
@@ -62,40 +60,34 @@ fill at the eq's neighbouring value, once a recording shows it audible.
 - Priority: P2
 - Affected files: `account.go`, `rip.go`
 
-The accounting ([Audio §9](audio.md#9-ripping-a-recording)) judges each note
-by its onset alone. What is left: a note's velocity and end from its fitted
-activation, against the half-second level the velocity head is moved by and
-the heads' release, which a listening sheet decides; on a clean piano half the
-partials reported over a chord still pass, as the template of the note under
-them is learned from frames the partial shares; a difference tone under
-distortion has a fundamental of its own, which no additive fit can rule out;
-and the decoder's partial rule is judged again by the fit, so it may go once
-a run without it holds the graded sets (`ownPitch` stays: without it the
-register's F1 holds within .005 on Für Elise's renders and takes while
-E2-D#3 loses .03 to .06 on five of the seven renders). The memory through a
-louder note reads a note's start; it does not yet follow a note past its end:
-on the clean take two fifths of the kept notes end while the pitch head still
-hears the pitch, but the right ones end at or after the score's (the hold is
-the pedal's ring), and on the study, where the held lines are, the sound after
-an end decays as the piano's does, so nothing yet tells a sustained line cut by
-the release head from a ring, and an extension would lengthen piano notes past
-the score. A candidate on a pitch still sounding stays the decoder's: judged
-with the memory, the study's C3 drone was cut in half by its pulse. The
-smallest close: the velocity from the fit on a sheet beside `dynamics`; the
-ends on a sheet of the study alone. The scorer's truth map snaps each truth
-note to the reported note it matched, so a partial shadow at a real note's
-pitch pulls the map by 100 ms and the restrike labels with it; the stage was
-calibrated on maps by a local line over the matched notes' offsets instead
-(`tmp/explain/py/smoothmap.py`), which the scorer itself should write. A
-note struck softly under its octave's ring (the E3 at 8.52 s of the clean
-take, Sheet 12's miss) is a candidate whose fit sees a 2 dB rise; its memory
-reads its new sound only when a partial another pitch rang on from before
-is predicted through rather than left out, which costs the restrike kind
-across the four sets (same-pitch extras gone 11 of 24 against 15 on the
-clean take), and the candidate score refuses it either way, the level 19 dB
-under the reference outweighing it; candidates under a ring with new sound,
-a sure pitch head and a sure strike are right in only half of the clean
-take's cases and a tenth of the Pixel take's, so no rule admits them yet.
+The accounting ([Audio §9](audio.md#9-ripping-a-recording)) judges each note by
+its onset alone. What is left: a note's velocity and end from its fitted
+activation, against the half-second level the velocity head is moved by and the
+heads' release, which a listening sheet decides; on a clean piano partials
+reported over a chord can still pass, as the template of the note under them is
+learned from frames the partial shares; a difference tone under distortion has a
+fundamental of its own, which no additive fit can rule out; and the decoder's
+partial rule is judged again by the fit, so it may go once a run without it
+holds the graded sets (`ownPitch` stays: notes under E3 need it). The memory
+through a louder note reads a note's start; it does not yet follow a note past
+its end: a kept note can end while the pitch head still hears the pitch, but
+under the pedal the right ones end at or after the score's (the hold is the
+pedal's ring), and where lines are held the sound after an end decays as the
+piano's does, so nothing yet tells a sustained line cut by the release head from
+a ring, and an extension would lengthen piano notes past the score. A candidate
+on a pitch still sounding stays the decoder's: judged with the memory, a held
+drone is cut by its pulse. The smallest close: the velocity from the fit on a
+sheet beside `dynamics`; the ends on a sheet of held lines alone. The scorer's
+truth map snaps each truth note to the reported note it matched, so a partial
+shadow at a real note's pitch pulls the map and the restrike labels with it; the
+stage was calibrated on maps by a local line over the matched notes' offsets
+instead, which the scorer itself should write. A note struck softly under its
+octave's ring is a candidate whose fit sees a small rise; its memory reads its
+new sound only when a partial another pitch rang on from before is predicted
+through rather than left out, which costs the restrike kind, and the candidate
+score refuses it either way, its level far under the reference outweighing it;
+candidates under a ring with new sound, a sure pitch head and a sure strike are
+too often wrong for a rule to admit them yet.
 
 ### Close what a judge leaves open
 
@@ -139,23 +131,10 @@ installed scores stay until one is. What the stage leaves open:
 one frame as its unstable sort leaves the order the decoders hand them in; a
 note joins the line of the note walked before it with no change of line, so the
 parting follows that order where no cost ties. On stapes' `corpus <dir> 48 8
-aug gen meters` through the analysis, offline and streamed, a walk by pitch at
-a shared start parts 45 of the 96 rips otherwise and a stable sort 39, 1 to 71
-notes changing line. The smallest close: an order the notes alone set, chosen
-by the lines' agreement with the corpus labels (`MatchNotes`).
-
-### Read the takes again through the mended map
-
-- Priority: P2
-- Affected files: `match.go`
-
-The takes were graded through a map that held only the given's own tempo ([agent
-notes](agent-notes.md#the-accounting)): the clean Für Elise take's bar lines
-read 0.4 within a sixteenth, its bass about 100 ms off at the B section. The
-audit's count of the takes through the map as it stands rose 14 to 32 notes a
-take; their bar score and the B section's bass are not read again. The smallest
-close: both through the map as it stands, beside the exact-clock renders, and
-the agent notes' advice kept or dropped by them.
+aug gen meters` through the analysis, offline and streamed, a walk by pitch at a
+shared start parts many rips otherwise, and so does a stable sort. The smallest
+close: an order the notes alone set, chosen by the lines' agreement with the
+corpus labels (`MatchNotes`).
 
 ### Pair a tapped rhythm as the notes with pitches are
 
@@ -170,27 +149,6 @@ the pitched first, so one can take across lines the note a tap took within its
 line and `All` reads under the lines. The smallest close: the taps paired by
 `nearPlace`'s alignment with pitch aside (a run is then every note within the
 tolerance, long in a dense rip), the two kinds together where they meet.
-
-### The misses and extras the ear still hears
-
-- Priority: P1
-- Affected files: `account.go`, `rip.go`
-
-Sheet 13, on the memory's build, scored Für Elise clean 4 on the melody, the
-low notes, the timing and overall and 5 on note length, the study 3 and the pop
-song 3 to 4, every ask Better, and by ear better overall with misses and
-extras still. What is left, by ear and by the truths: on Für Elise clean some
-melody notes are missing, the under voice's soft notes of the bass figures
-above all (E3-D#4 right 162 of 246 where the decoder reported 175, the note
-under its octave's ring among them), and some low extras remain; at 27 to 31
-s the notes linger: every note there is right and none missing, but the C5 at
-29.9 s, the E3 at 30.4 s and the B4 and E2 at 31.4 s run 0.3 to 1.0 s past the
-score's ends under the pedal, which the ear hears as timing off, the other
-side of the ends above; on the study the melody is 40% right at 5.7 to 12 s
-with in-between notes on the beat's melody, which wants the notes model more
-than the accounting. The smallest close: the ends from the fitted activation
-on a Für Elise sheet, and the under voice's soft notes judged as a population
-of their own. A sheet's Note length row goes where extra sounds take over.
 
 ### Write the motion a glide's note leaves out
 
@@ -207,8 +165,8 @@ step's bend cannot hold is heard and dropped:
 - A vibrato: the note takes the pitch it sways about. A rate and a depth on
   the note, as a voice has them, read from the cents along it.
 - A note struck again in its own cell: the cents say nothing there, so
-  `StrikeAgain` judges it as before. The 69 repeats inside a sung note on
-  vocadito are of this kind where the voice never left the cell.
+  `StrikeAgain` judges it as before. Repeats inside a sung note, where the voice
+  never leaves the cell, are of this kind.
 - A sound is followed within the register its note was struck in: a glide
   across E3 reads the cells past it, but takes in no note the other register
   made there.
@@ -262,8 +220,8 @@ voice ([Audio §9](audio.md#9-ripping-a-recording)). What is left:
   frame head of no weights, and a measure a family fits the same head at eight
   values. A file states constants by name since `transformer`'s version 6, as
   it states its lowest pitch (`ripmodels.Lowest`), and the measure belongs
-  there: it stays a head while trained files carry it so, and moves once the
-  trainer's export writes the constant, `New` reading either.
+  there: it moves once the trainer's export writes the constant, `New` reading
+  either.
 - A note keeps the name and not the share: `RipVoice` has no field for how far
   past the measure its family was, or for the second family. A caller that
   ranks notes by sureness needs one.
@@ -337,12 +295,11 @@ The rip reads 4/4, 3/4 and 6/8, and names them ([Audio
 6- or 8-beat bar 3/4 or 4/4 at half, a triple bar of tracked triplets 3/4, so
 a slow waltz, a slow 4/4 and a jazz waltz tracked on its swing read right. 5/4,
 7/8, 9/8 and 12/8 still read as whichever of those fits. Offered as readings
-beside the three, over the labeled sets (the corpus, e-gmd, GuitarSet, Für Elise), the
-margin chain held its 4/4 labels only without them, and a linear score over
-path score, repetition and a prior per meter could not hold them within 2% of
-the chain on any prior set tried. The smallest close: 5/4 and 7/4 as readings
-taken only by the full margin, graded on e-gmd's 5/4 and 5/8 performances (7
-of each on disk, one performance under seven kits) before the 4/4 sets.
+beside the three, they cost the margin chain 4/4 labels, and a linear score over
+path score, repetition and a prior per meter held fewer than the chain. The
+smallest close: 5/4 and 7/4 as readings taken only by the full margin, graded on
+e-gmd's 5/4 and 5/8 performances (7 of each on disk, one performance under seven
+kits) before the 4/4 sets.
 
 ### Hear the beat and the bar line on trained weights
 
@@ -356,31 +313,17 @@ heads, the loss and the run that is this change's evidence, is [stapes'
 todo](https://github.com/lixenwraith/stapes/blob/main/doc/todo.md#teach-the-frame-model-the-beat-and-the-bar-line).
 What is left here, each to settle on trained weights:
 
-- **Read against truths.** GuitarSet's 120 unmet clips: 40a's heads read 24
-  right through the rank decode, 39 through a plain tracker, 32 with the heads
-  left out (12a's cues 37); under perfect beats its downbeat head's sum by
-  place names 89, the cues 58. 48a's read 38 right, and 40 since six beats
-  need the head at their lines, with 14 clips stated in six down to 1. The Für
-  Elise takes against their score, and the stream's twelve recordings, with
-  the heads and with the same weights' heads left out (a `FrontEnd` whose
-  frames have `Beat` set nil).
-- **The place of the line.** On stapes' generated evaluation (800 four-bar
-  loops, 48a and 49a) the heads' meter now states six or three beats on 29 of
-  the 728 loops in 4/4 where it stated them on 267, and 405 have their bars
-  right for 277; the same frames with the heads left out read 486. The gap is
-  the place: of the bars whose length is right the cues' path places 93% and
-  the heads' reading 75%, most of the rest on the third beat. 48a's downbeat
-  head marks the half bar as it marks the line and the drums' cues tie there;
-  the path sums its bars, so one that starts with the recording and fits a bar
-  more wins, which every rendered loop rewards and a recording cut anywhere
-  does not, where a place's mean leans on nothing. `bar_head` moves it little
-  (411 right at 0, 419 at 0.25, 405 at 1). To settle on a head trained
-  further and on truth that starts off the bar line, not by a lean on the
-  start.
-- **The repetition under six bars** is not asked of a heard reading: on those
-  four-bar loops it took 3/4 on 18 more loops in 4/4 and on 2 more of the 36
-  in 3/4 (22 right with it, 20 without), the bars right over the whole set the
-  same either way.
+- **Read against truths.** Recordings against a truth that has bar lines
+  (GuitarSet's `beat_position`, a score's bars), with the heads and with the
+  same weights' heads left out (a `FrontEnd` whose frames have `Beat` set nil).
+- **The place of the line.** A downbeat head can mark the half bar as it marks
+  the line, and the drums' cues tie there; the cues' path sums its bars, so one
+  that starts with the recording and fits a bar more wins, which every rendered
+  loop rewards and a recording cut anywhere does not, where a place's mean leans
+  on nothing. To settle on trained heads and on truth that starts off the bar
+  line, not by a lean on the start.
+- **The repetition under six bars** is not asked of a heard reading: on four-bar
+  loops it took 3/4 on loops in 4/4 and set no more bars right.
 - **The weights the heads are read by.** `bar_head` (1) puts the downbeat
   head's lines standing out over its mean beat on the cues' scale, the beat
   head's comb (`beat_comb_2` to `4`) is a plain tracker's, and `meter_head`
@@ -395,30 +338,15 @@ What is left here, each to settle on trained weights:
   the tracked beats against at them) is to be measured on trained heads first.
 - **A bar that slips.** A bar holds its beats exactly, so a beat the tracker
   adds or loses in a ritardando moves every line after it; the cues' path
-  absorbs one at `bar_move`. A cost in the head's own units is to be fitted
-  on played takes (Für Elise), not set.
+  absorbs one at `bar_move`. A cost in the head's own units is to be fitted on
+  played recordings, not set.
 - **The stream** holds the phase of its first bars, as before: the downbeat
   head is not read again once they freeze. Reading it at every bar is the
   sections thread's.
 - **Half and double bars** are not offered (2 and 8 heard beats), nor 5/4 and
   7/8: none is measured on a head. A 6/8 tracked on its dotted quarters, the
   onsets on both their thirds, wants a bar of two heard beats: it reads 4/4 or
-  6/4 over them, and 4 of the evaluation's 36 loops in 6/8 have their bars
-  right.
-
-### Hear the phone takes' bars
-
-- Priority: P2
-- Affected files: `rip.go`, `ripmodels/`
-
-On the exact-clock renders of Für Elise the bar path puts three quarters of
-the lines within a sixteenth of the render's and on the clean take half; on
-the three phone takes a fifth, as on main. Their onset head (the frame model's,
-12a) smears a note over 50-80 ms and fires between notes at a third of a
-strike's strength, so the comb cannot tell a sixteenth from the gap beside it
-and the tracker lays a pulse or two too many through a ritardando. A sharper
-onset head, trained on the phone channel (`rip-train --channel`), is the lever;
-the decoders need no change to use it.
+  6/4 over them.
 
 ## The live rip
 

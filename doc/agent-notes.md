@@ -253,33 +253,31 @@ that a document now states, and link the document instead.
   and nineteenth, a semitone either side) before the path runs again; masking
   the fundamental alone finds the octave ghost. The gate is relative to the first
   path's mean note strength, so a clean render's second pass yields nothing.
-- A recording need not sit at A440: the sample is forty cents flat, which put
-  every pitch between two salience rows and read as semitone wobble (A#2 and
-  A2 taking turns), chopped sustains and a wrong scale. Measure the tuning (a
-  histogram of spectral peaks' offsets from the nearest semitone, what
-  `tuning` does) before blaming the tracker; the front end reads it first now,
+- A recording need not sit at A440, and one tuned between two semitones puts
+  every pitch between two salience rows, which reads as semitone wobble (a note
+  and its neighbour taking turns), chopped sustains and a wrong scale. Measure
+  the tuning (a histogram of spectral peaks' offsets from the nearest semitone,
+  what `tuning` does) before blaming the tracker; the front end reads it first,
   and since a render is in tune, a bench of renders cannot see this failure.
-- The first full bar is not where the music starts: the grid dropped the
-  sample's opening phrase, two and a half seconds before its first bar line.
-  A pickup bar is extrapolated when a note or a hit leads in by more than half
-  a step; a render's silence before bar 0 opens none, so the corpus reads the
-  same. `Downbeat` is negative then, `progression` reads no frame before zero,
-  and `CompareRips` skips the pickup bar against a truth without one.
-- The pitch paths start late against the onsets the beats sit on, a sixth of a
-  step on the sample: the median phase of the notes is taken out before
-  quantizing, which lifted the test loop's melody from 0.95 to 0.98 and a cut
-  recording's from 0.93 to 0.98. Under that sharper grid the second pass's
-  fragments cost the pad test's melody two hundredths against the solo pass,
-  so that guard allows five.
+- The first full bar is not where the music starts: a grid from the first bar
+  line drops a phrase that opens before it. A pickup bar is extrapolated when a
+  note or a hit leads in by more than half a step; a render's silence before bar
+  0 opens none, so the corpus reads the same. `Downbeat` is negative then,
+  `progression` reads no frame before zero, and `CompareRips` skips the pickup
+  bar against a truth without one.
+- The pitch paths start late against the onsets the beats sit on: the median
+  phase of the notes is taken out before quantizing. Under that sharper grid the
+  second pass's fragments cost the pad test's melody two hundredths against the
+  solo pass, so that guard allows five.
 - The first and second pitch paths swap roles on a held dyad: the louder note
   changes hands from frame to frame, so each line hears a trill where the
   music holds a chord, and two fitted voices play it as two instruments
   alternating. Assign concurrent notes to lines by pitch order (`uncross`).
-- The sequencer's range is 80 to 200 bpm and the tempo decoder folds into it,
-  so the origin recording, near 74 bpm, reads at 148 while the intro, sped up
-  to 86, reads at 86: the same piece on two metrical levels, a sixteenth 101
-  ms in one rip and 174 in the other. A `Grid` with a negative downbeat pins the
-  tempo alone, so the two rips can be put on one level.
+- The sequencer's range is 80 to 200 bpm and the tempo decoder folds into it, so
+  a piece played under 80 reads at twice its tempo while the same piece sped
+  past 80 reads at its own: one piece on two metrical levels. A `Grid` with a
+  negative downbeat pins the tempo alone, so two such rips can be put on one
+  level.
 - `RipNote.Bright` on the test loop's lead through its 2.5 kHz low-pass reads
   0.97 on a sine, 0.73 on a square and 0.49 on a saw (an unfiltered saw's six
   partials give 0.41). A melody note at the bass's octave, twelfth or double
@@ -292,22 +290,19 @@ that a document now states, and link the document instead.
   frame and the tempo prior degenerate. `Samples` and `Hear` take the defaults
   for the zero value now; a scratch tool that forgot `DefaultRipParams` ran
   for ten minutes on a twelve-second clip.
-- The beat tracker can lock onto six sixteenths: it reads three of thirty 4/4
-  renders of the bank's patterns at two thirds of their tempo (165, 176 and 190
-  as 110, 117 and 126). Their eighths fall on the tracked beat's thirds, so the
-  meter's `thirds` check reads those beats as dotted quarters and the 4/4
-  reading at three halves restores the tempo; rerun those renders after any
-  change to how the thirds are weighed.
-- A truth mapped into a recording through matched notes (`Agreement.At`) was
-  off by 50-500 ms in a ritardando where matches are sparse: the bar lines of
-  the clean Für Elise take graded 0.4 within a sixteenth where the rip's were
-  right. Each map point took the median offset of the matches around it, right
-  only at the given's own tempo: at another a point moved by the difference
-  times the distance to its median match, furthest where matches are sparse
-  and at the ends. The map now lies on a steady tempo and follows a sparse
-  line slowing to 0.7 within 70 ms; until the takes are graded again through
-  it, grade a bar decoder on the exact-clock renders (round19/timbre) or on a
-  render whose bars it knows (`RenderBars` with a tempo per bar).
+- The beat tracker can lock onto six sixteenths, reading a fast 4/4 render of
+  the bank's patterns at two thirds of its tempo. Its eighths fall on the
+  tracked beat's thirds, so the meter's `thirds` check reads those beats as
+  dotted quarters and the 4/4 reading at three halves restores the tempo; rerun
+  the bank's 4/4 renders after any change to how the thirds are weighed.
+- A truth mapped into a recording through matched notes (`Agreement.At`) strays
+  in a ritardando where matches are sparse when each map point takes the median
+  offset of the matches around it: that is right only at the given's own tempo,
+  and at another a point moves by the difference times the distance to its
+  median match, furthest where matches are sparse and at the ends. The map lies
+  on a steady tempo and follows a sparse line slowing to 0.7 within 70 ms; grade
+  a bar decoder on a render whose bars it knows (`RenderBars` with a tempo per
+  bar).
 - A tracker whose tempo is a state (an interval scored against the one before)
   does not follow a ritardando in sixteenth runs: every sixteenth is as good a
   beat as every other, so bridging costs no onset, and on dense guitar it
@@ -315,11 +310,10 @@ that a document now states, and link the document instead.
   or two pulses more or fewer in the bar path absorbs what it inserts.
 - A chroma-change cue read over a candidate's own bar favours shorter bars,
   since adjacent short spans always differ more: 3/4 scored over 4/4 on every
-  strummed 4/4 comp until the span was four tracked beats for every reading.
-  A bass-accent cue (a bass note on the line against the bar's other
-  sixteenths) peaks at wrong phases on guitar solos and comps by 0.3-0.5, yet
-  without it Für Elise's lines go (0.51 to 0.11 within half a sixteenth); it
-  rides at half weight.
+  strummed 4/4 comp until the span was four tracked beats for every reading. A
+  bass-accent cue (a bass note on the line against the bar's other sixteenths)
+  peaks at wrong phases on guitar solos and comps, yet without it a played piano
+  piece's lines can go; it rides at half weight.
 - The bar line on a pulse grid finer than the beat may sit on an off-beat
   pulse; the beat-class cue (how much a pulse's class, a tracked beat apart,
   stands out in onset over the pulses around it) keeps it on the beat without
@@ -329,9 +323,9 @@ that a document now states, and link the document instead.
   eight apart, with fewer pulses between to dilute them. `accent` counts one bar.
 - The repetition cue (`repeats`) compares each sixteenth's chroma and onset at a
   reading's lags, not the transcript's events: event matches favour the shorter
-  bar's nearer lags on music that never repeats (three through-composed 4/4
-  renders went 3/4 at a 0.02 margin), and a bar's distance to its nearest other
-  bar ties on a loop, whose bars in another meter repeat too, three bars on.
+  bar's nearer lags on music that never repeats, and a bar's distance to its
+  nearest other bar ties on a loop, whose bars in another meter repeat too,
+  three bars on.
 - `CompareRips` grades notes within the bar, so a rip read in the right meter
   but with its line a beat off loses its melody or bass, while a wrong meter
   whose line falls on the first beat keeps them. stapes' generated 3/4 beats
@@ -360,39 +354,37 @@ that a document now states, and link the document instead.
   either way (`heardReadings`' `given`), and then 3/4 and 6/8 are one bar: a
   score averaged over 6/8's twice as many pulses took every waltz, so only the
   beat head, marking the quarters or their halves, parts them.
-- **A head is read by its level, summed by place, beside the cues.** Ranks lost
-  on trained heads (40a's bars right on 24 of GuitarSet's 120, a plain
-  tracker's on 39): a
-  rank within each bar counts a quiet bar's noise as a full vote, and ranks of
-  the beat head's spans (`level`, gone) took eighths it marks at a third of its
-  quarters for the beat. Summed log-odds stay out too, as they read a quiet head
-  as a word against its lines: the sum is of posteriors, as a ratio to the mean
-  beat's, added to the cues' bar scores, and the meter takes the cues' margins,
-  which keep a waltz from 6/8's every other line. A heard bar's score leaves
-  the comb out (6/8's steps over heard beats are eighths, 4/4's sixteenths, and
-  a coarser grid's mean onset is higher) and counts the head at every line, the
-  last bar's end too, or one bar reads 3/4 and 4/4 alike; but not at a beat on
-  the recording's last frames, which the head has not heard: on a four-bar
-  loop that silent fifth line took a fifth off the right place's sum.
-- **A trained downbeat head marks the half bar as it marks the line**, 48a's
-  on most 4/4 loops, so every line of a six-beat bar falls on a mark as every
-  line of four does, and the longer bar, fewer lines and more places for them,
-  has the higher best place by chance: 267 of 728 generated 4/4 loops read in
-  six or three until six beats needed the head at their lines over four's
+- **A head is read by its level, summed by place, beside the cues.** Ranks lose
+  on trained heads: a rank within each bar counts a quiet bar's noise as a full
+  vote, and ranks of the beat head's spans (`level`, gone) took eighths it marks
+  lower than its quarters for the beat. Summed log-odds stay out too, as they
+  read a quiet head as a word against its lines: the sum is of posteriors, as a
+  ratio to the mean beat's, added to the cues' bar scores, and the meter takes
+  the cues' margins, which keep a waltz from 6/8's every other line. A heard
+  bar's score leaves the comb out (6/8's steps over heard beats are eighths,
+  4/4's sixteenths, and a coarser grid's mean onset is higher) and counts the
+  head at every line, the last bar's end too, or one bar reads 3/4 and 4/4
+  alike; but not at a beat on the recording's last frames, which the head has
+  not heard: on a four-bar loop that silent fifth line took a fifth off the
+  right place's sum.
+- **A trained downbeat head can mark the half bar as it marks the line**, so
+  every line of a six-beat bar falls on a mark as every line of four does, and
+  the longer bar, fewer lines and more places for them, has the higher best
+  place by chance: six beats need the head at their lines over four's
   (`meter_head`). A test of it writes the half bar's marks too, and the marks
   six beats apart highest; a head marking every fourth beat alone never failed.
 - **The cues' path leans on the recording's start, the heads' reading on
-  nothing.** The path sums its bars, so one from the first pulse that fits a
-  bar more wins: on loops that start on a bar line it places 93% of the bars
-  whose length it reads, the heads' mean by place 75% on the same frames. Do
-  not read that gap as the head's, nor close it by a lean a live rip lacks.
+  nothing.** The path sums its bars, so one from the first pulse that fits a bar
+  more wins, which gives it the bars of loops that start on a bar line where the
+  heads' mean by place has no such lean. Do not read that gap as the head's, nor
+  close it by a lean a live rip lacks.
 - **A bar decoder is iterated on dumped frames.** A scratch program dumps a
   set's frames once (`ripmodels.Load`, `Ripper.Hear`, gob), and a scratch test
   in the package keeps each recording's events (`Ripper.events`: hits, key,
-  notes) beside the fields the bars read (`Flux`, `Onset`, both chromas, the
-  two heads): `Ripper.grid` over them grades 800 loops in two seconds where a
-  rip of each takes ten, by the audit's own measure (`MatchBars`' `Same` and
-  0.8 of the downbeats), against a base that must reproduce the audit's count.
+  notes) beside the fields the bars read (`Flux`, `Onset`, both chromas, the two
+  heads): `Ripper.grid` over them grades the set without ripping it again, by
+  `MatchBars`' `Same` and 0.8 of the downbeats, against a base that must
+  reproduce the count the rips give.
 - **A head written by hand marks every beat alike**, so its beat and its half
   tie on the comb and the prior parts them: a test's beats run 85 to 170 a
   minute, the eighths marked low (at 0.3 of the quarters 70 reads as 140). A
@@ -402,13 +394,12 @@ that a document now states, and link the document instead.
   before the recording and is not written: a place that needs the first
   line's mark to win does not.
 - **A change that must not move the rip is held by a digest of rips.** A scratch
-  program: every WAV of a rendered corpus ripped through the analysis and
-  through random weights of `FrameSpec` cut to the heads before the change,
-  offline and streamed, each rip's JSON hashed; 240 rips of stapes' `corpus
-  <dir> 48 8 aug gen meters` gave one digest before and after the heads. Ten
-  runs of its 96 rips through the analysis give one digest each, and two through
-  random weights of `FrameSpec` cut to ten heads (`NewRandom` seed 1), so a
-  differing line is the change's.
+  program: every WAV of a rendered corpus (stapes' `corpus <dir> 48 8 aug gen
+  meters`) ripped through the analysis and through random weights of `FrameSpec`
+  cut to the heads before the change, offline and streamed, each rip's JSON
+  hashed. Runs of its rips through the analysis give one digest each, as do runs
+  through random weights of `FrameSpec` cut to ten heads (`NewRandom` seed 1),
+  so a differing line is the change's.
 
 ## The matched kit
 
@@ -435,23 +426,22 @@ that a document now states, and link the document instead.
 
 - A corpus and a bench render one pattern a part (`RenderMusic`), so they never
   change a slot's pattern at a bar line; the cut a changed bar line once made to
-  ringing notes (forty silent gaps in a ripped Für Elise) showed in songs alone.
-  Count a song render's silent runs (5 ms frames under -80 dBFS, four or more,
-  none touching an end) before blaming the rip's models for a gap.
+  ringing notes showed in songs alone. Count a song render's silent runs (5 ms
+  frames under -80 dBFS, four or more, none touching an end) before blaming the
+  rip's models for a gap.
 
 - The rip's front end is a seam: `analysis` and `ripmodels` both fill `RipFrames`,
   and the decoders read nothing else, so a front end is checked by the frames it
   makes and the rip they give, as `ripmodels`' test does with an untrained model.
 - The harmonic stack (`stacked`) interpolates in float64 where the trainer's
-  `PitchNet.stack` does in float32, so a third of the floats differ in the last
-  bit (up to 4.8e-7); through PitchNet at the trainer's shape the heads differ
-  from PyTorch's by up to 4.8e-6 on outputs up to 11, rounding. Dump
-  `model.stack(x)` beside the outputs to tell the stack from the notes model.
-- The trainer's `features` and `ripmodels`' agree bit for bit on the
-  PCEN plane, but on a piano recording 63 of the dB plane's 534,520 floats
-  differed in the last bits (up to 1.4e-14, all near zero): numpy's `mean` sums
-  pairwise, Go in order. Compare the planes with that in mind, not the whole
-  frame for equality.
+  `PitchNet.stack` does in float32, so some floats differ in the last bit, and
+  through PitchNet at the trainer's shape the heads differ from PyTorch's by
+  rounding. Dump `model.stack(x)` beside the outputs to tell the stack from the
+  notes model.
+- The trainer's `features` and `ripmodels`' agree bit for bit on the PCEN plane,
+  but the dB plane's floats near zero can differ in the last bits: numpy's
+  `mean` sums pairwise, Go in order. Compare the planes with that in mind, not
+  the whole frame for equality.
 - A head trained with a positive weight w (`bce(..., pos_weight)` in
   `train.py`) scores a posterior p as wp/(wp + 1 - p): the strike head's
   (w 20) half-sure is 0.95 and the pitch head's (w 12) 0.92. Sweep a
@@ -466,13 +456,11 @@ that a document now states, and link the document instead.
   the wrong transcript. `Fidelity` compares the render's frames with the
   recording's through one front end; a render a semitone sharp scores 0.56 in
   pitch against 1.0 for itself, with its onsets still at 1.0.
-- Silence past a recording's ends is the rip's models' right guess: on 110
-  GuitarSet test cuts, half 150 ms into a held strum and half 5 ms before one,
-  mirroring a second of the recording past each end found one note more at a
-  mid-sound start, four fewer at an attack, and added sixteen extras at a
-  mid-sound end. A gate on the high band's level misses a soft attack (a bossa
-  thumb), so it cannot choose the edges to mirror either.
-- A render at A440 beside a recording forty cents flat is heard as the same
+- Silence past a recording's ends is the rip's models' right guess: mirroring
+  the recording past each end loses notes at an attack and adds extras where a
+  cut falls mid-sound. A gate on the high band's level misses a soft attack (a
+  bossa thumb), so it cannot choose the edges to mirror either.
+- A render at A440 beside a recording tuned flat of it is heard as the same
   notes sharpened, "a stretched string", before any note is judged: the ear
   reads a tuning offset as timbre. Render, play and fit at the recording's
   tuning (`SongDef.Tuning`, `SetTuning`, `RenderNoteAt`); the rip reads it.
@@ -481,12 +469,12 @@ that a document now states, and link the document instead.
   What plays each pitch is 3,105 floats a frame there, 193 MB over three
   minutes, though the frames keep 552 bytes a frame of it. State both for a new
   head, and read a wide one at the cells that need it, as `appendVoices` does.
-- What plays each pitch is checked against PyTorch as bytes as well as scores:
-  the cells kept a frame against `torch.argsort(pitch, descending=True,
-  stable=True)[:12]`, each byte within a half of 255 times its share. On a
-  corpus loop's 862 frames, a notes model of perturbed weights: no cell of
-  10,344 and no byte of 465,480 off, the scores within 1.9e-5 on outputs up to
-  16. The measure reads the same at every frame, its head's weights being zero.
+- What plays each pitch is checked against PyTorch as bytes as well as scores,
+  on a notes model of perturbed weights: the cells kept a frame against
+  `torch.argsort(pitch, descending=True, stable=True)[:12]`, each byte within a
+  half of 255 times its share, no cell nor byte off and the scores within
+  rounding. The measure reads the same at every frame, its head's weights being
+  zero.
 - A notes file with a head this audio does not know must still load in the
   last tag: `git worktree add <dir> origin/main`, a scratch module that
   replaces audio by it, `ripmodels.Load` and `Hear` on a second of a sine.
@@ -510,73 +498,51 @@ that a document now states, and link the document instead.
   names `voicing`, which `New` therefore asks of the file, and `read` never
   reads it; the onset, drums, wave and voice are the frame model's. So what a
   notes model's pooled regions hold moves no rip, only its trainer's loss.
-- A change that must leave old weight files' rips alone is held on the files
-  themselves: `NewRandom` of both specs saved by a scratch module on the last
+- A change that must leave the rips of files saved before it alone is held on
+  such files: `NewRandom` of both specs saved by a scratch module on the last
   tag (the sure row zeroed), then on each build every exported field of the
-  frames but `Range`, whole and from an ear in 50 ms blocks, and the rips'
-  JSON without `Range`, offline with strikes and rows, each `Write`'s frames
-  and strikes, the bars as they freeze, `Close` and `Final`, hashed. Random
-  weights strike thousands of times (6,962 strikes judged on a 16 s loop), so
-  such a rip is the accounting's cost, 3 to 5 s a second of sound, not a
-  trained pair's: four loops a configuration is twenty minutes on a busy
-  laptop.
+  frames but `Range`, whole and from an ear in 50 ms blocks, and the rips' JSON
+  without `Range`, offline with strikes and rows, each `Write`'s frames and
+  strikes, the bars as they freeze, `Close` and `Final`, hashed. Random weights
+  strike thousands of times, so such a rip is the accounting's cost, 3 to 5 s a
+  second of sound, not a trained pair's: four loops a configuration is twenty
+  minutes on a busy laptop.
 
 ## The accounting
 
 - `lines` reports a bass note twice when the strike's short note and the bass
   path's long note of one pitch share a start, as the path note overlaps the
-  struck one by under a quarter: 23 of the clean Für Elise take's 41 low
-  "same pitch again" extras were such pairs, which `accDedup` merges.
-- A truth mapped onto a take through `Agreement.At` sat about 100 ms off in
-  places (the repeated A2 bass of the B section at 105 s on the clean take): a
-  note counted missing there is often reported 100-110 ms away, so the bass
-  F1s of the takes undercount. The map then held only the given's own tempo, a
-  pitch struck again paired greedily, and the register led it however few its
-  pairs; all three are mended, which moved the B section is unread on the take,
-  and until it is read a change there is read on the renders.
-- Of the 240 notes the clean take misses, 120 have a strike over 0.7 at the
-  pitch within 100 ms: the decoder's rules after the bar drop them, a ringing
-  pitch struck under `StrikeAgain` above all (the B section's repeated A2s at
-  0.7 to 0.9), then `sounds`, the partial rule and `ownPitch`. Candidates
-  judged together with the reported notes let the strike head's partials of a
-  bass note (an octave, a twelfth and two octaves up, at the same start) split
-  its sound and the real note dropped; judged one by one against the notes
-  kept, they are precise. A window twice the rip's for notes under E3 changed
-  no number.
+  struck one by under a quarter: `accDedup` merges such pairs.
+- A note the rip misses often has a strike at its pitch near it, which the
+  decoder's rules after the bar drop: a ringing pitch struck under `StrikeAgain`
+  above all, then `sounds`, the partial rule and `ownPitch`. Candidates judged
+  together with the reported notes let the strike head's partials of a bass note
+  (an octave, a twelfth and two octaves up, at the same start) split its sound
+  and the real note dropped; judged one by one against the notes kept, they are
+  precise.
 - `RipFrames.register` sorts the whole recording's salience peaks for one
   reference: called per note it took two thirds of the stage's time.
-- The scores were calibrated on a dump of each note's `accInput` beside its
-  odds, written by a scratch test in the package fed the notes model's saved
-  heads (`tmp/explain/audio/account_dump_test.go`, 318 floats a frame as
-  `tmp/round30/fa.py` reads them) over the clean and Pixel takes and the
-  acoustic-keyboard and distorted-guitar renders of Für Elise, then
-  `tmp/explain/py/cal.py`, a logistic fit by Newton's method with a unit L2
-  penalty, reported notes and candidates apart; the weights are `accReported`
-  and `accCandidate`.
-- The scorer's truth map snaps each truth note to the reported note it
-  matched, so where the decoder reports a partial shadow at a real note's pitch
-  (the E3 at an E2's own frame in the bass figure at 8.3 s of the clean take)
-  the map puts the real note at the shadow's time and squeezes its neighbours
-  by 100 ms; the restrike labels under it were wrong. A map by a local line
-  over the matched notes' offsets (`tmp/explain/py/smoothmap.py`, ±0.7 s)
-  places the bass figures within 40 ms of the recording, where `Agreement.At`
-  then held only the given's own tempo (the analysis, above); the Pixel take
-  is the clean take's own timing and the renders are linear in the MIDI's.
-- A soft restrike on a loud ring moves the fundamental by the phase it adds
-  in: +3 to +8 dB in phase, -6 to -10 dB against it, a few dB in quadrature. A
-  ring misread as a strike moves it under 2 dB, with a wobble of .2 to .5 of
-  its amplitude from the unison strings' beating over the window's gap. So the
-  memory reads the step between the lines fitted either side of the attack in
-  the sound before, at the free partials, not a coherence or a residual's
-  share (AUC .5 to .6); the fundamental alone separates soft restrikes at .65.
-- Sheet 12's miss at 8.48 s of the clean take is a soft E3 under its octave's
-  ringing second partial: the fit saw a 2 dB rise and an unexplained
-  fundamental of .19, the memory a step of .83 in the prototype. In the stage
-  a partial another pitch's partial sits on is left out of the memory, so the
-  note reads as all new; predicting such a partial through when its note rang
-  from before reads the E3's step (.72) but the candidate score still refuses
-  it at .16, and the memory's wobble under other pitches' rings at the higher
-  partials costs the restrike kind, so the exclusion stays.
+- The scores were calibrated by a logistic fit (Newton's method, a unit L2
+  penalty, reported notes and candidates apart) on a dump of each note's
+  `accInput` beside its odds, which a scratch test in the package writes from
+  the notes model's saved heads; the weights are `accReported` and
+  `accCandidate`.
+- The scorer's truth map snaps each truth note to the reported note it matched,
+  so where the decoder reports a partial shadow at a real note's pitch the map
+  puts the real note at the shadow's time and squeezes its neighbours, and the
+  restrike labels under it are wrong. A map by a local line over the matched
+  notes' offsets (±0.7 s) leaves the notes where the recording has them.
+- A soft restrike on a loud ring moves the fundamental by the phase it adds in:
+  up in phase, down against it, little in quadrature. A ring misread as a strike
+  moves it less, with a wobble from the unison strings' beating over the
+  window's gap. So the memory reads the step between the lines fitted either
+  side of the attack in the sound before, at the free partials, not a coherence
+  or a residual's share, which barely part them, nor the fundamental alone.
+- In the stage a partial another pitch's partial sits on is left out of the
+  memory, so a soft note under its octave's ringing second partial reads as all
+  new. Predicting such a partial through when its note rang from before reads
+  the soft note's step, but the memory's wobble under other pitches' rings at
+  the higher partials costs the restrike kind, so the exclusion stays.
 - The engine's own tests never reach the accounting, as the analysis hears no
   strikes. `struck` (`account_test.go`) is the analysis with strike, release
   and velocity planes read off its salience, offline and as an ear. A change
@@ -596,11 +562,11 @@ that a document now states, and link the document instead.
 - `odds` stays as written beside `terms`, which scales the same inputs for a
   row: `s.rise*in.rise/10` is not `s.rise*(in.rise/10)` to the last bit, and
   the installed verdicts are held byte for byte.
-- A candidate ends at the next strike peak of its pitch over its bar, a half
-  for a judge's, which the strike head's own ripple three frames on is: a
-  strike a judge brought back was a note of the five-frame floor. The rows a
-  judge is fitted on are those candidates', so the note's end is set after the
-  verdict (`accRuns`, the decoder's `until`), never by moving the candidate.
+- A candidate ends at the next strike peak of its pitch over its bar, a half for
+  a judge's, which the strike head's own ripple a few frames on can be: a strike
+  a judge brings back is then a note of the five-frame floor. The rows a judge
+  is fitted on are those candidates', so the note's end is set after the verdict
+  (`accRuns`, the decoder's `until`), never by moving the candidate.
 
 ## Decoders
 
@@ -627,17 +593,15 @@ that a document now states, and link the document instead.
   strength was the raw salience, a hundred times the other terms; against the
   register's reference it took its intended share. Check the magnitude of each
   term on real data before trusting a weighted sum.
-- **The louder line is not the lead.** On the origin recording the lead the
-  user hears is the softer line, short notes at a steady cadence, under a
-  counter line of held notes that the decoder followed as its first line and
-  that the harmonic profile could not tell apart from the lead. Which line is
-  the melody is a listener's call with a default, not a rule the signal
-  settles; make it a word the listener can give.
-- **A register boundary cuts a line that crosses it.** Transposed three
-  semitones, the origin's bass D#3 became the intro's F#3, above the bass
-  register's top, and surfaced as a low note of the melody with no bass note
-  under it, which the stream parting then had to place. Let a decoder reach
-  past its register's rows and settle the overlap by a rule.
+- **The louder line is not the lead.** The lead a user hears can be the softer
+  line, short notes at a steady cadence, under a counter line of held notes that
+  the decoder follows as its first line and that the harmonic profile cannot
+  tell apart from the lead. Which line is the melody is a listener's call with a
+  default, not a rule the signal settles; make it a word the listener can give.
+- **A register boundary cuts a line that crosses it.** A bass note transposed
+  above the bass register's top surfaces as a low note of the melody with no
+  bass note under it, which the stream parting then has to place. Let a decoder
+  reach past its register's rows and settle the overlap by a rule.
 - **Measure the lines, not the register.** The two-witness script matched any
   note of the same pitch within a window, whatever line held it, so it could
   not see the lines change hands; the agreement per line was an illusion.
@@ -650,38 +614,32 @@ that a document now states, and link the document instead.
   transposition, found from the counts within lines, and their map, the
   register's unless the bass's places more notes by pitch and onset; where the
   truth's clock is the recording's, match it `timed` and no map is fitted.
-- **The register as one line is the order the two sides share.** A map fitted
-  on each line's pitches in order, then every note near its place, fell under
-  v0.24.0 on every set of the audit's recordings but a bass line (score renders
-  .931 to .775): rip and truth part the register's notes by different rules, so
-  a line's order matches by chance. On a generated ensemble that first round
-  took 415 of 5,436 notes and the second round over every note 235 more, the
-  refit none; after the register's first round neither took any.
+- **The register as one line is the order the two sides share.** A map fitted on
+  each line's pitches in order, then every note near its place, matches a line's
+  order by chance: rip and truth part the register's notes by different rules.
+  The register leads the map where it has the pairs.
 - **A map that follows a drift follows a chance one.** The map keeps a run of
   matches whose offsets move one way, as a tempo off the given's does, and the
-  pitches in order of unrelated music drift so too: against another piece in
-  one key and density the fitted count went from 703 to 909 over 20 pieces
-  (timed 219), a floor of F1 0.138 for 0.107, and a two-bar loop's rip on random
-  weights read 0.148 for 0.074 until an end's slope needed `mapMatches` pairs.
-  Read a fitted count against that floor; a timed truth has none.
-- **A rule that fits a synthetic case can be refuted by one recording.** A
-  note cut where its salience rose again by a third after falling off its
-  peak heard thirty-two of thirty-two repeated piano strikes in a test and,
-  on the recording, cut eleven of the lead's twenty-five plucked notes in two
-  and the bass's held notes too, since those strings beat. The rhythm the
-  user tapped out showed it in one run; the bench and the suite had not.
-  Measure a decoder change against the recording's own truth before it
-  ships, and keep the test only when the rule stays.
+  pitches in order of unrelated music drift so too, so a count fitted against
+  another piece in one key and density has a floor of chance matches, and an
+  end's slope needs `mapMatches` pairs. Read a fitted count against that floor;
+  a timed truth has none.
+- **A rule that fits a synthetic case can be refuted by one recording.** A note
+  cut where its salience rose again by a third after falling off its peak heard
+  thirty-two of thirty-two repeated piano strikes in a test and, on a recording,
+  cut plucked notes in two and held bass notes too, since those strings beat;
+  the bench and the suite had not shown it. Measure a decoder change against a
+  recording's own truth before it ships, and keep the test only when the rule
+  stays.
 - **An offline render changes tempo and meter quantized.** It sets them
   so (`SetBPM(bpm, true)`, `SetMeter(m, true)`): set at once at the
   bar line, the new step length is held against the sequencer's count of the
   old bar's last step, and a slower bar starts late by the difference, a
   delay a faster bar may never absorb. `TestARenderedBarStartsOnItsHead`.
-- **Replay a fitted rule on its dump once implemented.** A decision fitted
-  on a candidate dump (`tmp/meter/fit.py`) is replayed on that dump before
-  any set is regraded: the first
-  implementation let 6/8 challenge 4/4 where the fit had only consulted it as
-  a name, and lost 22 of 40 GuitarSet labels the fit had kept.
+- **Replay a fitted rule on its dump once implemented.** A decision fitted on a
+  candidate dump is replayed on that dump before any set is regraded: the first
+  implementation let 6/8 challenge 4/4 where the fit had only consulted it as a
+  name.
 - **A glide's rule has the grid's number and the head's, and no third.** Two
   readings are one frequency when they lie nearer than half a cell by more
   than their stated errors, a multiplier of one. A margin swept until a set
@@ -712,11 +670,10 @@ that a document now states, and link the document instead.
   smear test is about; at 0.6 that test passed with nothing to drop.
 - **The parting ties by its costs' shape, and walks simultaneous notes in an
   order it is given.** Two pairings of a dyad onto the next cost the same in
-  exact arithmetic where the level term is linear across them, the lengths'
-  logs telescope and three semitones of jump buy the change of line (0.25);
-  the floats then land on one bit pattern now and again (loop 031's stream,
-  one rip in 96, six runs in ten one way). A Go map of up to eight keys
-  iterates from a random slot, so two keys come in their slots' order seven
+  exact arithmetic where the level term is linear across them, the lengths' logs
+  telescope and three semitones of jump buy the change of line (0.25); the
+  floats then land on one bit pattern now and again. A Go map of up to eight
+  keys iterates from a random slot, so two keys come in their slots' order seven
   times in eight: a test of a tie needs costs exact by construction (quarters,
   capped terms), its rival state made first and calls enough that a map's walk
   cannot pass by chance (`streams` on maps took the rule's parting in 22% of

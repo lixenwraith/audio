@@ -430,14 +430,13 @@ A front end tells apart the pitches of a range (`RipRange`) and its frames say
 which (`RipFrames.Range`, `Pitches`): the analysis E1 to C7 (`RipMinMIDI`,
 `RipMaxMIDI`), a model those its weight file states, from its lowest pitch
 (`ripmodels.Lowest`, a constant of the file) as many as its pitch head scores,
-and E1 to C7 where the file states none, as no file trained before it does.
-The decoders, the accounting, a judge's rows, the stream and `Fidelity` take the
-pitches from the frames and from no constant, so such a file rips as it did, and
-a rip says its own (`Rip.Range`). The models are built for the piano's, A0 to C8
-(`RipPiano`); `ripmodels.FrameSpec` and `NotesSpec` are a range's specs. The
-analysis keeps E1 to C7: its bass is the strongest pitch of its register, so
-more pitches there would move its rips. The mel's lowest band is centred at
-38.9 Hz, so a model tells a note under E1 by its harmonics alone.
+and E1 to C7 where the file states none. The decoders, the accounting, a judge's
+rows, the stream and `Fidelity` take the pitches from the frames and from no
+constant, and a rip says its own (`Rip.Range`). The models are built for the
+piano's, A0 to C8 (`RipPiano`); `ripmodels.FrameSpec` and `NotesSpec` are a
+range's specs. The analysis keeps E1 to C7: its bass is the strongest pitch of
+its register, so more pitches there would move its rips. The mel's lowest band
+is centred at 38.9 Hz, so a model tells a note under E1 by its harmonics alone.
 
 `Patterns` writes a rip as patterns of up to four bars, named `<name>_beat_<n>`,
 `<name>_melody_<n>` and `<name>_bass_<n>` in a group of their own and no tier.
@@ -505,18 +504,16 @@ each bar's `BarDistance` to its nearest, over the notes and hits quantized on
 the reading's bars, averaged) and it repeats more by `near_repeat` (0.015).
 Music repeats at its bar and the bar's doubles, where another meter's bars fall
 out of step, so a waltz whose kick and bass strike every quarter, which leaves
-its lines no cue, still reads 3/4, and a played Für Elise, whose bars cut right
-find near twins and cut across the bars do not, reads in three on every take.
-The path's weights (`bar_line`, its line's cues beside its comb; `bar_beat`,
-its pulse standing out as a beat; `bar_accent`, the bass on it; `bar_move`) and
-these margins are parameters, their defaults the values the decoders were
-written with, for a search over truth of every meter to set (stapes' `tune ...
-truth`).
-A bar read as 3/4 is named 6/8 when the 6/8 reading of the same bar scores
-higher once the onsets on its other felt beats are added, its second dotted
-quarter against the waltz's second and third beat (a cue kept out of the
-path's score, where it read strummed 4/4 as 6/8). Under six bars of 4/4
-(`ripMeterBars`) a clip reads 4/4 as tracked. A pinned meter is read alone.
+its lines no cue, still reads 3/4. The path's weights (`bar_line`, its line's
+cues beside its comb; `bar_beat`, its pulse standing out as a beat;
+`bar_accent`, the bass on it; `bar_move`) and these margins are parameters,
+their defaults the values the decoders were written with, for a search over
+truth of every meter to set (stapes' `tune ... truth`). A bar read as 3/4 is
+named 6/8 when the 6/8 reading of the same bar scores higher once the onsets on
+its other felt beats are added, its second dotted quarter against the waltz's
+second and third beat (a cue kept out of the path's score, where it read
+strummed 4/4 as 6/8). Under six bars of 4/4 (`ripMeterBars`) a clip reads 4/4 as
+tracked. A pinned meter is read alone.
 
 The bars are then named (`name`), the bar the audio's and the name a
 convention, since a 6-pulse bar at 1.2 s is one sound as 3/4 at 147, 3/8 at
@@ -528,9 +525,9 @@ bar or a hat every bar at least; kicks alone may be a bass's attacks) whose note
 their median lag is out, is named in eighths at half the tempo, 3/4, 5/4 and
 7/4 as 3/8, 5/8 and 7/8 and 6/8 as 3/8, so the name is the same
 whichever pulse the tracker locked on; a bar of 2 or 4 beats keeps its
-quarter. Für Elise reads 3/8 at 73, the tempo a player reads being eighth 147
-(`FeltTempo`, §7); a waltz whose notes are eighths and quarters reads 3/8 at
-half tempo too, one with sixteenth runs 3/4, and the pin overrides either.
+quarter. A waltz whose notes are eighths and quarters reads 3/8 at half tempo,
+the tempo a player reads being the eighth's (`FeltTempo`, §7), one with
+sixteenth runs 3/4, and the pin overrides either.
 
 Where the frames carry a beat and a downbeat head (`RipFrames.Beat`,
 `Downbeat`: a frame model's posterior that a beat of the meter, and a bar line,
@@ -601,8 +598,7 @@ heard: offline the rip is that of the frames without them.
   rules that undo the tracker's half, double and triplets have nothing to
   undo, and six heard beats stay 6/8. One convention holds: which
   note carries a beat nobody divides is no sound, so a drumless bar of three
-  or five with no sixteenth is still written in eighths at half the tempo,
-  Für Elise 3/8.
+  or five with no sixteenth is still written in eighths at half the tempo.
 - **The stream** holds its first bars once its heard beats fill six bars of
   4/4, read as offline, and counts each later bar on from the last frozen line
   on beats tracked on the head, or by the cues where its first bars' heads gave
@@ -710,7 +706,7 @@ the power the harmonic spectrum is raised to before the salience, under one to
 flatten the partials a saturated mix piles on every note; a `[rip]` table in a
 TOML document carries a set (`LoadRipParams`, `MarshalRipParams`), each key in
 its range: `onset_min`'s reaches 0.9, as a frame model sure of its drum hits
-wants its bar near 0.7 where the analysis wants 0.1. The bars' weights and
+wants its bar far above the analysis's 0.1. The bars' weights and
 margins are among them (`tempo_comb`, `beat_comb_2` to `4`, `bar_line`,
 `bar_beat`, `bar_accent`, `bar_head`, `bar_move`, `meter_margin`, `meter_head`,
 `repeat_margin`, `near_margin`, `near_repeat`), each at the value the decoders
@@ -783,13 +779,12 @@ through each side in level and in phase, and the step between the lines at
 the attack in the sound before, so a pitch struck again under its own ring
 reads a step as large as the new sound in whatever phase it adds, and a ring
 that only sounds on reads none, is
-weighed with the heads' sureness in a logistic score set on graded recordings
-(Für Elise clean and through a phone, a keyboard and a distorted guitar), and a
-note under the bar goes: a pitch struck again that its ring explains, a partial
-of the note under it, a shadow without a fundamental of its own; a kept note
-sounds on through a dropped restrike that started where it ended. A note held
-a second or more, seven tenths of whose harmonics the fit cannot see as its own,
-under the floor or a third of them another pitch's, is a soft line under a
+weighed with the heads' sureness in a logistic score set on graded recordings,
+and a note under the bar goes: a pitch struck again that its ring explains, a
+partial of the note under it, a shadow without a fundamental of its own; a kept
+note sounds on through a dropped restrike that started where it ended. A note
+held a second or more, seven tenths of whose harmonics the fit cannot see as its
+own, under the floor or a third of them another pitch's, is a soft line under a
 chord and stays on the heads' word. Two notes of one pitch at one start are one, as the strike and the bass
 line's path can both report a note. Then every strike over the bar the decoder dropped, a stronger
 strike's partial, a pitch it heard not sounding or a ringing pitch struck under
@@ -979,9 +974,8 @@ fan or a room's hum holds near 0.3 and a note over it still stands out. It is a
 second plane, not a replacement, because a note still ringing fades towards zero
 in it (a band falling 60 dB over 5 s reads 0.08 after a second), so PCEN alone
 cannot say what is sounding; the first convolution reads both planes at once. M
-only looks back, from the first frame's energy, so a live rip computes it as
-the sound arrives. [Stapes' rip design](https://github.com/lixenwraith/stapes/blob/main/doc/rip-design.md#8-measured-on-the-sample-recording)
-has what it gained on the recordings.
+only looks back, from the first frame's energy, so a live rip computes it as the
+sound arrives.
 
 A rip also keeps its transcript, every note heard in seconds of the recording
 before the grid (`Rip.Notes`), each note of the melody register with its
