@@ -453,7 +453,13 @@ that a document now states, and link the document instead.
 - The fixture the trainer pins its port on (`ripmodels/testdata/frames.bin`) is
   this code's: a change to the band frames, the features or the stack rewrites
   it (`go test ./ripmodels -run TestTheTrainersFixture -update`), and stapes'
-  trainer test must pass on it in the same pair of PRs.
+  trainer test must pass on it in the same pair of PRs. **A change to the band
+  frames takes a new `RipLayout`**, or every weight file and corpus of the old
+  number is read wrongly: `TestALayoutIsBoundToItsFrames` holds the fixture's
+  band frames' sha256 beside the layout's number and fails on new frames under
+  the old one. `-update` keeps the band frames' bits while this code reads them
+  to rounding, since a 386 build or `GOAMD64=v3`'s fused multiply-adds move
+  their last bits with no change to the code.
 - **The sharp plane counts a low band's energy many times over.** A band's
   triangle reaches a bin either side at least, so under about 270 Hz the sharp
   plane's bands share bins, about twenty a bin at A0: a sum of linear energies

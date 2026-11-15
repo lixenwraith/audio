@@ -14,9 +14,11 @@ const (
 	RipBands       = 315
 	RipBandsLowest = 20
 	RipLayout      = 1
-	// a level is RipN samples at RipRate halved level times; ripLevelBand is the
-	// lowest band whose bins fall three a semitone at level 0, and each level
-	// down serves the 36 bands under the one above, the last all the rest
+	// a level is RipN samples at RipRate halved level times, the window's bins
+	// RipRate/RipN apart halved as often; ripLevelBand is the lowest band whose
+	// semitone up, from its centre to the band three over, spans three of them at
+	// level 0, and each level down serves the 36 bands under the one above, the
+	// last all the rest
 	ripBandLevels = 6
 	ripLevelBand  = 158
 	ripBandPad    = 2 // a window's transform is twice its length, zeros after it

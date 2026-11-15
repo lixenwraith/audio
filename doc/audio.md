@@ -964,12 +964,14 @@ plays), the layout `RipLayout` names: 315 bands three a semitone (`RipBands`),
 band k at MIDI 20 + k/3 (`BandHz`), from G♯0 under the piano's lowest key to
 10.96 kHz, in two planes on the rip's frame grid. The fine plane hears each band
 through the shortest of six windows of 2,048 samples whose bins fall three a
-semitone there: at 22,050 Hz from band 158 (544 Hz) up, and at half the rate for
-each 36 bands under it, down to 689 Hz, a window of 2.97 s, under band 14 (34
-Hz). The sharp plane hears every band through the analysis's window, 2,048
-samples at 22,050 Hz, so a strike reads where it reads in the analysis and the
-mel frames. A band's weights are a triangle from the band under to the band
-over, a bin either side at least, over a transform twice the window's length,
+semitone there, three of the window's bins over the semitone up from the band's
+centre: at 22,050 Hz, bins 10.77 Hz apart, from band 158 (544 Hz) up, and at
+half the rate for each 36 bands under it, down to 689 Hz, a window of 2.97 s,
+under band 14 (34 Hz). The sharp plane hears every band through the analysis's
+window, 2,048 samples at 22,050 Hz, so a strike reads where it reads in the
+analysis and the mel frames. A band's weights are a triangle from the band
+under to the band over, a bin either side at least, over a transform twice the
+window's length,
 scaled so a unit cosine at its centre reads one; a level's samples are the
 level above's halved through `Resample`'s low-pass, and two levels share a
 transform, one its real part and one its imaginary. A value is log1p of a
