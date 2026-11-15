@@ -55,6 +55,7 @@ type StepDef struct {
 	// before the glide begins: 0 the whole, 0.75 a scoop at its end; tonal only
 	Bend   float64 `toml:"bend,omitempty"`
 	BendAt float64 `toml:"bend_at,omitempty"`
+	Late   float64 `toml:"late,omitempty"` // the share of a step the onset sounds after pos
 }
 
 // Signature is the pattern's meter, 4/4 when unnamed or unread
@@ -106,7 +107,7 @@ func (d *PatternDef) Pattern() (*Pattern, error) {
 			tr.Events = make([]Step, n)
 			for j := range td.Event {
 				e := &td.Event[j]
-				tr.Events[j] = Step{Pos: e.Pos, Vel: e.Vel, Deg: e.Deg, Oct: e.Oct, Acc: e.Acc, Dur: e.Dur, Prob: e.Prob, Bend: e.Bend, BendAt: e.BendAt}
+				tr.Events[j] = Step{Pos: e.Pos, Vel: e.Vel, Deg: e.Deg, Oct: e.Oct, Acc: e.Acc, Dur: e.Dur, Prob: e.Prob, Bend: e.Bend, BendAt: e.BendAt, Late: e.Late}
 			}
 		}
 		p.Tracks = append(p.Tracks, tr)
@@ -141,7 +142,7 @@ func (p *Pattern) Def() *PatternDef {
 			td.Event = make([]StepDef, n)
 			for j := range tr.Events {
 				e := &tr.Events[j]
-				td.Event[j] = StepDef{Pos: e.Pos, Vel: e.Vel, Deg: e.Deg, Oct: e.Oct, Acc: e.Acc, Dur: e.Dur, Prob: e.Prob, Bend: e.Bend, BendAt: e.BendAt}
+				td.Event[j] = StepDef{Pos: e.Pos, Vel: e.Vel, Deg: e.Deg, Oct: e.Oct, Acc: e.Acc, Dur: e.Dur, Prob: e.Prob, Bend: e.Bend, BendAt: e.BendAt, Late: e.Late}
 			}
 		}
 		d.Track = append(d.Track, td)
@@ -184,6 +185,7 @@ func ValidatePattern(p *Pattern) error {
 			return e("invalid group %q", g)
 		}
 	}
+	var late [MaxPatternLen]int // the late onsets at each step, every track's
 	for i := range p.Tracks {
 		tr := &p.Tracks[i]
 		if !instrumentKnown(tr.Instr) {
@@ -218,6 +220,19 @@ func ValidatePattern(p *Pattern) error {
 			if !finite(ev.Bend) || math.Abs(ev.Bend) > MaxStepBend || !finite(ev.BendAt) || ev.BendAt < 0 || ev.BendAt >= 1 {
 				return e("track %d event %d: bend %v outside ±%d or bend_at %v outside [0,1)", i, j, ev.Bend, MaxStepBend, ev.BendAt)
 			}
+			if !finite(ev.Late) || ev.Late < 0 || ev.Late >= 1 {
+				return e("track %d event %d: late %v outside [0,1)", i, j, ev.Late)
+			}
+			if ev.Late > 0 {
+				late[ev.Pos]++
+			}
+		}
+	}
+	// a late onset waits in its player's ring of MaxPendingTrigs, which fires
+	// on the grid what would overflow it: a step holds no more than it keeps
+	for pos, n := range late {
+		if n > MaxPendingTrigs {
+			return e("step %d: %d late onsets, want at most %d", pos, n, MaxPendingTrigs)
 		}
 	}
 	return nil
