@@ -428,16 +428,11 @@ drawn, with the searches stapes runs over it, in stapes' [rip design
 
 A front end tells apart the pitches of a range (`RipRange`) and its frames say
 which (`RipFrames.Range`, `Pitches`): the analysis E1 to C7 (`RipMinMIDI`,
-`RipMaxMIDI`), a model those its weight file states, from its lowest pitch
-(`ripmodels.Lowest`, a constant of the file) as many as its pitch head scores,
-and E1 to C7 where the file states none, as no file trained before it does.
-The decoders, the accounting, a judge's rows, the stream and `Fidelity` take the
-pitches from the frames and from no constant, so such a file rips as it did, and
-a rip says its own (`Rip.Range`). The models are built for the piano's, A0 to C8
-(`RipPiano`); `ripmodels.FrameSpec` and `NotesSpec` are a range's specs. The
-analysis keeps E1 to C7: its bass is the strongest pitch of its register, so
-more pitches there would move its rips. The mel's lowest band is centred at
-38.9 Hz, so a model tells a note under E1 by its harmonics alone.
+`RipMaxMIDI`), the models the piano's, A0 to C8 (`RipPiano`). The decoders, the
+accounting, a judge's rows, the stream and `Fidelity` take the pitches from the
+frames and from no constant, and a rip says its own (`Rip.Range`). The analysis
+keeps E1 to C7 and its windows of 2,048 and 8,192 samples: its bass is the
+strongest pitch of its register, so more pitches there would move its rips.
 
 `Patterns` writes a rip as patterns of up to four bars, named `<name>_beat_<n>`,
 `<name>_melody_<n>` and `<name>_bass_<n>` in a group of their own and no tier.
@@ -731,16 +726,15 @@ salience, of their mel bands and of their onset strength over each beat is
 averaged, each one where they sound alike.
 
 The other front end, `ripmodels`, hears with a frame model: a transformer over
-the log-mel frames `MelFrames` makes, whose heads say per frame what struck,
+the band frames (`BandFrames`, below), whose heads say per frame what struck,
 what sounds, which pitch is struck or let go and how hard (`RipFrames.Strike`,
 `Release`, `Velocity`), the wave and voice genes (`VoiceDef.Genes`) the note is
 played with, so a rip through it also names the voices its registers were played
 with (`Rip.Voices`), the family playing the highest note (`RipFrames.Family`,
 shares over `RipFamilies`: piano, guitar, voice, bass, strings, winds, synth,
 drums or unknown), which no decoder reads yet, and the beat and the bar line
-(`ripmodels.HeadBeat`, `HeadDownbeat`, after the family in `FrameSpec`; a frame
-model without them loads as before, and a library from before them refuses a
-file that has them, its heads no prefix of that library's).
+(`ripmodels.HeadBeat`, `HeadDownbeat`, after the family in `FrameSpec`; a file of
+other heads is refused).
 From strikes both registers' notes start where a pitch is struck, as hard
 as it was, and last while
 it sounds or until it is let go (`Release`, the pitch ringing on as far as a new
@@ -815,22 +809,18 @@ notes model (`ripmodels.NotesSpec`, the trainer's PitchNet), a cell net
 (`transformer.Cells`) of convolutions alone with the same weights at every
 pitch, gives the pitch, voicing, strike, release and velocity heads, and the
 frame model the onsets, the drums, the wave and voice genes, the family, the
-beat and the bar line. It reads the harmonic stack of its pitches (`stacked`):
-both planes interpolated onto a log-frequency axis of three bins a semitone,
-from the semitone under its lowest pitch to the one over its highest, each a
-channel for each harmonic of a half and one to seven, shifted so a pitch's
-harmonics lie at its own bin, 16 channels of 213 bins for E1 to C7 and 270 for
-the piano's, each ending in its plane's scalar. Its frame heads pool the stack
-in 16 regions over the bins E1 to C7's holds, whatever its range
-(`transformer.Cells.PoolFirst`), so a model grown to more pitches keeps what
-they read. Without it the frame model gives those five heads too. The two
-models' ranges need not agree: the frames have the range of the one that gives
-the notes.
+beat and the bar line. It reads the harmonic stack (`stacked`): each of the four
+planes of the features (below) a channel for each harmonic of a half and one to
+seven, the bands shifted so a pitch's harmonics lie at its own bin, 32 channels
+of 270 bins, bin k band k, from the semitone under A0 to the one over C8, each
+ending in its plane's scalar, the cell of key 21+i at bin 3+3i. Without it the
+frame model gives those five heads too.
 
 A notes model trained with one has a cents head too (`ripmodels.HeadCents`, two
 values a pitch): how far each pitch's sound sits from its cell's centre, and the
 error the head states for that reading, both in cents (`RipFrames.Cents`,
-`CentsError`; nil from a model without the head, and nothing below runs then).
+`CentsError`; nil from a model without the head, a probe's, and nothing below
+runs then).
 The decoder reads a glide from them (`glides`). The strikes' notes stand as
 above, and each note's sound is then followed frame by frame:
 
@@ -939,13 +929,13 @@ voice and family heads say one thing a frame: three more heads of values a pitch
 (`ripmodels.HeadPitchFamily`, a score for each of `RipFamilies` but unknown,
 which is the absence of a name and no class; `HeadPitchWave`, one for each of
 `VoiceWaves`; `HeadPitchVoice`, the genes). Their planes are 45 values a pitch,
-3,105 a frame at E1 to C7, so the front end keeps them at each frame's twelve most salient
+3,960 a frame over the piano's keys, so the front end keeps them at each frame's twelve most salient
 pitches alone (`RipVoiceCells`; `RipFrames.VoiceAt` names them, most salient
 first), a byte a value (`RipFrames.Voices`, `RipVoiceSize` a pitch, 255 a
 whole): each family's and each wave's share, a softmax over its head's scores
-at the pitch, and each gene. That is 552 bytes a frame, twice the salience
-plane's 276 there: a three-minute recording's 15,504 frames keep 8.6 MB of them
-beside the 32 MB of their other fields.
+at the pitch, and each gene. That is 552 bytes a frame, against the salience
+plane's 352: a three-minute recording's 15,504 frames keep 8.6 MB of them
+beside the 39 MB of their other fields.
 
 Each note of the registers is then told its voice (`tell`, `RipNote.Voice`):
 the mean of its pitch's values over the frames it sounds and is among the
@@ -965,11 +955,41 @@ notes' mean voice by length, on the wave of the highest mean share, the melody
 and the line under it each their own. A live rip's lines take their registers'
 notes' mean the same way, and its notes carry no voice yet.
 
-The frame model's input (`features`) is each band in dB less the frame's mean,
-over 80, and the mean, so the bands are level-free and loudness is one input. A
-frame model of two channels (`transformer.Config.Channels`) reads a second
-plane: each band's PCEN, per-channel energy normalization (Wang et al. 2017),
-and their mean. No band looks at another: PCEN divides a band's energy e by its
+The models hear the band frames (`BandFrames`, and `BandStream` as a recording
+plays), the layout `RipLayout` names: 315 bands three a semitone (`RipBands`),
+band k at MIDI 20 + k/3 (`BandHz`), from G♯0 under the piano's lowest key to
+10.96 kHz, in two planes on the rip's frame grid. The fine plane hears each band
+through the shortest of six windows of 2,048 samples whose bins fall three a
+semitone there: at 22,050 Hz from band 158 (544 Hz) up, and at half the rate for
+each 36 bands under it, down to 689 Hz, a window of 2.97 s, under band 14 (34
+Hz). The sharp plane hears every band through the analysis's window, 2,048
+samples at 22,050 Hz, so a strike reads where it reads in the analysis and the
+mel frames. A band's weights are a triangle from the band under to the band
+over, a bin either side at least, over a transform twice the window's length,
+scaled so a unit cosine at its centre reads one; a level's samples are the
+level above's halved through `Resample`'s low-pass, and two levels share a
+transform, one its real part and one its imaginary. A value is log1p of a
+hundred times a band's energy, the recording's peak at one. A stream gives
+frame t once sample t·256 + 33,233 is in (`RipBandsAhead`, 1.51 s past its
+centre, the last its longest window reads), the whole's frames bit for bit.
+
+What they resolve, as tests on sines and a saw voice pin it: a steady tone at
+each key from A0 to C8 reads its stack's fundamental channel highest at its own
+bin; two keys a semitone apart read two peaks there, at every pair, the bins
+between at least 3.81 dB under the lower (the shallowest at C4 and C♯4, where a
+level's lowest bands lie); and a low string struck off the grid, A0 to E2, from
+silence or under a note held a fourth over it, rises most, in dB over both
+planes, within a frame of where the mel frames do. A weight file states the
+layout it was built for (`ripmodels.Layout`, a constant of the file), as stapes'
+corpus manifest states its frames', and a file of another layout, or of none,
+is refused by name.
+
+The models' input (`features`) is each plane's bands in dB less the plane's
+mean, over 80, and the mean, so the bands are level-free and loudness is one
+input: two planes of 316 values, fine then sharp. A frame model of four
+channels (`transformer.Config.Channels`) reads two more: each band's PCEN,
+per-channel energy normalization (Wang et al. 2017), and their mean, fine then
+sharp; a notes model reads all four. No band looks at another: PCEN divides a band's energy e by its
 own leaky average M of about the last 0.4 s, M(t) = (1 - s)·M(t-1) + s·e(t) with
 s = 1 - exp(-11.6 ms / 400 ms), and compresses it, (e / (ε + M)^α + δ)^r - δ^r
 with α 0.98, δ 2, r 0.5 and ε 1e-6, librosa's values. A steady band reads 0.31
@@ -978,7 +998,7 @@ at -6 dB and 0.25 at -46 dB, while a strike multiplies it, 0.29 to 0.90 for one
 fan or a room's hum holds near 0.3 and a note over it still stands out. It is a
 second plane, not a replacement, because a note still ringing fades towards zero
 in it (a band falling 60 dB over 5 s reads 0.08 after a second), so PCEN alone
-cannot say what is sounding; the first convolution reads both planes at once. M
+cannot say what is sounding; the first convolution reads every plane at once. M
 only looks back, from the first frame's energy, so a live rip computes it as
 the sound arrives. [Stapes' rip design](https://github.com/lixenwraith/stapes/blob/main/doc/rip-design.md#8-measured-on-the-sample-recording)
 has what it gained on the recordings.
@@ -1034,8 +1054,8 @@ through the front end's ear (`RipLiveFrontEnd`, a `RipEar`), each frame once and
 the same frames whatever the blocks. The analysis's ear gives the whole's frames
 but for the tuning, read over the first eight seconds and held, and the onset
 strength, against the loudest onsets heard so far. `ripmodels`' runs each frame
-through each model once (`transformer`'s `Stream`), its mel frames
-(`MelStream`) and their PCEN average against the loudest sample heard when the
+through each model once (`transformer`'s `Stream`), its band frames
+(`BandStream`) and their PCEN average against the loudest sample heard when the
 frame came, and gives the frames in half-second steps once the frames a model
 reads after them are in. The wait, and whose heads are then the whole's:
 
@@ -1049,8 +1069,8 @@ FrontEnd.Ahead of 0.5: each frame still once
   the notes model                  46     0.53   the whole's
 ```
 
-A step's first frame waits 42 frames, 0.49 s, more, and each 46 ms for its mel
-window. The notes model's reach, 46 frames, 0.53 s, is the trainer's with long
+A step's first frame waits 42 frames, 0.49 s, more, and each 1.51 s for its
+longest window (`RipBandsAhead`). The notes model's reach, 46 frames, 0.53 s, is the trainer's with long
 convolutions (11, 0.13 s, without), and no wait is under it; both models'
 frames come in one step, so under the default the notes model's wait for the
 frame model's ([todo](todo.md#the-live-rip)). A frame is not heard again when a
@@ -1066,8 +1086,8 @@ its beat, reading, tempo, meter and key hold; each later bar is decoded on from
 the last frozen one's line at that beat and reading, the notes' lag the median
 of the frozen notes' and the open bars'. A bar freezes once two follow it, laid
 out as `RipSamples` lays it out (`Bars`), under a second past those two through
-the analysis and about three seconds more through a model, up to a second more
-at the shorter wait. The decoders read the open
+the analysis and four and a half to five seconds more through a model, two to
+two and a half at the shorter wait. The decoders read the open
 bars and the two before them, against each drum's loudest onset and each
 register's reference loudness over all the recording heard, and the frames
 before go, half a minute at most staying until the first bars freeze: a stream
@@ -1086,14 +1106,14 @@ gives the frames heard from a frame on, as the ear gave them, and the index of
 the first given: they stay while the decoders read them, and one a `Write`
 hears stays until the next, so a caller that asks after every `Write` gets each
 frame once, whatever the blocks. Under `Ripper.Spectrum` each frame carries the
-spectrum it was read from (`RipFrames.Spectrum`), `MelStream`'s bands of the
+recording's mel bands there (`RipFrames.Spectrum`), `MelStream`'s of the
 samples as they are, the same through either ear: the analysis reduces the
-transform it makes and a model's ear hands on its own bands, so none is made
-twice, and none is made or held unasked. The frames come as the ear finishes
+transform it makes and a model's ear runs a `MelStream` beside its band frames,
+and neither makes or holds them unasked. The frames come as the ear finishes
 them: through the analysis a third of a second behind the sound, none before
-the eight seconds its tuning reads; through a model three to three and a half
-seconds behind, in its half-second steps, half a second to a second at the
-shorter wait. `Open` gives the bars after the frozen ones,
+the eight seconds its tuning reads; through a model four and a half to five
+seconds behind, in its half-second steps, two to two and a half at the shorter
+wait. `Open` gives the bars after the frozen ones,
 each on the frames it spans (`RipOpenBar`), as they were laid out when the last
 bar froze, since the read that freezes a bar lays out those after it:
 provisional, renewed about once a bar, and on the engine's loop each is the bar
