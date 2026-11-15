@@ -107,6 +107,12 @@ agent would otherwise rediscover, add it there in the same PR.
 - A change that needs another of these modules' new version names it in
   `go.mod` in the same PR, before the tag exists: the PR bodies state the merge
   order, and a bump is never a PR of its own.
+- Lixen merges and tags the chain from the lowest dependency up and reruns its
+  CI himself; from then on everything a PR said was owed is taken as done. A PR
+  red only because a version it needs is not tagged yet says so nowhere: no
+  comment, no line in its body, no message, no rerun. While the chain merges
+  nothing lands on its PRs, however small: no push, comment or body edit. What
+  turns up after waits for one patch PR once they have merged.
 - One task, one branch, one PR. Divide the work into commits on that branch; do not
   split it across stacked PRs or multiple branches.
 - Work that continues after its PR merged starts again from the latest main; never
