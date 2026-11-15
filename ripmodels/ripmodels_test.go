@@ -3,6 +3,7 @@ package ripmodels
 import (
 	"bytes"
 	"cmp"
+	"crypto/sha256"
 	"encoding/binary"
 	"flag"
 	"fmt"
@@ -743,14 +744,6 @@ func TestTheTrainersFixtureHoldsTheseFrames(t *testing.T) {
 			got = append(got, f...)
 		}
 	}
-	if *update {
-		var b bytes.Buffer
-		binary.Write(&b, binary.LittleEndian, head)
-		binary.Write(&b, binary.LittleEndian, got)
-		if err := os.WriteFile("testdata/frames.bin", b.Bytes(), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
 	b, err := os.ReadFile("testdata/frames.bin")
 	if err != nil {
 		t.Fatal(err)
@@ -758,12 +751,51 @@ func TestTheTrainersFixtureHoldsTheseFrames(t *testing.T) {
 	stated, want := make([]uint32, len(head)), make([]float32, (len(b)-4*len(head))/4)
 	binary.Read(bytes.NewReader(b), binary.LittleEndian, stated)
 	binary.Read(bytes.NewReader(b[4*len(head):]), binary.LittleEndian, want)
+	near := func(i int) bool { return math.Abs(float64(got[i]-want[i])) <= 1e-6+1e-5*math.Abs(float64(want[i])) }
+	if *update {
+		// band frames this code reads to rounding keep the fixture's bits, which a
+		// platform's rounding moves, so that only new frames move the layout's digest
+		bands, kept := fixtureFrames*len(raw[0]), slices.Equal(stated, head) && len(want) == len(got)
+		for i := 0; kept && i < bands; i++ {
+			kept = near(i)
+		}
+		if kept {
+			copy(got, want[:bands])
+		}
+		var b bytes.Buffer
+		binary.Write(&b, binary.LittleEndian, head)
+		binary.Write(&b, binary.LittleEndian, got)
+		if err := os.WriteFile("testdata/frames.bin", b.Bytes(), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		stated, want = head, got
+	}
 	if !slices.Equal(stated, head) || len(want) != len(got) {
 		t.Fatalf("the fixture states %v and holds %d values, this code %v and %d (-update)", stated, len(want), head, len(got))
 	}
 	for i, v := range got {
-		if d := math.Abs(float64(v - want[i])); d > 1e-6+1e-5*math.Abs(float64(want[i])) {
+		if !near(i) {
 			t.Fatalf("value %d is %g, the fixture's %g (-update)", i, v, want[i])
 		}
+	}
+}
+
+// The layout whose band frames testdata/frames.bin holds, and their sha256
+const fixtureLayout, fixtureBands = 1, "719dc5eb70d5d44529f83140259c9c0a4dcb349d3b58a845f75fc4a0f525c279"
+
+// TestALayoutIsBoundToItsFrames: the fixture's band frames, this code's to
+// rounding by the test above, are those fixtureLayout's digest names, and that
+// layout is RipLayout, so frames that change under the number weight files and
+// corpora state fail here, -update or not: they take a new RipLayout, and both
+// constants again
+func TestALayoutIsBoundToItsFrames(t *testing.T) {
+	b, err := os.ReadFile("testdata/frames.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	frames, values := binary.LittleEndian.Uint32(b[4:]), binary.LittleEndian.Uint32(b[8:])
+	got := fmt.Sprintf("%x", sha256.Sum256(b[20:][:4*frames*values]))
+	if audio.RipLayout != fixtureLayout || got != fixtureBands {
+		t.Fatalf("this code is layout %d and the fixture's band frames hash to %s, where layout %d's hash to %s: frames that change take a new RipLayout", audio.RipLayout, got, fixtureLayout, fixtureBands)
 	}
 }

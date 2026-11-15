@@ -51,6 +51,22 @@ func TestABandStreamGivesBandFramesWhateverTheBlocks(t *testing.T) {
 	}
 }
 
+// TestEachBandIsHeardAtTheShortestWindowWhoseBinsFallThreeASemitone: the fine
+// plane hears band k at the lowest level whose window's bins, RipRate/RipN apart
+// halved at each level, span three over the semitone from its centre to band
+// k+3's, the last level any band under, so ripLevelBand is the rule's
+func TestEachBandIsHeardAtTheShortestWindowWhoseBinsFallThreeASemitone(t *testing.T) {
+	for k := range RipBands {
+		level := 0
+		for level < ripBandLevels-1 && BandHz(float64(k+3))-BandHz(float64(k)) < 3*float64(RipRate)/RipN/float64(int(1)<<level) {
+			level++
+		}
+		if got := ripBandLevel(k); got != level {
+			t.Fatalf("band %d (%.1f Hz) is heard at level %d, the rule's %d", k, BandHz(float64(k)), got, level)
+		}
+	}
+}
+
 // TestAStruckLowNoteRisesWhereTheMelFramesDo: a low string struck off the frame
 // grid, from silence and under a note held a fourth over it, rises most in the
 // bands' dB, both planes' summed, within a frame of where it rises most in the
