@@ -529,18 +529,28 @@ belong to.
 
 v0.27.2 took a game's name, a drum machine's and a song's out of the bank and
 the docs, and gave the coin a cue of its own. Older trees, commit messages and
-squash titles still carry them. One `git filter-repo` pass with
-`--replace-text` and `--replace-message`, from the list of names kept in the
-project's files outside the repository since it spells them, closes it. What it
-costs:
+squash titles still carry them. A `git filter-repo` pass with
+`--replace-message`, from the list of names kept in the project's files outside
+the repository since it spells them, takes them out of every message. Whether
+the same pass takes them out of the old trees too, with `--replace-text` from
+the same list, is the choice to make first, since 44 of main's commits are
+tagged versions:
+
+- Messages only: every tree stays as it is, so each tag set again on its
+  rewritten commit gives a module with the checksum `go` already holds. The old
+  trees keep the names.
+- Messages and trees: the names leave every branch and tag, but each published
+  version's tree changes, and its re-set tag then fails `go`'s checksum check
+  for anyone who fetches it directly.
+
+Either way:
 
 - Every hash changes: each clone re-clones, open branches are rebased by hand,
+  every commit on main, each a squash merge GitHub signed, loses its signature,
   and every tag is set again on its rewritten commit.
 - proxy.golang.org and sum.golang.org keep each published version as it was
-  tagged, so the proxy keeps serving the old text whatever the rewrite does, and
-  a re-set tag whose tree changed fails `go`'s checksum check for anyone who
-  fetches it directly. Rewrite only the messages under tagged trees, or let the
-  old versions' trees stand in the proxy.
+  tagged, so the proxy keeps serving the old trees, names and all.
 - GitHub keeps every PR's `refs/pull/<n>/head`, which no push deletes, so the
-  old commits stay reachable there and in cached views until GitHub Support
-  purges them. PR titles and bodies are edited on GitHub by hand.
+  old commits stay reachable there and by hash in cached views. GitHub Support
+  removes only sensitive data that rotating a credential cannot make safe, so it
+  will not purge them. PR titles and bodies are edited on GitHub by hand.
