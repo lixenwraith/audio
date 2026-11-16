@@ -6,9 +6,10 @@ Source files do not carry TODO comments.
 
 Priorities: P1 is wanted next, P2 is convenient follow-up, and P3 is an idea.
 
-Work that changes the library and stapes together is planned in [vif's
-todo](https://github.com/lixenwraith/vif/blob/main/doc/todo.md#audio): tuning the
-rip and closing its loop.
+Work that changes the library and stapes together is planned in [stapes'
+todo](https://github.com/lixenwraith/stapes/blob/main/doc/todo.md): tuning the
+rip and closing its loop. What vif makes of the library is in [vif's
+todo](https://github.com/lixenwraith/vif/blob/main/doc/todo.md#audio).
 
 ## The bank's instruments
 
@@ -446,6 +447,71 @@ a half seconds behind, though its `MelStream` holds each band 46 ms after the
 sound: a
 view that wants it sooner needs the bands handed on before the frames they
 belong to.
+
+## The mixer
+
+### Give the mix a binaural bed
+
+- Priority: P3
+- Affected files: `mixer.go`, `engine.go`, `command.go`, `doc/audio.md` §2 and §6
+- Guide: [Audio §2](audio.md#2-stream-contract),
+  [§6](audio.md#6-mixer-buses-mute-and-pause)
+
+vif is to offer a binaural beat under its music, off by default ([its
+todo](https://github.com/lixenwraith/vif/blob/main/doc/todo.md#add-binaural-beats-to-the-music)):
+a tone of `f − Δ/2` in the left ear and `f + Δ/2` in the right, heard as a beat
+at `Δ`. No shipped pattern, test song or rip carries one. The stream is stereo
+end to end: every backend opens two channels (`pacat`, `pw-cat`, `aplay`,
+`sox`, `ffplay`, the WAV sink), and vif's hosts take two apart, Android's
+`AudioTrack` as `CHANNEL_OUT_STEREO` and the browser's worklet writing `left`
+and `right`. The mix is not: the music and sfx buses are one `float64` channel,
+and `floatToBytes` writes each sample to both (§2). So nothing of the hosts
+changes; the mixer's last stage does.
+
+Where the beat is made, each a choice with what it costs:
+
+1. **A stereo bed in the mixer** (recommended). A generator the mixer owns, two
+   phase-continuous sines summed into L and R after the music bus, before the
+   pause ramp and the limiter, which becomes stereo-linked (its envelope the
+   larger of the two channels). `floatToBytes` takes two inputs; nothing before
+   the mix changes: voices, tracks, the sequencer, its crossfades, reveals,
+   fills and draws stay mono and unaware. Cost: two oscillators a sample, a new
+   command (`SetBinaural{Carrier, Beat, Level}` on `AudioEngine`, slewed inside
+   the mixer so a change never clicks), the music tap written in stereo so what
+   vif's `-mw` records is what plays. Smallest change, one owner, every host at
+   once; the bed is a tone under the music rather than part of it.
+2. **One more track.** A pattern track whose voice holds a note per ear. It reads
+   as one track in the bank, but a track renders into the mono music bus, so it
+   still needs option 1's stereo output and a stereo voice besides; and in a slot
+   it is redrawn on phrase downbeats, faded by crossfades, rebuilt by reveals one
+   track a bar, replaced by slot 2's fill and moved with the group every four
+   phrases, each a gap in the beat, while `Δ` changes on the step grid, not
+   continuously. Kept out of the draw it becomes a fifth slot, which is option 1
+   inside the sequencer. Its one gain: a group could author its own carrier in
+   `music.toml`.
+3. **A stereo music bus.** The sequencer renders L and R through every slot,
+   player and voice, and the beat is an ear offset of a constant `Δ` Hz on a
+   tonal voice (the pad), so every partial pair beats at `Δ` inside the music.
+   Most musical, and it brings panning per track with it, which the engine lacks
+   (`AudioEngine.PlayBuffer` takes no pan); but it touches the whole pipeline,
+   doubles the voices' render cost, the offline renders (`RenderMusic`,
+   `RenderTimeline`) and stapes' with it, and the beat sounds only while the pad
+   plays.
+
+The carrier `f`: binaural beats are heard best on carriers of a few hundred
+hertz and fade above about 1 kHz, and `Δ` blurs into roughness above about
+30 Hz. Tuning `f` to the harmony's root (default E2, 82 Hz, so E3 or E4 at 165
+or 330 Hz) keeps the bed consonant with the key; it then glides on a key change.
+A fixed `f` is simpler and may clash.
+
+Decided with the implementation: whether the bed follows the music bus's mute
+or a mute of its own, and whether it ducks under sfx (amplitude only, `Δ` holds
+either way). Tests, one per rule: off renders L equal to R; on, each channel's
+frequency (Goertzel) is `f ∓ Δ/2` and a change of `Δ` keeps the phase
+continuous; the linked limiter holds both channels under its ceiling. It takes
+the next minor version, which vif then requires; stapes auditions the bed with
+a verb ([its
+todo](https://github.com/lixenwraith/stapes/blob/main/doc/todo.md#audition-the-binaural-bed)).
 
 ## The repository
 
