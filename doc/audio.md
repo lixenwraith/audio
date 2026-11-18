@@ -183,18 +183,15 @@ registry. A name an embedder resolves only as it plays skips the resolution of
 its levels at startup, so a mistyped one is silent and counts only as a bad-ID
 rejection.
 
-A struck sound is a sound made from genes, as a voice is (§7). Its genome is
-one table, `struckGenes`, a row over a range on a linear or a log scale: the
-rows the bank's fit keeps (below) are the genes, and it holds each other row at
-one value. `StruckFromGenes` reads `StruckGeneCount` values in [0, 1], in the
-order `StruckGeneNames` gives, and `StruckFromRows` a value for every row
-(`StruckRowNames`), into a `SoundDef` of the layers and processors above, each
-part following the velocity and the stroke as the bank drums' like part does,
-in the snare's three layers of six takes. It registers as any sound, a kit
-binds it (`SetKit`), and `RenderHit` plays one hit of any sound alone at a
-velocity as the drum's voice does. Its level is no gene: it is its norm, set
-after, as the matched kit sets a drum's (§9). The rows, where each range ends,
-and where a held row is held, over its range and in its unit:
+A struck sound is a sound made from genes, as a voice is (§7):
+`StruckFromGenes` reads `StruckGeneCount` values in [0, 1], in the order
+`StruckGeneNames` gives, each over its row of `struckGenes` on a linear or a
+log scale, into a `SoundDef` of the layers and processors above, each part
+following the velocity and the stroke as the bank drums' like part does, in the
+snare's three layers of six takes. It registers as any sound, a kit binds it
+(`SetKit`), and `RenderHit` plays one hit of any sound alone at a velocity as
+the drum's voice does. Its level is no gene: it is its norm, set after, as the
+matched kit sets a drum's (§9). The genes, and where each range ends:
 
 - body: six sine modes on one decay, the share the noise leaves
   - `pitch`, 30 to 2800 Hz, log: where the modes start. 30 Hz is where the
@@ -203,32 +200,30 @@ and where a held row is held, over its range and in its unit:
   - `fall`, 0.25 to 1, log: the ratio the modes fall to, 1 none and 0.25 two
     octaves, a synthesized kick's widest; the softest layer starts a fifth of
     the glide over its end, as the kick does.
-  - `fall_rate`, 1 to 9, log, held at 0.562 (3.4): how many times faster than
-    the ring the glide falls, at 9 the sweep's `curve_k` (seven a rate) at the
-    engine's 64.
-  - `decay`, 0.01 to 1 s, log, held at 0.214 (27 ms): the ring's time constant,
-    seven of them rendered. A ring under a frame (11.6 ms) is the attack's; at
-    1 s the costliest sound stays within the engine's render budget.
-  - `metal`, 0 to 1, held at 0.420: from the ideal membrane's first six modes
-    (Bessel zeros), their gains falling as one over the mode, to the bank
-    hihat's six partials at even gains, the ratios between them geometric and
-    the gains linear.
+  - `fall_rate`, 1 to 9, log: how many times faster than the ring the glide
+    falls, at 9 the sweep's `curve_k` (seven a rate) at the engine's 64.
+  - `decay`, 0.01 to 1 s, log: the ring's time constant, seven of them
+    rendered. A ring under a frame (11.6 ms) is the attack's; at 1 s the
+    costliest sound stays within the engine's render budget.
+  - `metal`, 0 to 1: from the ideal membrane's first six modes (Bessel
+    zeros), their gains falling as one over the mode, to the bank hihat's six
+    partials at even gains, the ratios between them geometric and the gains
+    linear.
 - noise: a band the click shares
   - `noise`, 0 to 1: its share of the sound against the body's.
   - `noise_hz`, 30 to 10000 Hz, log: the band's centre, at its top under the
     frames' top when its stroke raises it a tenth.
-  - `noise_width`, 0.5 to 8.5 octaves, log, held at 0.432 (1.7 octaves):
-    between its half-power points; half an octave the narrowest whose level the
-    engine's gain bound (64) holds at 30 Hz, 8.5 the frames' whole span.
-  - `noise_decay`, 0.01 to 1 s, log, held at 0.404 (64 ms): as `decay`.
+  - `noise_width`, 0.5 to 8.5 octaves, log: between its half-power points;
+    half an octave the narrowest whose level the engine's gain bound (64) holds
+    at 30 Hz, 8.5 the frames' whole span.
+  - `noise_decay`, 0.01 to 1 s, log: as `decay`.
 - attack: noise bursts of 8 ms falling at 2 ms, the clap's and the kick's
   felt's, through the band
   - `click`, 0 to 4: their level over the body's, at most the kick's felt's
     over its head.
   - `bursts`, 1 to 5, rounded: one strike, or a few hands' clap.
-  - `gap`, 2 to 15 ms, log, held at 0.729 (8.7 ms): between bursts; under 2 ms
-    the ear hears none, and at 15 ms the fifth still starts within the hit's
-    frames.
+  - `gap`, 2 to 15 ms, log: between bursts; under 2 ms the ear hears none, and
+    at 15 ms the fifth still starts within the hit's frames.
 - `drive`, 0 to 4: the master shaper's, the voice gene's range.
 
 A fit hears a hit as its frames (`HitFrames`): from where its sound rises, as
@@ -238,20 +233,21 @@ loudest, so silence is zero and the level is no part of it; two hits are their
 frames' `MelDistance` apart, and a hit's floor is the mean distance between two
 of its takes. `go test ./bank -run TestStruckGenesReachTheBankDrums -fit
 -timeout 2h`, half an hour on four cores, fits each bank drum as a point in the
-rows, a preview's mean distance to its six takes at full velocity. Then, round
-by round, it holds the row whose hold costs the drums least at its median over
-the four fits, to the table's three places, and fits the rest again, while the
-rows held cost each drum less than its floor over that first fit. It held
-`fall_rate`, `noise_width`, `gap`, `metal`, `noise_decay` and `decay` in turn,
-keeping seven genes, and fails where the table keeps another set or holds a row
-elsewhere. Each drum's distance and floor, and its distance in floors in all
-the rows, in the seven genes and from the bank's own preview:
+genes, a preview's mean distance to its six takes at full velocity. Then, round
+by round, it holds the gene whose hold costs the drums least at its median over
+the four fits, and fits the rest again, while the genes held cost each drum less
+than its floor over that first fit. The genes it holds are those the drums
+cannot tell apart, `fall`, `fall_rate`, `decay`, `metal`, `noise_width`,
+`noise_decay` and `gap`, and it pins them as a reading, not a cut: drums that
+ring 0.11 s at most, heard over 93 ms, cannot say what a tom or a cymbal needs
+(doc/todo.md). Each drum's distance and floor, and its distance in floors in
+all the genes, with those held and from the bank's own preview:
 
-    drum    distance  floor   rows  genes  preview
-    kick       27.77  12.84   2.16   2.64     0.77
-    snare      51.57  12.51   4.12   4.26     0.82
-    hihat      23.34  24.48   0.95   1.77     0.94
-    clap       26.27  20.77   1.26   2.02     0.92
+    drum    distance  floor  genes   held  preview
+    kick       27.77  12.84   2.16   2.50     0.77
+    snare      51.57  12.51   4.12   5.01     0.82
+    hihat      23.34  24.48   0.95   1.67     0.94
+    clap       26.27  20.77   1.26   1.59     0.92
 
 ## 6. Mixer buses, mute, and pause
 

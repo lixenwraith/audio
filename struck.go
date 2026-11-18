@@ -22,62 +22,38 @@ const (
 	struckDrive
 )
 
-// struckGene is a row of the genome a struck sound's genes are drawn from: its
-// name, the range a value in [0, 1] is read over, whether on a log scale, and
-// the value the bank's fit holds it at, struckKept for a row it keeps a gene
+// struckGene is one gene of a struck sound: its name, the range its value in
+// [0, 1] is read over, and whether on a log scale
 type struckGene struct {
 	name     string
 	min, max float64
 	log      bool
-	hold     float64
 }
 
-// struckKept marks a row the bank's fit keeps as a gene
-const struckKept = -1
-
-// struckGenes is every row of a struck sound's genome, kept or held by bank's
-// TestStruckGenesReachTheBankDrums; doc/audio.md §5 gives each range's source
+// struckGenes is a struck sound's genome, a row a gene; doc/audio.md §5 gives
+// each range's source
 var struckGenes = [...]struckGene{
-	struckPitch:      {"pitch", 30, 2800, true, struckKept},
-	struckFall:       {"fall", 0.25, 1, true, struckKept},
-	struckFallRate:   {"fall_rate", 1, 9, true, 0.562},
-	struckDecay:      {"decay", 0.01, 1, true, 0.214},
-	struckMetal:      {"metal", 0, 1, false, 0.420},
-	struckNoise:      {"noise", 0, 1, false, struckKept},
-	struckNoiseHz:    {"noise_hz", 30, 10000, true, struckKept},
-	struckNoiseWidth: {"noise_width", 0.5, 8.5, true, 0.432},
-	struckNoiseDecay: {"noise_decay", 0.01, 1, true, 0.404},
-	struckClick:      {"click", 0, 4, false, struckKept},
-	struckBursts:     {"bursts", 1, 5, false, struckKept},
-	struckGap:        {"gap", 0.002, 0.015, true, 0.729},
-	struckDrive:      {"drive", 0, 4, false, struckKept},
+	struckPitch:      {"pitch", 30, 2800, true},
+	struckFall:       {"fall", 0.25, 1, true},
+	struckFallRate:   {"fall_rate", 1, 9, true},
+	struckDecay:      {"decay", 0.01, 1, true},
+	struckMetal:      {"metal", 0, 1, false},
+	struckNoise:      {"noise", 0, 1, false},
+	struckNoiseHz:    {"noise_hz", 30, 10000, true},
+	struckNoiseWidth: {"noise_width", 0.5, 8.5, true},
+	struckNoiseDecay: {"noise_decay", 0.01, 1, true},
+	struckClick:      {"click", 0, 4, false},
+	struckBursts:     {"bursts", 1, 5, false},
+	struckGap:        {"gap", 0.002, 0.015, true},
+	struckDrive:      {"drive", 0, 4, false},
 }
-
-// struckKeptRows is the rows the genes are, in gene order
-var struckKeptRows = func() (out []int) {
-	for i, g := range struckGenes {
-		if g.hold == struckKept {
-			out = append(out, i)
-		}
-	}
-	return out
-}()
 
 // StruckGeneCount is the length of a struck sound's gene vector
-var StruckGeneCount = len(struckKeptRows)
+const StruckGeneCount = len(struckGenes)
 
 // StruckGeneNames is the genes' names in gene order
 func StruckGeneNames() []string {
-	out := make([]string, len(struckKeptRows))
-	for k, i := range struckKeptRows {
-		out[k] = struckGenes[i].name
-	}
-	return out
-}
-
-// StruckRowNames is every row's name in row order, a held row's too
-func StruckRowNames() []string {
-	out := make([]string, len(struckGenes))
+	out := make([]string, StruckGeneCount)
 	for i, g := range struckGenes {
 		out[i] = g.name
 	}
@@ -98,30 +74,14 @@ const (
 )
 
 // StruckFromGenes is the sound genes play, each held to [0, 1] over its row of
-// the genome, a held row at its hold
+// the genome; the sound has no name, and its level is its norm's, set after.
+// A part follows the velocity and the stroke as the bank drums' like part does.
 func StruckFromGenes(genes []float64) *SoundDef {
-	rows := make([]float64, len(struckGenes))
-	for i, g := range struckGenes {
-		rows[i] = max(g.hold, 0)
-	}
-	for k, i := range struckKeptRows {
-		if k < len(genes) {
-			rows[i] = genes[k]
-		}
-	}
-	return StruckFromRows(rows)
-}
-
-// StruckFromRows is the sound a value for every row of the genome plays, a held
-// row's too, each held to [0, 1]: what the bank's fit chooses the genes by. The
-// sound has no name, and its level is its norm's, set after; a part follows the
-// velocity and the stroke as the bank drums' like part does.
-func StruckFromRows(rows []float64) *SoundDef {
-	var v [len(struckGenes)]float64
+	var v [StruckGeneCount]float64
 	for i, g := range struckGenes {
 		x := 0.0
-		if i < len(rows) {
-			x = min(max(rows[i], 0), 1)
+		if i < len(genes) {
+			x = min(max(genes[i], 0), 1)
 		}
 		if g.log {
 			v[i] = g.min * math.Pow(g.max/g.min, x)

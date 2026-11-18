@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
-	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -15,11 +14,11 @@ import (
 	"github.com/lixenwraith/audio"
 )
 
-var fitStruck = flag.Bool("fit", false, "fit a struck sound's genes to each bank drum and print what the fit keeps")
+var fitStruck = flag.Bool("fit", false, "fit a struck sound's genes to each bank drum and read which genes the drums cannot tell apart")
 
 // struckPiece is a bank drum as a fit hears it, its six takes at full velocity,
-// the floor (the mean distance between two of them) and its fit, a value for
-// every row of the genome, at its distance, the mean to the takes
+// the floor (the mean distance between two of them) and its fit's genes at its
+// distance, the mean to the takes
 type struckPiece struct {
 	name     string
 	takes    [][][]float32
@@ -27,10 +26,9 @@ type struckPiece struct {
 	x        []float64
 }
 
-// distance is how far a value for each row of the genome, rendered as a preview
-// plays it, is from the takes
-func (p *struckPiece) distance(rows []float64) float64 {
-	d := audio.StruckFromRows(rows)
+// distance is how far genes, rendered as a preview plays them, are from the takes
+func (p *struckPiece) distance(genes []float64) float64 {
+	d := audio.StruckFromGenes(genes)
 	d.Name = "struck"
 	x, err := audio.RenderPreview(d, audio.SoundShape{})
 	if err != nil {
@@ -44,16 +42,20 @@ func (p *struckPiece) distance(rows []float64) float64 {
 	return sum / float64(len(p.takes))
 }
 
-// A struck sound's genes reach each bank drum: a fit of each over the genome's
-// rows prints its distance to the drum's takes and its floor, then a row is held
-// at its median over the fits, the rest fitted again, while that costs each drum
-// less than its floor over its fit; the rows kept are the genes, and the genome
-// holds each other row where the fit held it.
+// bankBlindGenes is the genes the bank's four drums cannot tell apart, as
+// TestStruckGenesReachTheBankDrums last read them: a reading of drums that ring
+// 0.11 s at most, heard over toneReach frames, and no cut of the genome
+var bankBlindGenes = []string{"fall", "fall_rate", "decay", "metal", "noise_width", "noise_decay", "gap"}
+
+// A struck sound's genes reach each bank drum: a fit of each prints its distance
+// to the drum's takes and its floor, then a gene is held at its median over the
+// fits, the rest fitted again, while that costs each drum less than its floor
+// over its fit; the genes held are those the drums cannot tell apart.
 func TestStruckGenesReachTheBankDrums(t *testing.T) {
 	if !*fitStruck {
 		t.Skip("-fit fits the struck genome to the bank drums, half an hour on four cores: -timeout 2h")
 	}
-	names := audio.StruckRowNames()
+	names := audio.StruckGeneNames()
 	var pieces []*struckPiece
 	for _, d := range loadSounds(t) {
 		if !slices.Contains([]string{"kick", "snare", "hihat", "clap"}, d.Name) {
@@ -113,8 +115,7 @@ func TestStruckGenesReachTheBankDrums(t *testing.T) {
 				v[k] = p.x[i]
 			}
 			slices.Sort(v)
-			// its median, to the three places the genome's table holds it at
-			h := hold{gene: i, at: math.Round((v[(len(v)-1)/2]+v[len(v)/2])/2*1000) / 1000}
+			h := hold{gene: i, at: (v[(len(v)-1)/2] + v[len(v)/2]) / 2}
 			for k, p := range pieces {
 				free := slices.Clone(held)
 				free[i] = true
@@ -153,29 +154,18 @@ func TestStruckGenesReachTheBankDrums(t *testing.T) {
 		}
 		t.Logf("held %s at %.3f", names[r.gene], r.at)
 	}
-	var kept []string
+	var blind []string
 	for i, n := range names {
-		if !held[i] {
-			kept = append(kept, n)
+		if held[i] {
+			blind = append(blind, n)
 		}
 	}
-	t.Logf("kept %d of %d: %s", len(kept), len(names), strings.Join(kept, " "))
-	genes := make([][]float64, len(pieces))
-	for k, p := range pieces {
-		for i, x := range p.x {
-			if !held[i] {
-				genes[k] = append(genes[k], x)
-			}
-		}
-		t.Logf("%-6s distance %6.2f  floor %6.2f  (%4.2f floors) in the kept genes:%s", p.name, p.d, p.floor, p.d/p.floor, geneLine(kept, genes[k]))
+	t.Logf("the drums cannot tell apart %d of %d genes: %s", len(blind), len(names), strings.Join(blind, " "))
+	for _, p := range pieces {
+		t.Logf("%-6s distance %6.2f  floor %6.2f  (%4.2f floors) with them held", p.name, p.d, p.floor, p.d/p.floor)
 	}
-	if names := audio.StruckGeneNames(); !slices.Equal(kept, names) {
-		t.Fatalf("the fit keeps %v, the genome %v", kept, names)
-	}
-	for k, p := range pieces {
-		if !reflect.DeepEqual(audio.StruckFromGenes(genes[k]), audio.StruckFromRows(p.x)) {
-			t.Errorf("%s: the genome holds a row other than where the fit held it", p.name)
-		}
+	if !slices.Equal(blind, bankBlindGenes) {
+		t.Errorf("the drums cannot tell apart %v, the reading %v", blind, bankBlindGenes)
 	}
 }
 
@@ -188,12 +178,12 @@ func geneLine(names []string, x []float64) string {
 	return b.String()
 }
 
-// fitStruckGenes is the least of f found over the genome's rows: a compass walk
-// from each of 24 starts spread over every row's range as a Latin hypercube, the
+// fitStruckGenes is the least of f found over the genes: a compass walk from
+// each of 24 starts spread over every gene's range as a Latin hypercube, the
 // best three walked on at a finer step
 func fitStruckGenes(f func([]float64) float64) ([]float64, float64) {
 	const starts = 24
-	n := len(audio.StruckRowNames())
+	n := audio.StruckGeneCount
 	all := make([]bool, n)
 	strata := make([][]int, n)
 	r := rand.New(rand.NewPCG(1, 1))

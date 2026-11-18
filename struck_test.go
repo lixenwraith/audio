@@ -41,7 +41,7 @@ func TestStruckSoundPlaysAsADrum(t *testing.T) {
 }
 
 // TestStruckGenesKeepTheirSources: each range sits within the bound doc/audio.md
-// §5 gives it, and every corner of the genome's rows is a sound the engine renders
+// §5 gives it, and every corner of the genome is a sound the engine renders
 func TestStruckGenesKeepTheirSources(t *testing.T) {
 	g := func(i int) struckGene { return struckGenes[i] }
 	top := float64(RipRate) / 2 // where the hit's frames end, and the frequency a sound may name
@@ -63,20 +63,15 @@ func TestStruckGenesKeepTheirSources(t *testing.T) {
 			t.Errorf("%s: no", c.source)
 		}
 	}
-	for _, g := range struckGenes {
-		if g.hold != struckKept && (g.hold < 0 || g.hold > 1) {
-			t.Errorf("%s is held at %v, off its range", g.name, g.hold)
+	for c := range 1 << StruckGeneCount {
+		genes := make([]float64, StruckGeneCount)
+		for i := range genes {
+			genes[i] = float64(c >> i & 1)
 		}
-	}
-	for c := range 1 << len(struckGenes) {
-		rows := make([]float64, len(struckGenes))
-		for i := range rows {
-			rows[i] = float64(c >> i & 1)
-		}
-		d := StruckFromRows(rows)
+		d := StruckFromGenes(genes)
 		d.Name = "corner"
 		if err := ValidateSound(d); err != nil {
-			t.Fatalf("corner %0*b: %v", len(struckGenes), c, err)
+			t.Fatalf("corner %0*b: %v", StruckGeneCount, c, err)
 		}
 	}
 }

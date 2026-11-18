@@ -445,12 +445,15 @@ that a document now states, and link the document instead.
   its top, and CMA-ES from eight 2.4, so the bank's fit walks from 24. An
   evaluation costs as the sound is long: a decay at its 1 s top renders 7 s for
   the 0.2 s the frames read.
-- What holding a row costs moves as others are held (the kick's cost of
+- What holding a gene costs moves as others are held (the kick's cost of
   `bursts` fell from 1.14 floors to 0.30 a round later, then rose to 3.6), so
-  the procedure holds one row a round and fits the rest again. Its rounds end on
-  near-ties: rounding each median to the table's three places, a move under
-  0.0005, held `metal` in the fourth round where the unrounded run held `fall`,
-  and kept seven genes where that run kept six.
+  the procedure holds one gene a round and fits the rest again. Its rounds end
+  on near-ties: rounding each median to three places, a move under 0.0005, held
+  `metal` in the fourth round where the exact median holds `fall`, and left
+  `fall` told apart.
+- What a procedure drops is what its pieces and its reach can hear: the bank's
+  drums, heard over 93 ms, would have held the body's decay at 21 ms, so no
+  struck sound could ring. The genome ships whole; their reading is pinned.
 
 ## Front ends and fidelity
 
