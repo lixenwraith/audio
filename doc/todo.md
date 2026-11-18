@@ -42,6 +42,34 @@ times at one pressure, to set its strokes' spread (the Sonor set has one take a
 pressure); and the analysis reading the natural kit's kick, ringing at 52 Hz, as
 bass, which a model trained on the new corpus is to be benched against.
 
+### Fit a struck sound nearer the bank's kick and snare
+
+- Priority: P3
+- Affected files: `struck.go`
+
+In the seven genes the bank's fit leaves the kick 2.64 floors from its takes
+and the snare 4.26, 2.16 and 4.12 in all the genome's rows
+([Audio §5](audio.md#5-sounds-and-sound-effects)). The bank tunes their modes
+by hand (the kick's 1 : 2.07 : 3.26, the snare's 1 : 1.52 : 2.35 : 3.08 : 3.6),
+off the line from membrane to plate the genome walks, and gives each mode its
+own decay and gain: a decay slope over the modes and a gain tilt, as two genes
+more, took the snare about a floor nearer and the kick none. The smallest
+close: those two genes, once a corpus of struck sounds has trained and its fit
+wants them.
+
+### Let a struck sound ring
+
+- Priority: P2
+- Affected files: `struck.go`, `bank/struck_test.go`
+
+The genome's held rows come from four drums whose modes fall with time
+constants of 0.11 s at most, heard over the eight frames (93 ms) the matched kit
+reads a tone over: every struck sound's body rings at 27 ms and its noise at
+64 ms, and none rings as a tom or a cymbal does. Which rows it holds rests on
+near-ties besides (doc/agent-notes.md, Struck sounds). The smallest close: a tom
+and a crash in the bank, fitted with the four over a reach that hears them
+ring, freeing the rows the procedure then keeps.
+
 ### Read a matched kit's weak bands
 
 - Priority: P3

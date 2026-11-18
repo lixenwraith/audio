@@ -30,14 +30,20 @@ type drumTakes struct {
 // harder hit plays a brighter take as well as a louder one
 func (k *kit) take(i InstrumentType, vel float64, n uint32) floatBuffer {
 	t := &k.takes[i]
-	l := 0
-	for l+1 < len(t.layers) && vel > (t.vel[l]+t.vel[l+1])/2 {
-		l++
-	}
+	l := nearestLayer(t.vel, vel)
 	if l >= len(t.layers) || len(t.layers[l]) == 0 {
 		return nil
 	}
 	return t.layers[l][n%uint32(len(t.layers[l]))]
+}
+
+// nearestLayer is the layer of the ascending velocities vels nearest vel
+func nearestLayer(vels []float64, vel float64) int {
+	l := 0
+	for l+1 < len(vels) && vel > (vels[l]+vels[l+1])/2 {
+		l++
+	}
+	return l
 }
 
 // sounds says whether an instrument plays on this kit: every one unless only

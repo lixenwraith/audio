@@ -133,10 +133,11 @@ over `BandFrames`, which also hears the voices the notes are played with
 recording, by installed scores or by a trained judge loaded beside its notes
 model (`LoadRipJudge`, `Ripper.Judge`), and the strikes judged can be read with
 their verdicts and rows (`Ripper.Strikes`, `Rip.Strikes`). `ReadWAV` reads any
-PCM or float width to mono. The
-primitives a search fits a rip with are here and the searches are not:
-`RenderNote` plays a voice at a note offline and `MelDistance` compares mel
-frames, `Rip.Notes` is the transcript they fit to, which `WriteMIDI` and
+PCM or float width to mono. The primitives a search fits a rip with are here and
+the searches are not: `RenderNote` plays a voice at a note offline and
+`MelDistance` compares mel frames, `StruckFromGenes` makes a drum of genes,
+`RenderHit` plays a hit alone and `HitFrames` hears it as a fit does,
+`Rip.Notes` is the transcript they fit to, which `WriteMIDI` and
 `ReadMIDI` carry to and from a Standard MIDI File; `BarDistance`, `Cluster` and
 `Rip.Cluster` group a rip's bars within a threshold and `Rip.Song` writes the
 groups as one-bar patterns and a `SongDef`, the `[[song]]` of a pattern document

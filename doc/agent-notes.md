@@ -431,6 +431,27 @@ that a document now states, and link the document instead.
   balance reads both sides through it, so the bias cancels; elsewhere read
   levels near Nyquist with that in mind.
 
+## Struck sounds
+
+- The rip's `MelFrames` (log1p of a hundred times the energy, the peak at one)
+  hear little 30 dB under a hit's loudest: the bank's snare without its crack,
+  or without its wires, moved a fit's distance by under 1e-4. `HitFrames`
+  reads each cell in dB under the hit's loudest, 60 dB deep.
+- A distance over a whole render lets a fit add frames of near silence to lower
+  its mean (a noise decay went to its top, 351 frames); `HitFrames` reads
+  `toneReach` frames from the rise, whatever the sound's length.
+- A struck sound's distance has many basins: compass walks from 16 spread starts
+  left the kick between 2.2 and 13 floors, one a 41 Hz body under a drive near
+  its top, and CMA-ES from eight 2.4, so the bank's fit walks from 24. An
+  evaluation costs as the sound is long: a decay at its 1 s top renders 7 s for
+  the 0.2 s the frames read.
+- What holding a row costs moves as others are held (the kick's cost of
+  `bursts` fell from 1.14 floors to 0.30 a round later, then rose to 3.6), so
+  the procedure holds one row a round and fits the rest again. Its rounds end on
+  near-ties: rounding each median to the table's three places, a move under
+  0.0005, held `metal` in the fourth round where the unrounded run held `fall`,
+  and kept seven genes where that run kept six.
+
 ## Front ends and fidelity
 
 - A corpus and a bench render one pattern a part (`RenderMusic`), so they never
