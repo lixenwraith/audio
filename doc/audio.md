@@ -671,7 +671,8 @@ the under in file order; a further part's notes are the transcript's too, of no
 line (`RipNote.Further`), matched in the melody register as one line or, under
 E3, in the bass's, and left out of the score's rip; the drum channel's kicks,
 snares and hats are hits (`RipHit`), a ride, tambourine or shaker a hat, and its
-other strikes (a tom, a crash) onsets of no line (`MIDIScore.Struck`).
+other strikes (a tom, a crash) onsets of no line (`MIDIScore.Struck`), each
+with the key it was struck on (`RipHit.Key`).
 `MatchHits` lays the hits on the rip's own (`Rip.Hits`, each step placed on its
 beats) under the stretch and offset that match most, each within half a step.
 `MatchBars` scores the rip's bar lines, which no note's map sees and on whose
@@ -696,7 +697,8 @@ notes' pitch classes as the analysis takes it of the chroma, and a note outside
 E1 to C7 dropped; each line plays on the shipped voice its program plays on
 (`MIDIScore.Voices`, through §8's table). `WriteMIDI` writes a transcript the
 other way, a track a line and the drums on the drum channel at the rip's tempo,
-a note's glide as pitch bend (§8), to correct in a sequencer. The song a rip
+a hit on its key or its line's first, a note's glide as pitch bend (§8), to
+correct in a sequencer. The song a rip
 compresses into carries the recording's tuning (`SongDef.Tuning`), and the
 engine plays or renders it there (`AudioEngine.SetTuning`), as a voice fit
 renders its candidate notes there (`RenderNoteAt`), so a render stands beside

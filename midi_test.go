@@ -12,8 +12,8 @@ import (
 
 // TestReadMIDIReadsTheSameTranscript: what a song's file adds, programs that
 // change, a key and time signatures, a clap and a tom, a drum part on a track of
-// its own, moves none of the notes, velocities or hits ReadMIDI reads, which
-// truth scores and corpus labels from.
+// its own, moves none of the notes, velocities or hits ReadMIDI reads, each
+// strike with the key it was struck on, which truth scores and corpus labels from.
 func TestReadMIDIReadsTheSameTranscript(t *testing.T) {
 	file := smf(4)
 	file = append(file, track(
@@ -57,7 +57,7 @@ func TestReadMIDIReadsTheSameTranscript(t *testing.T) {
 		{Start: 0, End: 1, MIDI: 40, Vel: 90.0 / 127, Bass: true},
 		{Start: 0.5, End: 0.75, MIDI: 79, Vel: 70.0 / 127},
 	}
-	hits := []RipHit{{Start: 0, Drum: InstrKick, Vel: 120.0 / 127}, {Start: 0.75, Drum: InstrHihat, Vel: 60.0 / 127}, {Start: 1, Drum: InstrSnare, Vel: 110.0 / 127}}
+	hits := []RipHit{{Start: 0, Drum: InstrKick, Vel: 120.0 / 127, Key: 36}, {Start: 0.75, Drum: InstrHihat, Vel: 60.0 / 127, Key: 42}, {Start: 1, Drum: InstrSnare, Vel: 110.0 / 127, Key: 38}}
 	if len(m.Notes) != len(notes) || len(m.Hits) != len(hits) {
 		t.Fatalf("read %+v and %+v", m.Notes, m.Hits)
 	}
@@ -69,9 +69,12 @@ func TestReadMIDIReadsTheSameTranscript(t *testing.T) {
 		}
 	}
 	for i, h := range m.Hits {
-		if w := hits[i]; h.Drum != w.Drum || math.Abs(h.Start-w.Start) > 1e-9 || math.Abs(h.Vel-w.Vel) > 1e-9 {
+		if w := hits[i]; h.Drum != w.Drum || h.Key != w.Key || math.Abs(h.Start-w.Start) > 1e-9 || math.Abs(h.Vel-w.Vel) > 1e-9 {
 			t.Errorf("hit %d: %+v, want %+v", i, h, w)
 		}
+	}
+	if s := m.Struck; len(s) != 2 || s[0].Key != 39 || s[1].Key != 45 || s[0].Drum >= 0 || s[1].Drum >= 0 {
+		t.Errorf("struck %+v, want the clap's key 39 and the tom's 45, of no line", s)
 	}
 	if m.BPM != 120 || m.Changes != 0 || m.Left != 0 {
 		t.Errorf("%.0f bpm, %d change(s), %d part(s) left out", m.BPM, m.Changes, m.Left)

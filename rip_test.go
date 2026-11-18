@@ -2,6 +2,7 @@ package audio
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -1435,8 +1436,8 @@ func TestNoteLevelsReadARecordingsLoudness(t *testing.T) {
 
 // TestMIDIRoundTrip: a transcript written as a MIDI file reads back note for
 // note and hit for hit within half a tick, each line from its named track and
-// each drum from the drum channel, a note that ends as the next of its pitch
-// starts kept apart from it, each glide as written and every note unmeasured.
+// each drum from the drum channel on its key, a note that ends as the next of its
+// pitch starts kept apart from it, each glide as written and every note unmeasured.
 func TestMIDIRoundTrip(t *testing.T) {
 	in := []RipNote{
 		{Start: 0, End: 1.2, MIDI: 40, Vel: 1, Bass: true, Bend: -12, BendAt: 0.5},
@@ -1445,7 +1446,7 @@ func TestMIDIRoundTrip(t *testing.T) {
 		{Start: 0.5, End: 1.1, MIDI: 67, Vel: 0.6, Second: true},
 		{Start: 0.77, End: 1.234, MIDI: 76, Vel: 0.3, Bend: -0.5},
 	}
-	hits := []RipHit{{Start: 0, Drum: InstrKick, Vel: 1}, {Start: 0.22, Drum: InstrHihat, Vel: 0.5}, {Start: 0.44, Drum: InstrSnare, Vel: 0.8}}
+	hits := []RipHit{{Start: 0, Drum: InstrKick, Vel: 1}, {Start: 0.22, Drum: InstrHihat, Vel: 0.5, Key: 44}, {Start: 0.44, Drum: InstrSnare, Vel: 0.8}}
 	var file bytes.Buffer
 	if err := WriteMIDI(&file, in, hits, 137, Meter{}); err != nil {
 		t.Fatal(err)
@@ -1467,7 +1468,7 @@ func TestMIDIRoundTrip(t *testing.T) {
 		}
 	}
 	for i, h := range outHits {
-		if w := hits[i]; h.Drum != w.Drum || math.Abs(h.Start-w.Start) > half || math.Abs(h.Vel-w.Vel) > 0.5/127 {
+		if w := hits[i]; h.Drum != w.Drum || h.Key != cmp.Or(w.Key, int(midiInstruments[w.Drum].keys[0])) || math.Abs(h.Start-w.Start) > half || math.Abs(h.Vel-w.Vel) > 0.5/127 {
 			t.Errorf("hit %d: read %+v, wrote %+v", i, h, w)
 		}
 	}
