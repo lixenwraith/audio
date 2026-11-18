@@ -291,7 +291,7 @@ func ReadMIDI(r io.Reader) (*MIDIScore, error) {
 			continue
 		}
 		for _, n := range p.notes {
-			h := RipHit{Start: seconds(n.on), Drum: midiDrum(n.key, InstrClap), Vel: float64(n.vel) / 127}
+			h := RipHit{Start: seconds(n.on), Drum: midiDrum(n.key, InstrClap), Vel: float64(n.vel) / 127, Key: int(n.key)}
 			if h.Drum >= 0 {
 				m.Hits = append(m.Hits, h)
 			} else {
@@ -1038,7 +1038,7 @@ func writeSMF(w io.Writer, tracks [][]midiEvent) error {
 // m: its lines as tracks named melody, under and bass on channels 1 to 3 on the
 // lead's, lead's and bass's programs, a note's glide as pitch bend (midiBends),
 // the tempo and a meter other than 4/4 on the first; its hits as a drums track, a
-// sixteenth each. A note lasts a tick at least and reads back within half a tick.
+// sixteenth each on its key or its line's first. A note reads back within half a tick.
 func WriteMIDI(w io.Writer, notes []RipNote, hits []RipHit, bpm int, m Meter) error {
 	if bpm <= 0 {
 		return fmt.Errorf("midi: tempo %d bpm", bpm)
@@ -1079,6 +1079,12 @@ func WriteMIDI(w io.Writer, notes []RipNote, hits []RipHit, bpm int, m Meter) er
 			return fmt.Errorf("midi: a hit at %.3fs of drum %d: want a kick, snare or hihat at or after 0s", h.Start, h.Drum)
 		}
 		on, key := int64(math.Round(h.Start*perSec)), midiInstruments[h.Drum].keys[0]
+		if h.Key != 0 {
+			if h.Key < 0 || h.Key > 127 || !slices.Contains(midiInstruments[h.Drum].keys, byte(h.Key)) {
+				return fmt.Errorf("midi: a hit at %.3fs of drum %d on key %d: want one of its line's", h.Start, h.Drum, h.Key)
+			}
+			key = byte(h.Key)
+		}
 		tracks[3] = append(tracks[3], midiNoteOn(on, midiDrums, key, midiVel(h.Vel)), midiNoteOff(on+midiDivision/StepsPerBeat, midiDrums, key))
 	}
 	return writeSMF(w, tracks[:3+min(len(hits), 1)])

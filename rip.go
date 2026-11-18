@@ -325,6 +325,7 @@ type RipHit struct {
 	Start float64
 	Drum  InstrumentType // InstrKick, InstrSnare or InstrHihat
 	Vel   float64
+	Key   int // the General MIDI key it is struck on, a file's (ReadMIDI); 0 none, written as its line's first
 }
 
 // Hits are the drums' hits in seconds, each bar's steps placed on its beats
