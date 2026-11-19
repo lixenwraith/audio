@@ -96,10 +96,23 @@ func renderTakes(d *SoundDef, p SoundShape, full []floatBuffer) drumTakes {
 	return t
 }
 
-// renderSet renders the variants at one velocity. A variant's stroke lands at
-// its own place in [-1,1], the places spread evenly over the set and drawn in a
-// seeded order, so one velocity layer's variant n is another's stroke n.
+// renderSet renders the variants at one velocity, variant i's noise drawn from
+// a stream of its own
 func renderSet(d *SoundDef, p SoundShape, vel float64) []floatBuffer {
+	seed := fnv64a(d.Name)
+	vs := takeVariances(d, p, vel)
+	out := make([]floatBuffer, 0, len(vs))
+	for i, v := range vs {
+		out = append(out, renderSound(d, v, rand.New(rand.NewPCG(seed, uint64(i)+1))))
+	}
+	return out
+}
+
+// takeVariances is each variant's variance at one velocity. A variant's stroke
+// lands at its own place in [-1,1], the places spread evenly over the set and
+// drawn in a seeded order, so one velocity layer's variant n is another's
+// stroke n.
+func takeVariances(d *SoundDef, p SoundShape, vel float64) []variance {
 	n := d.Variants
 	if n < 1 {
 		n = SoundVariants
@@ -115,19 +128,17 @@ func renderSet(d *SoundDef, p SoundShape, vel float64) []floatBuffer {
 	if d.FixedLength {
 		bl, lw = 1.0, 0
 	}
-	seed := fnv64a(d.Name)
-	sr := rand.New(rand.NewPCG(seed, 0))
+	sr := rand.New(rand.NewPCG(fnv64a(d.Name), 0))
 	at := sr.Perm(n)
-	out := make([]floatBuffer, 0, n)
+	out := make([]variance, n)
 	for i := range n {
 		f := float64(i)/float64(n) - 0.5
-		v := variance{
+		out[i] = variance{
 			pitch:  clampScale(bp*(1+pw*f), minPitchScale, maxPitchScale),
 			length: clampScale(bl*(1+lw*f), minLengthScale, maxLengthScale),
 			vel:    vel,
 			stroke: 2*(float64(at[i])+sr.Float64())/float64(n) - 1,
 		}
-		out = append(out, renderSound(d, v, rand.New(rand.NewPCG(seed, uint64(i)+1))))
 	}
 	return out
 }

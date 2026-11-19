@@ -42,6 +42,33 @@ times at one pressure, to set its strokes' spread (the Sonor set has one take a
 pressure); and the analysis reading the natural kit's kick, ringing at 52 Hz, as
 bass, which a model trained on the new corpus is to be benched against.
 
+### Fit a struck sound nearer the bank's kick and snare
+
+- Priority: P3
+- Affected files: `struck.go`
+
+The bank's fit leaves the kick 2.16 floors from its takes and the snare 4.12
+([Audio §5](audio.md#5-sounds-and-sound-effects)). The bank tunes their modes
+by hand (the kick's 1 : 2.07 : 3.26, the snare's 1 : 1.52 : 2.35 : 3.08 : 3.6),
+off the line from membrane to plate the genome walks, and gives each mode its
+own decay and gain: a decay slope over the modes and a gain tilt, as two genes
+more, took the snare about a floor nearer and the kick none. The smallest
+close: those two genes, once a corpus of struck sounds has trained and its fit
+wants them.
+
+### Cut the struck genome on hits that ring
+
+- Priority: P3
+- Affected files: `struck.go`, `bank/struck_test.go`
+
+Every gene ships. The bank's four drums cannot tell seven of them apart
+([Audio §5](audio.md#5-sounds-and-sound-effects)), but they ring 0.11 s at most
+and the fit hears 93 ms, the matched kit's reach: held where those drums hold
+them, the body would ring at 21 ms and the noise at 62 ms, and no struck sound
+could be a tom, a conga or a cymbal. What would decide a cut: hits that ring, a
+kit's toms and cymbals read in the lab, heard over a reach as long as their
+ring; a gene those cannot tell apart either may then be held.
+
 ### Read a matched kit's weak bands
 
 - Priority: P3
