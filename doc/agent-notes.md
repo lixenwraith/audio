@@ -664,7 +664,8 @@ that a document now states, and link the document instead.
   and is what picks a threshold set or a round. It shares the lines'
   transposition, found from the counts within lines, and their map, the
   register's unless the bass's places more notes by pitch and onset; where the
-  truth's clock is the recording's, match it `timed` and no map is fitted.
+  truth's clock is the recording's, match it `timed` and no map is fitted, to
+  its hits too: a groove matches as well, or better, a whole number of beats off.
 - **The register as one line is the order the two sides share.** A map fitted on
   each line's pitches in order, then every note near its place, matches a line's
   order by chance: rip and truth part the register's notes by different rules.

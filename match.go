@@ -565,8 +565,9 @@ type HitLine struct {
 // MatchHits aligns b's hits to a's drum by drum under the stretch within a
 // tenth of one, and the offset putting one of b's first hits on one of a's, that
 // match most, nearer to none when two tie: each hit of b takes the nearest
-// unmatched hit of a's drum within tol of it, in time order
-func MatchHits(a, b []RipHit, tol float64) HitsAgreement {
+// unmatched hit of a's drum within tol of it, in time order. Timed, b is on a's
+// own clock, as a truth annotated on the recording is: no map is searched.
+func MatchHits(a, b []RipHit, tol float64, timed bool) HitsAgreement {
 	var la, lb [InstrClap][]RipHit
 	for _, h := range a {
 		if h.Drum >= 0 && h.Drum < InstrClap {
@@ -584,7 +585,7 @@ func MatchHits(a, b []RipHit, tol float64) HitsAgreement {
 		slices.SortStableFunc(lb[d], byStart)
 	}
 	best, bestStretch, bestOffset, bestAway := -1, 1.0, 0.0, math.Inf(1)
-	for stretch := 0.9; stretch <= 1.1001; stretch += 0.005 {
+	for stretch := 0.9; !timed && stretch <= 1.1001; stretch += 0.005 {
 		seen := map[int64]bool{}
 		for _, h := range b[:min(len(b), 4)] {
 			for _, g := range a {

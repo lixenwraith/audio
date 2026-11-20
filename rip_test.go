@@ -1334,7 +1334,7 @@ func TestMatchHitsPlacesARipsDrumsOnTheGivenOnes(t *testing.T) {
 		}
 	}
 	r.Bars[5].Drums[InstrSnare] = append(r.Bars[5].Drums[InstrSnare], Step{Pos: 6})
-	ag := MatchHits(r.Hits(), given, beat/StepsPerBeat/2)
+	ag := MatchHits(r.Hits(), given, beat/StepsPerBeat/2, false)
 	want := [InstrClap][3]int{InstrKick: {15, 0, 1}, InstrSnare: {16, 1, 0}, InstrHihat: {64, 0, 0}}
 	for d, l := range ag.Drums {
 		if got := [3]int{l.Matched, len(l.OnlyA), len(l.OnlyB)}; got != want[d] {
@@ -1343,6 +1343,31 @@ func TestMatchHitsPlacesARipsDrumsOnTheGivenOnes(t *testing.T) {
 	}
 	if math.Abs(ag.Stretch-beat/0.5) > 0.005 || math.Abs(ag.Offset-(0.3-2*beat/0.5)) > 0.05 {
 		t.Errorf("map %.3f × given %+.3f, want %.3f × given %+.3f", ag.Stretch, ag.Offset, beat/0.5, 0.3-2*beat/0.5)
+	}
+}
+
+// TestMatchHitsTimedSearchesNoMap: hits given on the rip's own clock are
+// matched where they stand, though the rip heard the groove from two beats on
+// and a map two beats on, which a match not timed takes, matches every hit.
+func TestMatchHitsTimedSearchesNoMap(t *testing.T) {
+	const beat = 60.0 / 138
+	var heard, given []RipHit
+	for i := range 64 {
+		for _, d := range []InstrumentType{InstrKick, InstrHihat} {
+			if d == InstrHihat || i%2 == 0 {
+				given = append(given, RipHit{Start: float64(i) * beat / 2, Drum: d})
+				heard = append(heard, RipHit{Start: float64(i+4) * beat / 2, Drum: d})
+			}
+		}
+	}
+	matched := func(ag HitsAgreement) [2]int {
+		return [2]int{ag.Drums[InstrKick].Matched, ag.Drums[InstrHihat].Matched}
+	}
+	if ag := MatchHits(heard, given, beat/StepsPerBeat/2, false); math.Abs(ag.Offset-2*beat) > 1e-9 || matched(ag) != [2]int{32, 64} {
+		t.Errorf("not timed: map %.3f × given %+.3f, %v matched; want two beats on, %+.3f, and every hit", ag.Stretch, ag.Offset, matched(ag), 2*beat)
+	}
+	if ag := MatchHits(heard, given, beat/StepsPerBeat/2, true); ag.Stretch != 1 || ag.Offset != 0 || matched(ag) != [2]int{30, 60} {
+		t.Errorf("timed: map %.3f × given %+.3f, %v matched; want none, and all but the two beats given before the rip's", ag.Stretch, ag.Offset, matched(ag))
 	}
 }
 

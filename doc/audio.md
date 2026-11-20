@@ -740,7 +740,8 @@ snares and hats are hits (`RipHit`), a ride, tambourine or shaker a hat, and its
 other strikes (a tom, a crash) onsets of no line (`MIDIScore.Struck`), each
 with the key it was struck on (`RipHit.Key`).
 `MatchHits` lays the hits on the rip's own (`Rip.Hits`, each step placed on its
-beats) under the stretch and offset that match most, each within half a step.
+beats) under the stretch and offset that match most, each within half a step, or
+timed as they stand: a groove matches as well a whole number of beats off.
 `MatchBars` scores the rip's bar lines, which no note's map sees and on whose
 phase every pattern the rip compresses into turns, against a truth's beats and
 downbeats in the recording's seconds (`BarScore`): its median bar over the
