@@ -807,8 +807,9 @@ played with, so a rip through it also names the voices its registers were played
 with (`Rip.Voices`), the family playing the highest note (`RipFrames.Family`,
 shares over `RipFamilies`: piano, guitar, voice, bass, strings, winds, synth,
 drums or unknown), which no decoder reads yet, and the beat and the bar line
-(`ripmodels.HeadBeat`, `HeadDownbeat`, after the family in `FrameSpec`; a file of
-other heads is refused).
+(`ripmodels.HeadBeat`, `HeadDownbeat`, after the family in `FrameSpec`; a file
+whose heads do not start with `FrameSpec`'s is refused, and a head after them is
+read by nothing).
 From strikes both registers' notes start where a pitch is struck, as hard
 as it was, and last while
 it sounds or until it is let go (`Release`, the pitch ringing on as far as a new

@@ -51,9 +51,9 @@ const Layout = "layout"
 const layoutName = "315 bands three a semitone from G#0, a fine plane and a sharp one"
 
 // FrameSpec is the frame model the trainer builds, which a weight file must match
-// in its inputs, heads and layout: the piano's pitches, each plane's bands in dB in
-// two channels, fine then sharp, or the PCEN planes after them in four (features).
-// Its width, depth and window may differ.
+// in its inputs, heads and layout, any head after these read by nothing: the
+// piano's pitches, each plane's bands in dB in two channels, fine then sharp, or
+// the PCEN planes after them in four (features). Its width, depth and window may differ.
 func FrameSpec() transformer.Config {
 	n := audio.RipPiano.Len()
 	return transformer.Config{
@@ -159,9 +159,9 @@ func (t *tail) Read(p []byte) (int, error) {
 }
 
 // New wraps a frame model and a notes model, nil for none, refusing a model whose
-// file states no layout or another, a frame model whose inputs or heads are not
-// FrameSpec's, and a notes model that does not read the harmonic stack or lacks
-// one of notesHeads.
+// file states no layout or another, a frame model whose inputs are not FrameSpec's
+// or whose heads do not start with its, and a notes model that does not read the
+// harmonic stack or lacks one of notesHeads.
 func New(m, notes *transformer.Model) (*FrontEnd, error) {
 	for _, model := range []struct {
 		name string
@@ -181,8 +181,8 @@ func New(m, notes *transformer.Model) (*FrontEnd, error) {
 	if got.Inputs != want.Inputs || got.Channels != 2 && got.Channels != 4 {
 		return nil, fmt.Errorf("ripmodels: frame model reads %d inputs in %d channels, want %d in two, each plane's bands in dB over its level and the level, fine then sharp, or four, then each plane's PCEN and their mean", got.Inputs, got.Channels, want.Inputs)
 	}
-	if !slices.Equal(got.Outputs, want.Outputs) {
-		return nil, fmt.Errorf("ripmodels: frame model's heads are %v, want %v", got.Outputs, want.Outputs)
+	if len(got.Outputs) < len(want.Outputs) || !slices.Equal(got.Outputs[:len(want.Outputs)], want.Outputs) {
+		return nil, fmt.Errorf("ripmodels: frame model's heads are %v, want %v first", got.Outputs, want.Outputs)
 	}
 	if notes == nil {
 		return &FrontEnd{Frame: m}, nil
