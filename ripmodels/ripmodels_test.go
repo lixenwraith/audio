@@ -12,6 +12,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"os"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -191,6 +192,38 @@ func TestAModelOfAnotherLayoutIsRefusedByName(t *testing.T) {
 		if _, err := New(m, exported(t, other, 2, 0.7)); err == nil || !strings.Contains(err.Error(), layoutName) {
 			t.Errorf("a notes model stating %v: %v", stated, err)
 		}
+	}
+}
+
+// TestAHeadAfterTheSpecsIsReadByNothing: a frame model with a head after
+// FrameSpec's, and a notes model with a frame head before its measure, load, and
+// their frames are those the models without the head give
+func TestAHeadAfterTheSpecsIsReadByNothing(t *testing.T) {
+	cfg, notes := FrameSpec(), NotesSpec()
+	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window = 16, 2, 1, 32, 8
+	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
+	more, moreNotes, head := cfg, notes, transformer.Head{Name: "more", Size: 1}
+	more.Outputs = append(slices.Clone(cfg.Outputs), head)
+	moreNotes.Outputs = slices.Insert(slices.Clone(notes.Outputs), len(notes.Outputs)-1, head)
+	x := make([]float64, 5*audio.AudioSampleRate)
+	for i := range x {
+		x[i] = 0.3 * math.Sin(float64(i)*2*math.Pi*220/audio.AudioSampleRate)
+	}
+	var heard []*audio.RipFrames
+	for _, c := range [][2]transformer.Config{{cfg, notes}, {more, moreNotes}} {
+		m, _ := transformer.NewRandom(c[0], 1)
+		fe, err := New(m, exported(t, c[1], 2, 0.7))
+		if err != nil {
+			t.Fatalf("a frame model of %d heads and a notes model of %d: %v", len(c[0].Outputs), len(c[1].Outputs), err)
+		}
+		f, err := fe.Hear(x, audio.AudioSampleRate, audio.DefaultRipParams())
+		if err != nil {
+			t.Fatal(err)
+		}
+		heard = append(heard, f)
+	}
+	if !reflect.DeepEqual(heard[0], heard[1]) {
+		t.Error("a head after the specs' moved the frames")
 	}
 }
 
