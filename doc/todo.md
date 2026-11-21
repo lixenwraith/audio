@@ -288,6 +288,9 @@ What the bank's phrases wanted and a pattern cannot say, a line each:
 - a bank pattern that names a voice the bank's own sound document adds (a
   bell, a bowed line, an acid voice): `bank.Patterns` resolves instruments
   before those voices are registered, so the bank plays the model's five;
+- a second line under a melody that the ear keeps apart from it: two moving
+  parts in a mono mix's one register read as two melodies at once, so a
+  pattern holds one line; a place in a stereo field would let one back in;
 - a track's level apart from its velocities: a velocity also picks a drum's
   layer and opens a voice's filter, so the mix is set in the drums' norms and
   the voices' levels and reaches every pattern at once;

@@ -1028,6 +1028,114 @@ func TestDrawsFollowTheMotif(t *testing.T) {
 	}
 }
 
+// TestThemesDrawEvenly is the rule that a pool's themes take turns whatever their
+// number of patterns: a motif of three members is drawn as often as a pattern alone.
+func TestThemesDrawEvenly(t *testing.T) {
+	t.Cleanup(ResetRegistries)
+	ResetRegistries()
+	var pool []PatternID
+	for _, m := range []string{"a", "a", "a", "b", ""} {
+		pool = append(pool, RegisterPattern(&Pattern{Name: fmt.Sprint("p", len(pool)), Steps: 16, Motif: m,
+			Tracks: []Track{{Instr: InstrBass, Events: []Step{{Pos: 0, Vel: 0.5}}}}}))
+	}
+	s := NewSequencer(MaxBPM, nil)
+	drawn := map[PatternID]int{}
+	for range 30 {
+		drawn[s.draw(pool, PatternSilence, true)]++
+	}
+	if a := drawn[pool[0]] + drawn[pool[1]] + drawn[pool[2]]; a != 10 || drawn[pool[3]] != 10 || drawn[pool[4]] != 10 {
+		t.Errorf("30 draws took motif a %d times, b %d and the pattern alone %d, want 10 each", a, drawn[pool[3]], drawn[pool[4]])
+	}
+	if lo, hi := min(drawn[pool[0]], drawn[pool[1]], drawn[pool[2]]), max(drawn[pool[0]], drawn[pool[1]], drawn[pool[2]]); hi-lo > 1 {
+		t.Errorf("motif a's members were drawn %d to %d times, want them level", lo, hi)
+	}
+}
+
+// TestGroupsTakeTurns is the rule of a move's draw: every group plays before one
+// returns, and the music never goes straight back to the group it just left.
+func TestGroupsTakeTurns(t *testing.T) {
+	t.Cleanup(ResetRegistries)
+	ResetRegistries()
+	const groups = 5
+	for g := range groups {
+		registerDrawn(fmt.Sprint("r", g), RoleRhythm, fmt.Sprint(g))
+		registerDrawn(fmt.Sprint("m", g), RoleMelody, fmt.Sprint(g))
+	}
+	s := NewSequencer(MaxBPM, nil)
+	s.arr = buildArrangement()
+	s.SetIntensity(IntensityCalm, 0, false, false)
+	visits := []int{s.group}
+	for range 4*groups - 1 {
+		s.setGroup(s.otherGroup(IntensityCalm))
+		visits = append(visits, s.group)
+	}
+	for i, g := range visits {
+		if i >= 2 && g == visits[i-2] {
+			t.Fatalf("move %d went straight back to group %d: %v", i, g, visits)
+		}
+		if round := visits[i-i%groups : i]; slices.Contains(round, g) {
+			t.Fatalf("group %d returned before every group had played: %v", g, visits)
+		}
+	}
+}
+
+// TestHeldMoveKeepsTheMelody is the rule of the rest before a move: the melody
+// rests only into a downbeat that will move it, so a tier change inside the
+// variation gap, which holds the move a phrase, leaves the melody sounding.
+func TestHeldMoveKeepsTheMelody(t *testing.T) {
+	t.Cleanup(ResetRegistries)
+	ResetRegistries()
+	calm, normal := uint8(1<<IntensityCalm), uint8(1<<IntensityNormal)
+	for _, g := range []string{"x", "y"} {
+		for name, tiers := range map[string]uint8{"r": calm | normal, "mc": calm, "mn": normal} {
+			role := RoleMelody
+			if name == "r" {
+				role = RoleRhythm
+			}
+			RegisterPattern(&Pattern{Name: g + name, Steps: 16, Role: role, Groups: []string{g}, Tiers: tiers,
+				Tracks: []Track{{Instr: InstrBass, Events: []Step{{Pos: 0, Vel: 0.5, Dur: 1}}}}})
+		}
+	}
+	s := NewSequencer(MaxBPM, nil)
+	s.arr = buildArrangement()
+	s.SetIntensity(IntensityCalm, 0, false, false)
+	first := s.group
+	s.Start()
+	bar := make([]float64, SamplesPerBar(MaxBPM, Meter{}))
+	move := GroupPhrases * PhraseBars
+	for b := 0; b < move+PhraseBars+1; b++ {
+		if b == move-2 {
+			s.SetIntensity(IntensityNormal, 0, true, false) // lands two bars before the move
+		}
+		s.Generate(bar)
+		if b >= move-2 && b <= move+1 && s.slots[1].activeID() == PatternSilence {
+			t.Fatalf("bar %d has no melody: the held move rested it", b)
+		}
+	}
+	if s.group == first {
+		t.Errorf("still in the first group a phrase after the held move")
+	}
+}
+
+// TestKeySetAgainKeepsTheChord is the rule that only another progression starts
+// from its first chord: the key or the same progression set again mid-run leaves
+// the bar on the chord it had, in step with a phrase written across the chords.
+func TestKeySetAgainKeepsTheChord(t *testing.T) {
+	s := NewSequencer(MaxBPM, nil)
+	s.SetHarmonyCfg(DefaultRootNote, ScalePhrygian, []int{0, 3, 5, 6})
+	s.Start()
+	s.Generate(make([]float64, 2*SamplesPerBar(MaxBPM, Meter{})+1))
+	s.SetHarmonyCfg(DefaultRootNote+2, ScaleMinor, nil)
+	s.SetHarmonyCfg(0, -1, []int{0, 3, 5, 6})
+	if got := s.harmony.chordRoot(); got != 5 {
+		t.Errorf("the third bar's chord is %d after the key was set again, want 5", got)
+	}
+	s.SetHarmonyCfg(0, -1, []int{2, 4})
+	if got := s.harmony.chordRoot(); got != 2 {
+		t.Errorf("another progression starts on %d, want its first chord 2", got)
+	}
+}
+
 // TestPatternMacrosExpand is the rule that a music document's macros expand before
 // its keys are checked: a note line written once arrives as its notes.
 func TestPatternMacrosExpand(t *testing.T) {

@@ -403,9 +403,12 @@ the group plays follows what it played before. The sequencer holds one group,
 moving only when it does not cover the tier; each phrase downbeat swaps one drawn
 slot, melody, rhythm and bass in turn, to another member of its pool, once four
 bars have passed since any drawn slot changed; and after four phrases every drawn
-slot moves to another group behind the phrase's fill. A draw takes the pool
-member played least this run, so a held tier works through its pool before
-repeating.
+slot moves to another group behind the phrase's fill: the group this run has
+moved into least, and not straight back to the one before, so every group plays
+before one returns. A draw takes the theme played least this run, a motif's
+members in the pool or a pattern that names none, then that theme's member
+played least: a held tier works through its ideas before one repeats, however
+many patterns each has.
 
 Three ideas organise the drawing, from the outside in:
 
@@ -420,9 +423,10 @@ Three ideas organise the drawing, from the outside in:
 
 So a tier change keeps the melody's motif and takes its member at the new tier,
 which for the shipped themes is the line stated alone, then varied over a
-layer, then joined by a second line, and only a phrase variation changes the
-idea: the melody then fades out through the fill bar and the new motif enters
-alone on the downbeat. A melody change quantized to the bar lands on the end of
+layer, then over a fuller one, and only a phrase variation changes the idea: the
+melody then fades out through the fill bar and the new motif enters alone on the
+downbeat, while a downbeat the four-bar rest holds still moves nothing and the
+melody plays on into it. A melody change quantized to the bar lands on the end of
 the pattern's own cycle, so a four-bar theme is heard through. Fills come from
 the same group and tier. A slot placed explicitly is left alone.
 
@@ -431,10 +435,14 @@ The bank's music is written to that draw:
 - a pattern is a phrase of two or four bars whose last bar turns it round, a
   ghost, a run or a glide into the one; only `beat_basic`, the generated
   lead's bed, the scripted drop and the fills are a bar;
-- a melody's first track is its line, and a higher rung of its ladder adds
-  tracks after it, the order a reveal brings them in: a build-up keeps the line
-  and joins under it, and tiers differ by the lines that play more than by
-  level (`melody_gen`'s line is its last track, the one the generator writes);
+- a melody pattern holds one line, its first track, and a higher rung of its
+  ladder adds under it, in the order a reveal brings them in, a pad and at most
+  one figure, quiet and an octave below the line, or a second voice on the
+  line's own notes: nothing else moves in the line's register, where it would
+  read as a second melody over the first (`melody_gen`'s line is its last
+  track, the one the generator writes);
+- a fill is drums alone: the melody rests under a fill only when the downbeat
+  moves it, so a pitched fill would sound over it the rest of the time;
 - a chord's root lifts a chord-following line a sixth on the VI, so a line
   above the bass writes its third and fourth bars an octave down and the pads
   invert there, the bass alone taking the roots: right while a four-bar
@@ -449,11 +457,14 @@ The bank's music is written to that draw:
   louder at every step from calm to peak.
 
 Harmony holds root note, scale, and chord progression. Pattern degrees resolve
-through the current harmony at trigger time. With the same seed (`SetMusicSeed`)
-and identical bar-aligned command schedule, generated music is reproducible;
-wall-clock arrival relative to bars is not a replay contract, but draws and steps
-roll on separate streams of the seed, so a bar of skew between two runs moves no
-later draw: the arrangement holds where the notes under it differ.
+through the current harmony at trigger time. Setting the key, or the progression
+already held, mid-run keeps the chord the bar is on, so the chords stay in step
+with a phrase written across them; another progression starts from its first
+chord. With the same seed (`SetMusicSeed`) and identical bar-aligned command
+schedule, generated music is reproducible; wall-clock arrival relative to bars
+is not a replay contract, but draws and steps roll on separate streams of the
+seed, so a bar of skew between two runs moves no later draw: the arrangement
+holds where the notes under it differ.
 
 ## 8. MIDI files
 

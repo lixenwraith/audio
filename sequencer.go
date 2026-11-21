@@ -170,6 +170,7 @@ type Sequencer struct {
 	rng     *rand.Rand // draws: pools, groups, fills
 	stepRng *rand.Rand // steps: chance, humanization, the generated lead
 	plays   map[PatternID]uint32
+	visits  map[int]uint32 // moves into each group this run
 	gen     *melodyGen
 	// pos is the transport readout: bar<<32 | the patterns' step. Written once
 	// per step by Generate on the mixer goroutine. Relaxed on purpose — a reader
@@ -184,6 +185,7 @@ type Sequencer struct {
 	// phrases it has held, with its index published for telemetry
 	arr          arrangement
 	group        int
+	lastGroup    int // the group before this one
 	groupPhrases int
 	groupPub     atomic.Int32
 	tier         Intensity
@@ -218,6 +220,7 @@ func (s *Sequencer) Reseed(seed int64) {
 	s.rng = rand.New(rand.NewPCG(uint64(seed), seqStream))
 	s.stepRng = rand.New(rand.NewPCG(uint64(seed), stepStream))
 	s.plays = make(map[PatternID]uint32)
+	s.visits = make(map[int]uint32)
 }
 
 func (s *Sequencer) SetBPM(bpm int, quantize bool) {
@@ -474,9 +477,9 @@ func (s *Sequencer) updateVariation() {
 
 // planPhrase runs on a phrase's last bar. When its downbeat will move the melody to
 // another motif, or every slot to another group, the melody rests through this bar:
-// it fades out under the fill and the new idea enters alone on the one. A step
-// along its own ladder is seamless and needs no rest. The planned draw lands as a
-// pending change, which the downbeat's variation then leaves alone.
+// it fades out under the fill and the new idea enters alone on the one. A downbeat
+// the variation gap holds still moves nothing, so the melody plays on into it. The
+// planned draw lands as a pending change, which the downbeat's variation leaves alone.
 func (s *Sequencer) planPhrase() {
 	if s.barCount%PhraseBars != PhraseBars-1 || s.group < 0 {
 		return
@@ -486,9 +489,12 @@ func (s *Sequencer) planPhrase() {
 		return
 	}
 	next := s.barCount + 1
+	if next-s.swapBar < VariationGapBars {
+		return
+	}
 	switch {
 	case s.groupPhrases+1 >= GroupPhrases && s.coversOther(s.tier):
-	case drawnSlots[int(next/PhraseBars)%len(drawnSlots)] == 1 && next-s.swapBar >= VariationGapBars:
+	case drawnSlots[int(next/PhraseBars)%len(drawnSlots)] == 1:
 		pool := s.arr.pool(s.group, s.tier, RoleMelody)
 		if len(pool) < 2 {
 			return
@@ -525,31 +531,36 @@ func (s *Sequencer) coversOther(t Intensity) bool {
 // would let a held chord go; the incoming one is at full level from its first hit
 func (s *Sequencer) beatFade() int { return s.samplesPerStep * StepsPerBeat }
 
-// otherGroup draws a group other than the current one that covers the tier; -1 if none
+// otherGroup draws the group that covers the tier and this run has moved into
+// least, the rng choosing among equals: never the current one, and the one before
+// it only after the others as little visited, so every group plays before one
+// returns; -1 if none
 func (s *Sequencer) otherGroup(t Intensity) int {
-	n := 0
+	var others []int
 	for g := range s.arr.groups {
 		if g != s.group && s.arr.covers(g, t) {
-			n++
+			others = append(others, g)
 		}
 	}
-	if n == 0 {
+	if len(others) == 0 {
 		return -1
 	}
-	k := s.rng.IntN(n)
-	for g := range s.arr.groups {
-		if g != s.group && s.arr.covers(g, t) {
-			if k == 0 {
-				return g
-			}
-			k--
+	return least(s.rng, others, func(g int) uint32 {
+		if g == s.lastGroup {
+			return s.visits[g]<<1 | 1
 		}
-	}
-	return -1
+		return s.visits[g] << 1
+	})
 }
 
+// setGroup moves the draws into group g; none (-1) forgets the one before as well
 func (s *Sequencer) setGroup(g int) {
-	s.group, s.groupPhrases = g, 0
+	s.lastGroup, s.group, s.groupPhrases = s.group, g, 0
+	if g < 0 {
+		s.lastGroup = -1
+	} else {
+		s.visits[g]++
+	}
 	s.groupPub.Store(int32(g))
 }
 
@@ -701,11 +712,11 @@ func (s *Sequencer) SetIntensity(t Intensity, crossfadeSamples int, quantize, re
 	}
 }
 
-// draw picks the pool member played least this run, the rng breaking ties, so a
-// held tier works through its pool before repeating. Among members that share
-// like's motif when same, or do not when not, while any do: a tier change carries
-// the idea playing into its next weight, a phrase moves on to another. A single
-// member costs no rng, so a fixed arrangement plays the same music for a given seed.
+// draw picks from a pool by what has played least this run, the rng choosing among
+// equals: first the theme, a motif's members here or a pattern that names none,
+// then that theme's member, so a held tier works through its ideas before one
+// repeats however many patterns each has. Among members that share like's motif
+// when same, or do not when not, while any do. One candidate costs no rng.
 func (s *Sequencer) draw(pool []PatternID, like PatternID, same bool) PatternID {
 	if m := motifOf(like); m != "" {
 		kin := make([]PatternID, 0, len(pool))
@@ -718,33 +729,62 @@ func (s *Sequencer) draw(pool []PatternID, like PatternID, same bool) PatternID 
 			pool = kin
 		}
 	}
-	switch len(pool) {
-	case 0:
+	if len(pool) == 0 {
 		return PatternSilence
-	case 1:
-		s.plays[pool[0]]++
-		return pool[0]
 	}
-	least, n := ^uint32(0), 0
+	theme := func(a, b PatternID) bool {
+		m := motifOf(a)
+		return a == b || m != "" && m == motifOf(b)
+	}
+	heads := make([]PatternID, 0, len(pool))
+	for i, id := range pool {
+		if !slices.ContainsFunc(pool[:i], func(o PatternID) bool { return theme(id, o) }) {
+			heads = append(heads, id)
+		}
+	}
+	head := least(s.rng, heads, func(id PatternID) (n uint32) {
+		for _, o := range pool {
+			if theme(id, o) {
+				n += s.plays[o]
+			}
+		}
+		return n
+	})
+	members := make([]PatternID, 0, len(pool))
 	for _, id := range pool {
-		switch c := s.plays[id]; {
-		case c < least:
-			least, n = c, 1
-		case c == least:
+		if theme(head, id) {
+			members = append(members, id)
+		}
+	}
+	id := least(s.rng, members, func(id PatternID) uint32 { return s.plays[id] })
+	s.plays[id]++
+	return id
+}
+
+// least is the one of xs with the smallest count, the rng choosing among equals
+func least[T any](rng *rand.Rand, xs []T, count func(T) uint32) T {
+	low, n := ^uint32(0), 0
+	for _, x := range xs {
+		switch c := count(x); {
+		case c < low:
+			low, n = c, 1
+		case c == low:
 			n++
 		}
 	}
-	k := s.rng.IntN(n)
-	for _, id := range pool {
-		if s.plays[id] == least {
+	k := 0
+	if n > 1 {
+		k = rng.IntN(n)
+	}
+	for _, x := range xs {
+		if count(x) == low {
 			if k == 0 {
-				s.plays[id]++
-				return id
+				return x
 			}
 			k--
 		}
 	}
-	return pool[0]
+	return xs[0]
 }
 
 func motifOf(id PatternID) string {

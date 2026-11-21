@@ -122,6 +122,17 @@ that a document now states, and link the document instead.
 - An A-weighted RMS reads a sparse line at its rests: a piano tone a bar
   measured 5 dB under the pad it plainly sits over. Read a line against its
   layers at the level its loudest tenth of 50 ms frames reaches.
+- Two moving parts in one register read as two melodies on top of each other,
+  most at the high tiers' tempos, and a figure 5 dB under a line is one of
+  them: a melody pattern holds one line, and what moves under it sits an octave
+  below and some 12 dB down, read as the line is. A pitched fill does the same
+  for a bar, since the melody rests under a fill only before a move.
+- A uniform draw looks even across runs and uneven inside one. Read the draw
+  by simulating a conductor over a few hundred seeds, not by a held tier: step
+  the transport without rendering (the bar line's calls in `Generate`'s order,
+  a retiring player's gain falling by the step) under a tier tracker and a
+  tempo slew, and read each run's least and most heard group, the moves
+  straight back, and the bars with no melody.
 - A chord-following track is transposed whole, so the same steps sit a sixth
   higher on the VI than on the tonic: a pluck arpeggio that reads E4 to G5 on
   the tonic reached A6 on the VII. The bank writes a four-bar phrase's last two
