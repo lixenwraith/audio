@@ -419,12 +419,34 @@ Three ideas organise the drawing, from the outside in:
   variation moves to another motif, after a rest bar.
 
 So a tier change keeps the melody's motif and takes its member at the new tier,
-which for the shipped themes is the same line with more or fewer layers under
-it, and only a phrase variation changes the idea: the melody then fades out
-through the fill bar and the new motif enters alone on the downbeat. A melody
-change quantized to the bar lands on the end of the pattern's own cycle, so a
-four-bar theme is heard through. Fills come from the same group and tier. A slot
-placed explicitly is left alone.
+which for the shipped themes is the line stated alone, then varied over a
+layer, then joined by a second line, and only a phrase variation changes the
+idea: the melody then fades out through the fill bar and the new motif enters
+alone on the downbeat. A melody change quantized to the bar lands on the end of
+the pattern's own cycle, so a four-bar theme is heard through. Fills come from
+the same group and tier. A slot placed explicitly is left alone.
+
+The bank's music is written to that draw:
+
+- a pattern is a phrase of two or four bars whose last bar turns it round, a
+  ghost, a run or a glide into the one; only `beat_basic`, the generated
+  lead's bed, the scripted drop and the fills are a bar;
+- a melody's first track is its line, and a higher rung of its ladder adds
+  tracks after it, the order a reveal brings them in: a build-up keeps the line
+  and joins under it, and tiers differ by the lines that play more than by
+  level (`melody_gen`'s line is its last track, the one the generator writes);
+- a chord's root lifts a chord-following line a sixth on the VI, so a line
+  above the bass writes its third and fourth bars an octave down and the pads
+  invert there, the bass alone taking the roots: right while a four-bar
+  pattern and the progression count bars together, as they do from a start;
+- a snare, clap or kick fill plays between the steps the beat's own kick and
+  backbeat land on, or ghosts them, and a hat ghosts the step its pattern's
+  backbeat takes;
+- the drums' norms and the voices' levels leave the mix its headroom: every
+  rhythm, melody and bass a group's pools hold at a tier, played together and
+  under each of the tier's fills at seed 1, peaks under the limiter's ceiling
+  (-0.9 dBFS), the loudest at -1.4, and a group held at each tier in turn is
+  louder at every step from calm to peak.
 
 Harmony holds root note, scale, and chord progression. Pattern degrees resolve
 through the current harmony at trigger time. With the same seed (`SetMusicSeed`)

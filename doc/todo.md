@@ -274,6 +274,30 @@ note outside E1 to C7 and the analysis hears no other
 
 ## The bank's music
 
+### Give a pattern what the bank's music could not name
+
+- Priority: P2
+- Affected files: `pattern_spec.go`, `track.go`, `kit.go`, `sequencer.go`,
+  `bank/bank.go`
+- Guide: [Audio §7](audio.md#7-music-sequencer)
+
+What the bank's phrases wanted and a pattern cannot say, a line each:
+
+- a track that plays a struck sound of its own, a tom, a cymbal or an open
+  hat: the kit is four drums, and `SetKit` binds them for the whole engine;
+- a bank pattern that names a voice the bank's own sound document adds (a
+  bell, a bowed line, an acid voice): `bank.Patterns` resolves instruments
+  before those voices are registered, so the bank plays the model's five;
+- a track's level apart from its velocities: a velocity also picks a drum's
+  layer and opens a voice's filter, so the mix is set in the drums' norms and
+  the voices' levels and reaches every pattern at once;
+- a fill that takes the rhythm's bar: slot 2 plays over the beat, so no fill
+  drops the kick or the backbeat it leads back into;
+- a chord-following line that keeps its register: the chord's root lifts it a
+  sixth on the VI, so the bank writes a phrase's third and fourth bars an
+  octave down, right only while pattern and progression count bars together;
+- swing as a track's own: a swung lane writes `late` on each offbeat step.
+
 ### Settle what a macro over a base does with a default that invokes
 
 - Priority: P3
