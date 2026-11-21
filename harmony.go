@@ -36,7 +36,9 @@ func newHarmony() *harmony {
 	}
 }
 
-// set applies partial updates: root<=0 keeps, scale out of range keeps, nil prog keeps
+// set applies partial updates: root<=0 keeps, scale out of range keeps, nil prog
+// keeps. Only another progression starts from its first chord: a key set again
+// mid-run leaves the chords in step with the phrases written across them.
 func (h *harmony) set(root int, scale ScaleID, prog []int) {
 	if root > 0 && root < 128 {
 		h.root = root
@@ -44,11 +46,11 @@ func (h *harmony) set(root int, scale ScaleID, prog []int) {
 	if scale >= 0 && scale < ScaleCount {
 		h.scale = scaleTable[scale]
 	}
-	if len(prog) > 0 {
+	if len(prog) > 0 && !slices.Equal(prog, h.prog) {
 		// Own the slice — caller retains its copy across the command channel
 		h.prog = append(h.prog[:0:0], prog...)
+		h.chordIdx = 0
 	}
-	h.chordIdx = 0
 }
 
 func (h *harmony) advanceBar() {
