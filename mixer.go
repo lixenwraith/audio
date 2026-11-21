@@ -50,14 +50,72 @@ type Mixer struct {
 
 	pauseGain  float64
 	duckGain   float64
-	limitEnv   float64   // the limiter's peak follower
-	limitGain  float64   // the gain it has ramped to
-	limitBuf   []float64 // the look-ahead delay
+	limitEnv   float64      // the limiter's peak follower, over both ears
+	limitGain  float64      // the gain it has ramped to
+	limitBuf   [][2]float64 // the look-ahead delay, a frame's two ears
 	limitPos   int
 	musicBuf   []float64
 	sfxBuf     []float64
+	bed        bed
+	bedBuf     [2][]float64 // the bed's two ears over one period
+	mixBuf     [2][]float64 // the limited mix's two ears; the tap's while it is written
+	outBytes   []byte
 	musicTap   io.Writer
 	musicBytes []byte
+}
+
+// bed is the binaural bed: a sine an ear, the left at the carrier less half the
+// beat and the right at it plus half, each phase carried on through every change
+type bed struct {
+	want                 Binaural // what SetBinaural asked
+	level, carrier, beat float64  // where each has come to on its way there
+	fade                 float64  // the level's move a sample
+	phase                [2]float64
+}
+
+// set takes a new target. The level crosses to it over the music's own fade-in;
+// a bed set off fades on the tones it plays, and one coming from silence starts
+// on its carrier and beat rather than gliding to them from the last it played.
+func (b *bed) set(want Binaural) {
+	if want.Level == 0 {
+		want.Carrier, want.Beat = b.want.Carrier, b.want.Beat
+	}
+	if b.level == 0 {
+		b.carrier, b.beat = want.Carrier, want.Beat
+	}
+	if want.Level != b.want.Level {
+		b.fade = math.Abs(want.Level-b.level) / (MusicStartFadeIn.Seconds() * AudioSampleRate)
+	}
+	b.want = want
+}
+
+// restart brings the bed in from silence, as the music it starts with fades in
+func (b *bed) restart() {
+	b.level = 0
+	b.fade = b.want.Level / (MusicStartFadeIn.Seconds() * AudioSampleRate)
+}
+
+// render writes one period of the two ears and reports whether the bed sounds;
+// off, it writes nothing and moves no state
+func (b *bed) render(left, right []float64) bool {
+	if b.level == 0 && b.want.Level == 0 {
+		return false
+	}
+	for i := range left {
+		if b.level < b.want.Level {
+			b.level = min(b.want.Level, b.level+b.fade)
+		} else {
+			b.level = max(b.want.Level, b.level-b.fade)
+		}
+		b.carrier += (b.want.Carrier - b.carrier) * bedGlide
+		b.beat += (b.want.Beat - b.beat) * bedGlide
+		l := b.phase[0] + (b.carrier-b.beat/2)/AudioSampleRate
+		r := b.phase[1] + (b.carrier+b.beat/2)/AudioSampleRate
+		b.phase = [2]float64{l - math.Floor(l), r - math.Floor(r)}
+		left[i] = b.level * math.Sin(2*math.Pi*b.phase[0])
+		right[i] = b.level * math.Sin(2*math.Pi*b.phase[1])
+	}
+	return true
 }
 
 // NewMixer creates a mixer writing to out
@@ -83,6 +141,17 @@ func NewMixer(out io.Writer, cache *soundCache, k *kit, period time.Duration) *M
 	for i := range m.rapidVol {
 		m.rapidVol[i] = 1.0
 	}
+	frames := bufferFrames(period)
+	m.musicBuf = make([]float64, frames)
+	m.sfxBuf = make([]float64, frames)
+	for ear := range m.mixBuf {
+		m.bedBuf[ear] = make([]float64, frames)
+		m.mixBuf[ear] = make([]float64, frames)
+	}
+	m.musicBytes = make([]byte, frames*AudioBytesPerFrame)
+	m.outBytes = make([]byte, frames*AudioBytesPerFrame)
+	m.limitBuf = make([][2]float64, LimiterLookahead)
+	m.limitGain = 1
 	return m
 }
 
@@ -159,26 +228,21 @@ func onePoleCoef(tau time.Duration) float64 {
 	return 1.0 - math.Exp(-1.0/(tau.Seconds()*float64(AudioSampleRate)))
 }
 
+// The mix's ramps a sample: the pause fade's step, the duck's and the bed's
+// glide's one-pole coefficients and the limiter's release
+var (
+	pauseStep = 1.0 / (AudioPauseFade.Seconds() * float64(AudioSampleRate))
+	duckAtk   = onePoleCoef(MusicDuckAttack)
+	duckRel   = onePoleCoef(MusicDuckRelease)
+	limRel    = math.Exp(-1.0 / (LimiterRelease.Seconds() * float64(AudioSampleRate)))
+	bedGlide  = onePoleCoef(BinauralGlide)
+)
+
 // loop: drain commands, render, write — one pass per buffer tick
 func (m *Mixer) loop() {
 	defer close(m.done)
 	ticker := time.NewTicker(m.period)
 	defer ticker.Stop()
-
-	n := bufferFrames(m.period)
-	m.musicBuf = make([]float64, n)
-	m.sfxBuf = make([]float64, n)
-	m.musicBytes = make([]byte, n*AudioBytesPerFrame)
-	m.limitBuf = make([]float64, LimiterLookahead)
-	m.limitGain = 1
-	mixBuf := make([]float64, n)
-	outBytes := make([]byte, n*AudioBytesPerFrame)
-
-	// Pause fade steps per sample, not per tick
-	pauseStep := 1.0 / (AudioPauseFade.Seconds() * float64(AudioSampleRate))
-	duckAtk := onePoleCoef(MusicDuckAttack)
-	duckRel := onePoleCoef(MusicDuckRelease)
-	limRel := math.Exp(-1.0 / (LimiterRelease.Seconds() * float64(AudioSampleRate)))
 
 	for {
 		select {
@@ -190,7 +254,7 @@ func (m *Mixer) loop() {
 				return
 			}
 			m.drainCmds()
-			m.renderTick(mixBuf, outBytes, n, pauseStep, duckAtk, duckRel, limRel)
+			m.renderTick()
 		}
 	}
 }
@@ -231,6 +295,9 @@ func (m *Mixer) apply(c audioCmd) {
 	case cmdNote:
 		m.sequencer.TriggerNote(c.i1, c.f1, c.i2, c.instr)
 	case cmdMusicStart:
+		if !m.sequencer.IsRunning() {
+			m.bed.restart()
+		}
 		m.sequencer.Start()
 		m.musicRunning.Store(true)
 	case cmdMusicStop:
@@ -262,6 +329,8 @@ func (m *Mixer) apply(c audioCmd) {
 		m.musicTap = c.w
 	case cmdKit:
 		m.kit.bind(c.drums)
+	case cmdBinaural:
+		m.bed.set(c.bed)
 	}
 }
 
@@ -304,18 +373,29 @@ func (m *Mixer) startSound(st SoundID, vol float64) {
 	m.admit(activeSound{st: st, buffer: buf, volume: vol * m.rapidVol[st]})
 }
 
-// renderTick renders one buffer: music bus, sfx bus, duck, pause, limit, write
-func (m *Mixer) renderTick(mixBuf []float64, outBytes []byte, n int, pauseStep, duckAtk, duckRel, limRel float64) {
+// renderTick renders one buffer: music bus and bed, sfx bus, duck, pause, limit, write
+func (m *Mixer) renderTick() {
+	left, right := m.mixBuf[0], m.mixBuf[1]
 	isPaused := m.paused.Load()
 
 	clear(m.musicBuf)
 	clear(m.sfxBuf)
 
-	// Music plays out the pause fade, then freezes: position holds for an aligned resume
+	// Music plays out the pause fade, then freezes: position holds for an aligned
+	// resume. The bed sounds while the music does, and is in what the tap records.
+	bedOn := false
 	if (!isPaused || m.pauseGain > 0) && !m.musicMuted.Load() && m.sequencer.IsRunning() {
 		m.sequencer.Generate(m.musicBuf)
+		bedOn = m.bed.render(m.bedBuf[0], m.bedBuf[1])
 		if m.musicTap != nil {
-			floatToBytes(m.musicBuf, m.musicBytes)
+			tapL, tapR := m.musicBuf, m.musicBuf
+			if bedOn {
+				tapL, tapR = left, right
+				for i, v := range m.musicBuf {
+					tapL[i], tapR[i] = v+m.bedBuf[0][i], v+m.bedBuf[1][i]
+				}
+			}
+			floatToBytes(tapL, tapR, m.musicBytes)
 			_, _ = m.musicTap.Write(m.musicBytes) // a failed tap costs the recording, not playback
 		}
 	}
@@ -323,7 +403,7 @@ func (m *Mixer) renderTick(mixBuf []float64, outBytes []byte, n int, pauseStep, 
 	// Sfx tails always render; pause gain fades them out
 	sfxLive := len(m.active) > 0
 	if sfxLive {
-		m.active = m.mixActive(m.sfxBuf, n)
+		m.active = m.mixActive(m.sfxBuf, len(m.sfxBuf))
 	}
 
 	// sidechain duck — music dips under sounding sfx
@@ -332,7 +412,7 @@ func (m *Mixer) renderTick(mixBuf []float64, outBytes []byte, n int, pauseStep, 
 		duckTarget = MusicDuckAmount
 	}
 
-	for i := range n {
+	for i := range left {
 		coef := duckRel
 		if duckTarget < m.duckGain {
 			coef = duckAtk
@@ -353,10 +433,18 @@ func (m *Mixer) renderTick(mixBuf []float64, outBytes []byte, n int, pauseStep, 
 			}
 		}
 
+		// The bed joins after the duck, so sfx never dip it; with no bed both ears
+		// are the one mix, to the bit
 		v := (m.musicBuf[i]*m.duckGain + m.sfxBuf[i]) * m.pauseGain
-		// The limiter follows the peak now and ramps toward its gain by at most
-		// a look-ahead's worth a sample, applied to the sample a look-ahead ago
-		if a := math.Abs(v); a > m.limitEnv {
+		l, r := v, v
+		if bedOn {
+			l += m.bedBuf[0][i] * m.pauseGain
+			r += m.bedBuf[1][i] * m.pauseGain
+		}
+		// The limiter follows the louder ear's peak now and ramps toward its gain
+		// by at most a look-ahead's worth a sample, applied to both ears of the
+		// frame a look-ahead ago
+		if a := max(math.Abs(l), math.Abs(r)); a > m.limitEnv {
 			m.limitEnv = a
 		} else {
 			m.limitEnv *= limRel
@@ -371,17 +459,18 @@ func (m *Mixer) renderTick(mixBuf []float64, outBytes []byte, n int, pauseStep, 
 		} else {
 			m.limitGain = min(target, m.limitGain+step)
 		}
-		mixBuf[i] = m.limitBuf[m.limitPos] * m.limitGain
-		m.limitBuf[m.limitPos] = v
+		was := m.limitBuf[m.limitPos]
+		left[i], right[i] = was[0]*m.limitGain, was[1]*m.limitGain
+		m.limitBuf[m.limitPos] = [2]float64{l, r}
 		m.limitPos = (m.limitPos + 1) % LimiterLookahead
 	}
 
-	floatToBytes(mixBuf, outBytes)
+	floatToBytes(left, right, m.outBytes)
 
 	if m.outBroken {
 		return // keep rendering state; supervisor swaps output or latches silent
 	}
-	if _, err := m.output.Write(outBytes); err != nil {
+	if _, err := m.output.Write(m.outBytes); err != nil {
 		// Mixer doesn't exit on write error — flags broken output,
 		// continues; failover restores audio via cmdSwapOutput
 		m.outBroken = true
@@ -410,20 +499,19 @@ func (m *Mixer) mixActive(buf []float64, samples int) []activeSound {
 	return remaining
 }
 
-// floatToBytes converts float64 mono to interleaved stereo int16 LE bytes, hard
-// clipping what the limiter let through
-func floatToBytes(in []float64, out []byte) {
-	for i, v := range in {
-		if v > 1.0 {
-			v = 1.0
-		} else if v < -1.0 {
-			v = -1.0
+// floatToBytes converts the two ears' float64 samples to interleaved stereo
+// int16 LE bytes, hard clipping what the limiter let through; a mono mix is
+// its own second ear
+func floatToBytes(left, right []float64, out []byte) {
+	for i := range left {
+		for ear, v := range [2]float64{left[i], right[i]} {
+			if v > 1.0 {
+				v = 1.0
+			} else if v < -1.0 {
+				v = -1.0
+			}
+			binary.LittleEndian.PutUint16(out[i*4+ear*2:], uint16(int16(v*32767)))
 		}
-
-		i16 := int16(v * 32767)
-		idx := i * 4
-		binary.LittleEndian.PutUint16(out[idx:], uint16(i16))   // L
-		binary.LittleEndian.PutUint16(out[idx+2:], uint16(i16)) // R
 	}
 }
 

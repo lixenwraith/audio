@@ -47,6 +47,15 @@ const (
 	LimiterCeiling   = 0.9
 	LimiterLookahead = 64
 	LimiterRelease   = 80 * time.Millisecond
+
+	// The binaural bed plays a carrier and a beat within these, in Hz: a beat
+	// fades on carriers over about 1 kHz and blurs into roughness over about 30
+	// Hz, and both ears' tones stay audible. A new carrier or beat is glided to
+	// with the time constant BinauralGlide.
+	MinBinauralCarrier = 60.0
+	MaxBinauralCarrier = 1000.0
+	MaxBinauralBeat    = 40.0
+	BinauralGlide      = 250 * time.Millisecond
 )
 
 // --- Sfx policy ---

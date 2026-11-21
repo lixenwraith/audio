@@ -583,6 +583,28 @@ func (ae *AudioEngine) Tuning() float64 { return math.Float64frombits(ae.tuning.
 
 func (ae *AudioEngine) SetMusicVolume(vol float64) { ae.send(audioCmd{op: cmdMusicVol, f1: vol}) }
 
+// Binaural is the bed under the music: a sine in each ear, the left at Carrier
+// less half Beat and the right at Carrier plus half, in Hz, each at Level of
+// full scale, heard on headphones as one tone beating at Beat. A Level of zero
+// is no bed.
+type Binaural struct {
+	Carrier, Beat, Level float64
+}
+
+// SetBinaural sets the bed, held to the carriers, beats and levels it plays. It
+// sounds while the music does, unducked, and fades in with it; a new level is
+// crossed to over the same fade and a new carrier or beat glided to, each ear's
+// phase carried on. No offline render holds it.
+func (ae *AudioEngine) SetBinaural(b Binaural) {
+	if !(b.Level > 0) || math.IsNaN(b.Carrier+b.Beat) {
+		b = Binaural{}
+	}
+	b.Level = min(b.Level, 1)
+	b.Carrier = min(max(b.Carrier, MinBinauralCarrier), MaxBinauralCarrier)
+	b.Beat = min(max(b.Beat, 0), MaxBinauralBeat)
+	ae.send(audioCmd{op: cmdBinaural, bed: b})
+}
+
 // SetPattern targets a sequencer slot: 0 rhythm, 1 melody, 2 fill, 3 bass. A
 // crossfade of 0 plays p under the notes the slot still rings, as a song's bar
 // line does; any other retires them over at least MinCrossfadeSamples.
