@@ -386,10 +386,12 @@ What is left here, each to settle on trained weights:
   marking quarters at 0.98 and eighths at 0.3 reads a loop at 70 as 140; the
   plain tracker's prior (110 over 0.9 octaves) holds 70 there and turns at
   0.35. `tempo_prior` and `tempo_width` are tune's genes.
-- **A fast beat.** A head marking every beat alike over 170 a minute is
-  tracked at half by the prior, as a plain tracker's is, and its bars then hold
-  two of the music's. What else tells the two apart (the head halfway between
-  the tracked beats against at them) is to be measured on trained heads first.
+- **A fast beat.** The beat is cut to the finest one the head marks
+  (`finest`), so a fast beat whose weak beats the head marks over halfway is
+  no longer halved by the prior. Where it marks them lower (a guitar's weak
+  beats), the prior still parts a beat from its pairs: without it a half-note
+  beat wins on one guitar recording in eleven. The prior's centre and width
+  are tune's genes, moved only once its score counts the tempo.
 - **A bar that slips.** A bar holds its beats exactly, so a beat the tracker
   adds or loses in a ritardando moves every line after it; the cues' path
   absorbs one at `bar_move`. A cost in the head's own units is to be fitted on
@@ -397,10 +399,12 @@ What is left here, each to settle on trained weights:
 - **The stream** holds the phase of its first bars, as before: the downbeat
   head is not read again once they freeze. Reading it at every bar is the
   sections thread's.
-- **Half and double bars** are not offered (2 and 8 heard beats), nor 5/4 and
-  7/8: none is measured on a head. A 6/8 tracked on its dotted quarters, the
-  onsets on both their thirds, wants a bar of two heard beats: it reads 4/4 or
-  6/4 over them.
+- **Half and double bars** are not offered (2 and 8 heard beats), nor 5/4,
+  7/8 and 12/8: a 12/8 reads 6/8, a bar of two of its own, or 4/4 over its
+  dotted quarters. A 6/8 whose eighths the head marks under `beat_cut_3` of
+  its dotted quarters keeps those as the beat and reads 4/4 or 6/4 over them,
+  at two thirds of its tempo; one tracked on two eighths, which no meter
+  holds, reads them halved where its eighths pass 240 a minute.
 
 ## The live rip
 

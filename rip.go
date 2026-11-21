@@ -51,6 +51,8 @@ type RipParams struct {
 	BeatComb2 float64 `toml:"beat_comb_2"` // what the beat head's repetition at twice a lag adds to the lag's own, where the tempo is read from it
 	BeatComb3 float64 `toml:"beat_comb_3"` // at three times the lag
 	BeatComb4 float64 `toml:"beat_comb_4"` // and at four: half the beat's lag, whose odd multiples fall between the beats, then scores under the beat's
+	BeatCut2  float64 `toml:"beat_cut_2"`  // how far from its level between a beat's halves toward its level on the beats the head must stand on them for each to be a beat
+	BeatCut3  float64 `toml:"beat_cut_3"`  // and on its thirds, a compound meter's eighths
 
 	BarLine   float64 `toml:"bar_line"`   // the weight of a bar line's cues beside the onsets on its bar's steps
 	BarBeat   float64 `toml:"bar_beat"`   // the weight, among those cues, of the line's pulse standing out as a beat
@@ -85,7 +87,7 @@ func DefaultRipParams() RipParams {
 		OnsetFloor: 2.0, OnsetMin: 0.1, OnsetGap: 0.06, KickShare: 0.06, SnareShare: 0.45, SnareNoise: 0.1, HatShare: 0.3,
 		Harmonics: 6, HarmonicDecay: 0.8, Voicing: 0.3, Jump: 0.06, Switch: 0.35, Retrigger: 0.4, MinNote: 0.06,
 		SecondVoice: 0.5, Compress: 1, Cross: 0.003, Strike: 0.8, StrikeLow: 0.9, StrikeHold: 0.9, StrikeGap: 0.12, StrikeAgain: 0.95, Release: 0.8,
-		TempoComb: 0.5, BeatComb2: 0.8, BeatComb3: 0.5, BeatComb4: 0.6,
+		TempoComb: 0.5, BeatComb2: 0.8, BeatComb3: 0.5, BeatComb4: 0.6, BeatCut2: 0.5, BeatCut3: 0.33,
 		BarLine: 1, BarBeat: 1, BarAccent: 0.5, BarHead: 1, BarMove: 2,
 		MeterMargin: 0.35, MeterHead: 1, RepeatMargin: 0.03, NearMargin: 0.07, NearRepeat: 0.015,
 	}
@@ -131,6 +133,8 @@ var ripGenes = []ripGene{
 	{"beat_comb_2", 0, 1, func(p *RipParams) *float64 { return &p.BeatComb2 }},
 	{"beat_comb_3", 0, 1, func(p *RipParams) *float64 { return &p.BeatComb3 }},
 	{"beat_comb_4", 0, 1, func(p *RipParams) *float64 { return &p.BeatComb4 }},
+	{"beat_cut_2", 0, 1, func(p *RipParams) *float64 { return &p.BeatCut2 }},
+	{"beat_cut_3", 0, 1, func(p *RipParams) *float64 { return &p.BeatCut3 }},
 	{"bar_line", 0, 3, func(p *RipParams) *float64 { return &p.BarLine }},
 	{"bar_beat", 0, 3, func(p *RipParams) *float64 { return &p.BarBeat }},
 	{"bar_accent", 0, 2, func(p *RipParams) *float64 { return &p.BarAccent }},
@@ -1800,8 +1804,9 @@ func tuning(x []float64) float64 {
 // heard, from 240 bpm to 60, under a log-Gaussian prior on the tempo and a comb
 // that credits a lag with its multiples: the onsets' its double (TempoComb), the
 // head's, which marks the beat and little between, four as a plain tracker reads
-// it (BeatComb2 to 4). The onsets' is folded into the tracker's range, the head's
-// the beat it marks. The period is in frames.
+// it (BeatComb2 to 4). The onsets' is folded into the tracker's range; the head's
+// is cut to the finest beat it marks, so the recording and not the prior parts a
+// lag from its half or third. The period is in frames.
 func (f *RipFrames) tempo(p RipParams) (bpm, period float64) {
 	o, heard := f.beaten(), f.heard()
 	minLag, maxLag := int(60/(240*f.Hop)), int(60/(60*f.Hop))
@@ -1840,6 +1845,9 @@ func (f *RipFrames) tempo(p RipParams) (bpm, period float64) {
 			lag += 0.5 * (l - r) / d
 		}
 	}
+	if heard {
+		lag = f.finest(lag, p)
+	}
 	bpm = 60 / (lag * f.Hop)
 	for !heard && bpm < ripTempoMin {
 		bpm *= 2
@@ -1848,6 +1856,51 @@ func (f *RipFrames) tempo(p RipParams) (bpm, period float64) {
 		bpm /= 2
 	}
 	return bpm, 60 / (bpm * f.Hop)
+}
+
+// finest is the finest beat the beat head marks from a lag of per frames: its
+// beats' spans cut in two, or in three, where the head on the cuts stands from
+// its level between them toward its level on the beats by BeatCut2 or BeatCut3;
+// halves no faster than 240 a minute, a quarter's bound, and thirds to 480, the
+// eighths of a compound meter's dotted quarter
+func (f *RipFrames) finest(per float64, p RipParams) float64 {
+	cut := [...]float64{p.BeatCut2, p.BeatCut3}
+	for {
+		beats := f.beats(per, p, -1)
+		by := 0
+		for _, d := range [...]int{2, 3} {
+			if per/float64(d) >= 60/(float64(240*(d-1))*f.Hop) && len(beats) > 2 {
+				if on, at, between := f.marked(beats, d); at > between+cut[d-2]*(on-between) {
+					by = d
+					break
+				}
+			}
+		}
+		if by == 0 {
+			return per
+		}
+		per /= float64(by)
+	}
+}
+
+// marked is the beat head's mean on the beats, on the points cutting their spans
+// in d, and on those halfway between the cuts
+func (f *RipFrames) marked(beats []int, d int) (on, at, between float64) {
+	var n float64
+	for i := 0; i+1 < len(beats); i++ {
+		span := float64(beats[i+1] - beats[i])
+		on += peak(f.Beat, float64(beats[i]))
+		for j := 1; j < 2*d; j++ {
+			v := peak(f.Beat, float64(beats[i])+float64(j)*span/float64(2*d))
+			if j%2 == 0 {
+				at += v / float64(d-1)
+			} else {
+				between += v / float64(d)
+			}
+		}
+		n++
+	}
+	return on / n, at / n, between / n
 }
 
 // ripTempoMin and ripTempoMax bound the beat the tracker follows on the onsets:
@@ -2113,11 +2166,11 @@ func (f *RipFrames) meter(pulses []int, k int, bpm float64, hits [InstrClap][]ri
 // stored as, whichever pulse was tracked: 6 or 8 beats halve the tempo, 2 beats
 // or 3 eighths double it, fast tracked triplets read the simple meter at two
 // thirds, a drumless bar with no sixteenth is in eighths at half (3/8, 5/8, 7/8;
-// 6/8 as 3/8). Heard beats keep their reading but for a simple meter's eighths.
+// 6/8 as 3/8). Heard beats keep their reading: the head marks the meter's beat.
 func name(m Meter, tempo float64, k int, drums, sixteenths, heard bool) (Meter, float64) {
 	eighths := !drums && !sixteenths && tempo/2 >= MinBPM
 	switch n, d := m.norm().Num, m.norm().Den; {
-	case heard && !(d == 4 && n%2 == 1 && eighths):
+	case heard:
 		return m, tempo
 	case d == 2 && tempo/2 >= MinBPM: // 3/2, 4/2
 		return meterOf(n, 4), tempo / 2

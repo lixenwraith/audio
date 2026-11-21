@@ -476,6 +476,13 @@ that a document now states, and link the document instead.
   sit `ripOnsetLead` frames early (`heardLoop`), so the first beat's falls
   before the recording and is not written: a place that needs the first
   line's mark to win does not.
+- **A trained beat head marks strong beats over weak ones**, so its
+  repetition peaks at the beat's pairs as often as at the beat, and only the
+  prior parts them on guitar. Count a tempo change on the GuitarSet players
+  the frame model trained on apart from those it did not: the first read
+  right under nearly any decoder that follows the head. `finest` cuts by the head between the tracked
+  beats; its halves stop at 240 a minute because past it a guitar's eighths,
+  marked at about half its quarters, are taken.
 - **A change that must not move the rip is held by a digest of rips.** A scratch
   program: every WAV of a rendered corpus (stapes' `corpus <dir> 48 8 aug gen
   meters`) ripped through the analysis and through random weights of `FrameSpec`

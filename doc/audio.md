@@ -679,9 +679,17 @@ heard: offline the rip is that of the frames without them.
   the head on the onsets' scale (above its local mean, at unit deviation, so
   `tightness` weighs it as it weighs them). Half the beat's lag, whose odd
   multiples fall between the beats, scores under half the beat's, and no fold
-  follows: the beat is the one the head marks, 60 to 240 a minute, which the
-  prior alone parts from its half where the head marks both alike. The beats
-  are tracked on the head. Tracked beats it ranks over the frames between no
+  follows. The lag found is then cut to the finest beat the head marks
+  (`finest`): beats tracked at it, their spans cut in two or in three, and the
+  cuts taken as beats where the head on them stands from its level between
+  them toward its level on the beats by `beat_cut_2` (0.5) or `beat_cut_3`
+  (0.33), again from the cut lag. So the recording, not the prior, parts a
+  beat from the pairs a head marking strong beats over weak ones repeats at
+  most, and a compound meter's eighths, which the head marks as its beat, from
+  their dotted quarter. Halves stop at 240 a minute, a quarter's bound: past it
+  a guitar's eighths, which the head marks at half its quarters, would be
+  taken. Thirds reach 480, a fast 6/8's eighths. The beats are tracked on the
+  head. Tracked beats it ranks over the frames between no
   more often than chance (`claims`, `above`) are no beat it marks, and the
   onsets and the cues read the clip. A tempo the listener gives (`RipGrid`)
   stands, a quarter's.
@@ -730,9 +738,9 @@ heard: offline the rip is that of the frames without them.
   ([todo](todo.md#hear-the-beat-and-the-bar-line-on-trained-weights)).
 - **The name.** The tempo and the meter are the heard beats', so `name`'s
   rules that undo the tracker's half, double and triplets have nothing to
-  undo, and six heard beats stay 6/8. One convention holds: which
-  note carries a beat nobody divides is no sound, so a drumless bar of three
-  or five with no sixteenth is still written in eighths at half the tempo.
+  undo, and six heard beats stay 6/8, three 3/4 and five 5/4, drums or none:
+  the head marks the meter's own beat, and a guess from the notes that the
+  beat is an eighth halved the tempo of a drumless waltz it had read right.
 - **The stream** holds its first bars once its heard beats fill six bars of
   4/4, read as offline, and counts each later bar on from the last frozen line
   on beats tracked on the head, or by the cues where its first bars' heads gave
@@ -844,7 +852,7 @@ flatten the partials a saturated mix piles on every note; a `[rip]` table in a
 TOML document carries a set (`LoadRipParams`, `MarshalRipParams`), each key in
 its range: `onset_min`'s reaches 0.9, as a frame model sure of its drum hits
 wants its bar far above the analysis's 0.1. The bars' weights and
-margins are among them (`tempo_comb`, `beat_comb_2` to `4`, `bar_line`,
+margins are among them (`tempo_comb`, `beat_comb_2` to `4`, `beat_cut_2`, `beat_cut_3`, `bar_line`,
 `bar_beat`, `bar_accent`, `bar_head`, `bar_move`, `meter_margin`, `meter_head`,
 `repeat_margin`, `near_margin`, `near_repeat`), each at the value the decoders
 were written with, so a document that names none leaves a rip without the

@@ -519,10 +519,7 @@ func TestRipStreamReadsTheHeads(t *testing.T) {
 			t.Fatal(err)
 		}
 		lines := headLines(r)
-		want := Meter{3, 8} // three heard beats with no drum and no sixteenth are written in eighths
-		if m != nil {
-			want = *m
-		}
+		want := Meter{3, 4} // three heard beats, no drum and no sixteenth, as pinned
 		if r.Meter != want || r.Meter != off.Meter || r.BPM != off.BPM || len(r.Bars) < n/(per*beat)-2 || !every(lines, beat, per*beat) {
 			t.Errorf("pinned %v: %d bars in %s at %d bpm, the offline rip in %s at %d, lines %v: want %s on the head's lines, every %d frames from %d",
 				m != nil, len(r.Bars), r.Meter, r.BPM, off.Meter, off.BPM, lines[:min(len(lines), 6)], want, per*beat, beat)

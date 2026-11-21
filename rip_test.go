@@ -2537,11 +2537,11 @@ func TestABarIsNamedByItsBeats(t *testing.T) {
 		{Meter{6, 8}, 150, 3, false, false, Meter{3, 8}, 75, false},
 		{Meter{6, 8}, 150, 3, true, false, Meter{6, 8}, 150, false},
 		// beats that were heard keep their count: six stay 6/8, two stay 2/4, and
-		// a drumless three with no sixteenth is still written in eighths
+		// a drumless three with no sixteenth stays 3/4, the head marking its quarters
 		{Meter{6, 8}, 150, 3, false, false, Meter{6, 8}, 150, true},
 		{Meter{6, 8}, 180, 1, true, false, Meter{6, 8}, 180, true},
 		{Meter{2, 4}, 90, 1, true, false, Meter{2, 4}, 90, true},
-		{Meter{3, 4}, 147, 1, false, false, Meter{3, 8}, 73.5, true},
+		{Meter{3, 4}, 147, 1, false, false, Meter{3, 4}, 147, true},
 		{Meter{3, 4}, 147, 1, true, false, Meter{3, 4}, 147, true},
 	} {
 		if m, tempo := name(c.m, c.tempo, c.k, c.drums, c.sixteenths, c.heard); m != c.want || tempo != c.wantTempo {
@@ -3065,6 +3065,33 @@ func TestAMeterIsTheBeatsHeardToItsBar(t *testing.T) {
 		g, bpm := barsOf(t, f, [InstrClap][]ripHit{InstrHihat: hitsEvery(n, c.beat, 1, 0)})
 		if g.m != c.want || math.Abs(bpm-c.tempo) > 1.5 || !every(g.lines, 2*c.beat, c.per*c.beat) {
 			t.Errorf("a line every %d beats of %d frames: %s at %.1f bpm, lines %v, want %s at %.1f", c.per, c.beat, g.m, bpm, g.lines[:min(len(g.lines), 5)], c.want, c.tempo)
+		}
+	}
+}
+
+// TestTheTempoIsTheFinestBeatTheHeadMarks: a head marking every beat 27 frames
+// apart, each second one at 0.6, reads 191, where the prior took the pairs at 96;
+// one marking a 6/8's eighths 20 frames apart, the dotted quarters at 0.98 and
+// the eighths between at 0.45, reads them, 6/8 at 129, where the search stopped
+// at the dotted quarter's 86; a 4/4's eighths at 0.55 past 240 a minute are no beat
+func TestTheTempoIsTheFinestBeatTheHeadMarks(t *testing.T) {
+	const n = 3000
+	for _, c := range []struct {
+		step, line int // frames between marks, marks between lines
+		low        float64
+		every      int // marks from one at 0.98 to the next, those between at low
+		want       Meter
+		tempo      float64
+	}{{27, 4, 0.6, 2, Meter{}, 191.4}, {20, 6, 0.45, 3, Meter{6, 8}, 129.2}, {20, 8, 0.55, 2, Meter{}, 129.2}} {
+		f := headFrames(n, c.step, c.step, 0, c.line, 0)
+		for i := 0; i*c.step < n; i++ {
+			for k := max(i*c.step-1, 0); k <= i*c.step+1 && k < n && i%c.every != 0; k++ {
+				f.Beat[k] = c.low
+			}
+		}
+		g, bpm := barsOf(t, f, [InstrClap][]ripHit{InstrHihat: hitsEvery(n, c.step, 1, 0)})
+		if g.m != c.want || math.Abs(bpm-c.tempo) > 1.5 {
+			t.Errorf("marks every %d frames, all but every %d-th at %.2f: %s at %.1f, want %s at %.1f", c.step, c.every, c.low, g.m, bpm, c.want, c.tempo)
 		}
 	}
 }
