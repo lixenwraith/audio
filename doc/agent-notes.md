@@ -63,7 +63,7 @@ that a document now states, and link the document instead.
 ## The snapshot
 
 - `go run ./bank/snapshot [-wav] <dir> [document.toml ...]` writes down what a
-  build plays, 13 s for the bank. `patterns.txt` and `sounds.txt` list what the
+  build plays, 14 s for the bank. `patterns.txt` and `sounds.txt` list what the
   engine holds once started: every pattern in the order registered, a line an
   event, and every sound and voice, a line a table, a field left unset left
   out. `index.txt` is a line a render, with its samples, its peak and first half
@@ -79,8 +79,8 @@ that a document now states, and link the document instead.
   the bank as vif lays a player's (`PatternTOML`, `SoundFS` and `SoundFile`), a
   name the bank has replaced in place, so a diff against the bank's own
   snapshot is what the document changes, note by note. One argument moved in
-  `Kick4` moves 27 lines of `patterns.txt`, a line a pattern that invokes it,
-  those 27 renders and the song.
+  `Kick8` moves 17 lines of `patterns.txt`, a line a pattern that invokes it,
+  those 17 renders and the song.
 - It does not cover a sound's variants and a drum's velocity layers except as
   the patterns' hits play them; what only the live engine makes (the drawn
   arrangement, fills, reveals and crossfades, the mixer's levels, ducking and
@@ -89,14 +89,52 @@ that a document now states, and link the document instead.
   document's `[[song]]`; MIDI and the rip.
 - `melody_gen` is listed as registered, before any render: its own render
   rewrites its lead (Tests, above), and the song starts it on what that left.
-- The listings are the same on amd64 and 386; 168 of the bank's 195 renders
+- The listings are the same on amd64 and 386; 171 of the bank's 199 renders
   hash differently there, their levels the same to the hundredth of a dB.
   Compare snapshots taken on one platform.
 - A rewrite of a bank's macros is checked below the engine too: both files
   parsed and expanded (`macro.Set.Define`, `Expand`) to trees
   `reflect.DeepEqual` holds equal. What an expansion spends of the budget is
   not exported: it is the least `Set.MaxValues` the document expands under, by
-  bisection, 14,333 for the bank's music and 116 for its sfx.
+  bisection, 58,123 for the bank's music and 116 for its sfx.
+
+## The bank's music
+
+- A bank pattern names the model's five voices only: `bank.Patterns` resolves
+  each track's instrument as it parses, before any embedder registers the
+  bank's voices, so one that names a voice `voices.toml` adds fails as an
+  unknown instrument ([todo](todo.md#give-a-pattern-what-the-banks-music-could-not-name)).
+- The draw is rendered offline from a scratch test in the root package, as no
+  exported call holds a group at a tier: the bank read from `bank/*.toml` on
+  disk (the package cannot import `bank`), `NewSequencer` on a kit from
+  `buildKit`, `arr = buildArrangement()`, `setGroup(g)`, `SetIntensity`, then
+  `Generate` a bar at a time, the slots' `activeID` read after each. Four
+  phrases is a group's whole hold; a slot alone is the same run with the
+  others' `muted` and `quiet` set, which leaves the rng's draws where they were.
+- The rhythm slot reaches the limiter's ceiling alone: a kick and a snare both
+  peak in their first millisecond with the same sign and stay near it for 20
+  ms, so a four-on-the-floor backbeat sums them. Read a mix change over every
+  rhythm, melody and bass of a tier's pools together and under each fill, not
+  over one draw; the parent bank's loudest set read +4.0 dBFS.
+- A track masked out consumes none of the step rng, so a track rendered alone
+  is humanized otherwise than in its pattern and its samples do not sum to
+  the mix's: take a peak apart by slots (muted), not by tracks.
+- An A-weighted RMS reads a sparse line at its rests: a piano tone a bar
+  measured 5 dB under the pad it plainly sits over. Read a line against its
+  layers at the level its loudest tenth of 50 ms frames reaches.
+- A chord-following track is transposed whole, so the same steps sit a sixth
+  higher on the VI than on the tonic: a pluck arpeggio that reads E4 to G5 on
+  the tonic reached A6 on the VII. The bank writes a four-bar phrase's last two
+  bars an octave down above the bass, and a glide on such a track must be an
+  interval every chord shares: an octave, a fifth, a fourth, or the fourth up
+  to the fifth, the one whole tone all three triads hold.
+- A save folds a lane to one `Drum` or `Line` and writes `late`, `bend`,
+  `bend_at` and `prob` as arrays the lane's length when one step sets them: a
+  bass line with one glide carries 48 zeros. It costs text, not the expansion
+  budget (58,123 of 262,144 values for the bank).
+- stapes' tests name `beat_basic` and `beat_driving`, and one moves
+  `beat_driving.track.1.event.3` and counts the save's changed lines as one:
+  that lane stays a `Drum` of four hits or more.
 
 ## The save
 
