@@ -98,6 +98,31 @@ that a document now states, and link the document instead.
   not exported: it is the least `Set.MaxValues` the document expands under, by
   bisection, 58,123 for the bank's music and 116 for its sfx.
 
+## The mixer
+
+- A mixer holds every buffer from `NewMixer`, so a test steps it a period at a
+  time with no goroutine and no clock (`handMixer`, then `renderTick`), on a
+  nil kit's default voice. `PlayBuffer`'s command reads no clock where `Play`'s
+  dampens by the wall time since the last, so a stepped score plays its sfx as
+  buffers.
+- The snapshot never reaches the mixer, so a change that must not move what it
+  writes is held by a scratch test put in a worktree of main and in the branch:
+  the bank read from `bank/*.toml`, a mixer stepped through music, sfx, a tier
+  and a tempo change, a pause, a mute and a stop, and the sha256 printed of the
+  stream, the music recording, a WAV sink's file, `RenderMusic`,
+  `RenderTimeline`, `RenderBars` and `WriteWAV`. Only how each tree steps its
+  mixer differs between the two copies; the engine's own loop is the same
+  buffers every run while every command is queued before `Start`.
+- The limiter holds a peak to `LimiterCeiling` over `limRel` to the look-ahead
+  and one, 0.9167: the follower starts its release as the peak passes, may sit
+  one step under a plateau, and the gain follows the rising target at once.
+- A byte-for-byte test is proven by a mutation that moves bytes: 1e-12 off a
+  gain moves no 16-bit sample in two seconds, 1e-3 does. `go test -overlay`
+  compiles the mutated file in place of the tree's.
+- Two tones of one level read one envelope, yet a limiter following one ear
+  alone lets the other through once music plays under them, as the ears' peaks
+  then fall on different samples: test the limiter's two ears over music.
+
 ## The bank's music
 
 - A bank pattern names the model's five voices only: `bank.Patterns` resolves

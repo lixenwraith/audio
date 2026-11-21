@@ -32,6 +32,7 @@ const (
 	cmdAutoFill
 	cmdMusicTap // w receives the music bus alone, as it plays; nil detaches
 	cmdKit      // bind each drum to a sound and its takes
+	cmdBinaural // the bed's carrier, beat and level, each glided to
 )
 
 // audioCmd is the unified control/play message consumed by the mixer goroutine
@@ -56,4 +57,5 @@ type audioCmd struct {
 	buf     floatBuffer   // cmdPlayBuffer: single take, mixer-owned on receipt
 	voice   *VoiceDef     // cmdReloadVoice: the registered entry, read-only once sent
 	drums   *kitDrums     // cmdKit: mixer-owned on receipt
+	bed     Binaural      // cmdBinaural
 }

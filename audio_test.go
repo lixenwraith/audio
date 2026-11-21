@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"math"
 	"math/cmplx"
 	"os"
@@ -932,6 +933,370 @@ func TestAHostSinkReplacesBackendDetection(t *testing.T) {
 	defer sink.mu.Unlock()
 	if sink.n == 0 || sink.closed {
 		t.Fatalf("sink took %d bytes, closed %v; want written and left open", sink.n, sink.closed)
+	}
+}
+
+// handMixer is a mixer no goroutine runs, which a test steps a period at a time:
+// its music a bass note a beat on the default voice, begun at full level, its
+// stream written to out and its music recording kept
+func handMixer(t *testing.T, out io.Writer) (m *Mixer, tap *bytes.Buffer) {
+	t.Helper()
+	t.Cleanup(ResetRegistries)
+	var evs []Step
+	for pos := 0; pos < 16; pos += 4 {
+		evs = append(evs, Step{Pos: pos, Vel: 0.9, Dur: 3})
+	}
+	id := RegisterPattern(&Pattern{Name: "pulse", Steps: 16, Tracks: []Track{{Instr: InstrBass, Events: evs}}})
+	m, tap = NewMixer(out, newSoundCache(), nil, AudioBufferDuration), &bytes.Buffer{}
+	m.sequencer.SetPattern(slotBass, id, 0, false)
+	m.apply(audioCmd{op: cmdMusicTap, w: tap})
+	m.apply(audioCmd{op: cmdMusicStart})
+	m.sequencer.startGain = 1
+	return m, tap
+}
+
+// ears reads a stream's two channels back as samples
+func ears(pcm []byte) (left, right []float64) {
+	for i := 0; i+AudioBytesPerFrame <= len(pcm); i += AudioBytesPerFrame {
+		left = append(left, float64(int16(binary.LittleEndian.Uint16(pcm[i:])))/32767)
+		right = append(right, float64(int16(binary.LittleEndian.Uint16(pcm[i+2:])))/32767)
+	}
+	return left, right
+}
+
+// The score the tests of a stream with no bed play: a sound effect loud enough to
+// duck the music and reach the limiter, then a pause held past its fade
+const (
+	scoreTicks              = 40
+	scoreShot               = 4
+	scorePause, scoreResume = 18, 26
+)
+
+// scoreShotBuffer is the score's sound effect, 0.4 s of a tone over full scale
+func scoreShotBuffer() floatBuffer {
+	shot := make(floatBuffer, 2*AudioSampleRate/5)
+	for i := range shot {
+		shot[i] = 1.5 * math.Sin(2*math.Pi*300*float64(i)/AudioSampleRate)
+	}
+	return shot
+}
+
+// playScore steps a mixer with no bed through the score and returns its music
+// recording
+func playScore(t *testing.T, out io.Writer) []byte {
+	m, tap := handMixer(t, out)
+	for tick := range scoreTicks {
+		switch tick {
+		case scoreShot:
+			m.apply(audioCmd{op: cmdPlayBuffer, buf: scoreShotBuffer(), f1: 1})
+		case scorePause, scoreResume:
+			m.SetPaused(tick == scorePause)
+		}
+		m.renderTick()
+	}
+	return tap.Bytes()
+}
+
+// monoScore is the score as the mix of one channel makes it, each sample then
+// written to both ears: the music under the duck, the sound effect, the pause's
+// ramp and the limiter, and beside it the music alone. A stream with no bed is
+// these bytes.
+func monoScore(t *testing.T) (stream, tap []byte) {
+	t.Helper()
+	m, _ := handMixer(t, io.Discard)
+	seq, shot, at := m.sequencer, scoreShotBuffer(), -1
+	music := make([]float64, bufferFrames(AudioBufferDuration))
+	delay := make([]float64, LimiterLookahead)
+	duck, pause, env, gain, pos, lowest := 1.0, 1.0, 0.0, 1.0, 0, 1.0
+	both := func(to []byte, v float64) []byte {
+		pcm := uint16(int16(min(max(v, -1), 1) * 32767))
+		return binary.LittleEndian.AppendUint16(binary.LittleEndian.AppendUint16(to, pcm), pcm)
+	}
+	for tick := range scoreTicks {
+		if tick == scoreShot {
+			at = 0
+		}
+		paused := tick >= scorePause && tick < scoreResume
+		clear(music)
+		if !paused || pause > 0 {
+			seq.Generate(music)
+			for _, v := range music {
+				tap = both(tap, v)
+			}
+		}
+		target := 1.0
+		if at >= 0 && at < len(shot) {
+			target = MusicDuckAmount
+		}
+		for _, mus := range music {
+			sfx := 0.0
+			if at >= 0 && at < len(shot) {
+				sfx, at = shot[at], at+1
+			}
+			coef := duckRel
+			if target < duck {
+				coef = duckAtk
+			}
+			duck += (target - duck) * coef
+			if paused {
+				pause = max(pause-pauseStep, 0)
+			} else {
+				pause = min(pause+pauseStep, 1)
+			}
+			v := (mus*duck + sfx) * pause
+			if a := math.Abs(v); a > env {
+				env = a
+			} else {
+				env *= limRel
+			}
+			want := 1.0
+			if env > LimiterCeiling {
+				want = LimiterCeiling / env
+			}
+			if want < gain {
+				gain = max(want, gain-1.0/LimiterLookahead)
+			} else {
+				gain = min(want, gain+1.0/LimiterLookahead)
+			}
+			lowest = min(lowest, gain)
+			stream = both(stream, delay[pos]*gain)
+			delay[pos], pos = v, (pos+1)%LimiterLookahead
+		}
+	}
+	if lowest == 1 || pause != 1 {
+		t.Fatalf("the score took the limiter to %.2f and left the pause at %.2f: want it limited and resumed", lowest, pause)
+	}
+	return stream, tap
+}
+
+// TestWithNoBedBothEarsAreTheMonoMix: until a bed is set, the stream, the file a
+// WAV sink keeps of it and the music recording are the one channel's mix in both
+// ears, byte for byte, through a sound effect, the limiter and a pause.
+func TestWithNoBedBothEarsAreTheMonoMix(t *testing.T) {
+	want, wantTap := monoScore(t)
+	t.Run("stream", func(t *testing.T) {
+		var stream bytes.Buffer
+		playScore(t, &stream)
+		if !bytes.Equal(stream.Bytes(), want) {
+			t.Errorf("the stream of %d bytes is not the mono mix's %d in both ears", stream.Len(), len(want))
+		}
+	})
+	t.Run("WAV sink", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "stream.wav")
+		sink, err := newWAVSink(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		playScore(t, sink)
+		if err := sink.Close(); err != nil {
+			t.Fatal(err)
+		}
+		var file bytes.Buffer
+		writeWAVHeader(&file, uint32(len(want)))
+		file.Write(want)
+		if got, _ := os.ReadFile(path); !bytes.Equal(got, file.Bytes()) {
+			t.Errorf("the file of %d bytes is not its header and the mono mix in both ears, %d", len(got), file.Len())
+		}
+	})
+	t.Run("music recording", func(t *testing.T) {
+		if tap := playScore(t, io.Discard); !bytes.Equal(tap, wantTap) {
+			t.Errorf("the recording of %d bytes is not the music's %d in both ears", len(tap), len(wantTap))
+		}
+	})
+}
+
+// TestAnOfflineRenderHoldsNoBed: a render made offline is the same samples
+// whatever bed the engine plays, since a corpus is rendered through it.
+func TestAnOfflineRenderHoldsNoBed(t *testing.T) {
+	ae := startNullEngine(t)
+	slots := [MusicSlots]PatternID{PatternIDByName("beat"), PatternIDByName("tune")}
+	renders := []struct {
+		name   string
+		render func() ([]float64, error)
+	}{
+		{"RenderMusic", func() ([]float64, error) {
+			return ae.RenderMusic(slots, 140, Meter{}, 2, DefaultRootNote, ScalePhrygian, nil, 1)
+		}},
+		{"RenderTimeline", func() ([]float64, error) {
+			return ae.RenderTimeline([][MusicSlots]PatternID{slots, {slots[0]}}, 140, Meter{}, DefaultRootNote, ScalePhrygian, nil, 1)
+		}},
+	}
+	for _, r := range renders {
+		t.Run(r.name, func(t *testing.T) {
+			ae.SetBinaural(Binaural{})
+			bare, err := r.render()
+			if err != nil {
+				t.Fatal(err)
+			}
+			ae.SetBinaural(Binaural{Carrier: 220, Beat: 10, Level: 0.5})
+			ae.StartMusic()
+			under, err := r.render()
+			if err != nil || checkBuffer(t, r.name, bare) == 0 || !slices.Equal(bare, under) {
+				t.Errorf("the render under a bed differs from the %d samples with none, err %v", len(bare), err)
+			}
+		})
+	}
+}
+
+// bedStream steps a mixer with no music under a bed until it has risen to its
+// level, then for hold periods more, after then when there is one, and returns
+// the two ears of it all with the frame the hold begins on
+func bedStream(t *testing.T, bed Binaural, hold int, then func(*Mixer)) (left, right []float64, at int) {
+	t.Helper()
+	var stream bytes.Buffer
+	m, _ := handMixer(t, &stream)
+	m.sequencer.SetPattern(slotBass, PatternSilence, 0, false)
+	m.apply(audioCmd{op: cmdBinaural, bed: bed})
+	for range int(MusicStartFadeIn/AudioBufferDuration) + 1 {
+		m.renderTick()
+	}
+	at = stream.Len() / AudioBytesPerFrame
+	if then != nil {
+		then(m)
+	}
+	for range hold {
+		m.renderTick()
+	}
+	left, right = ears(stream.Bytes())
+	return left, right, at
+}
+
+// toneAt reads x's component at hz under a Hann window: its amplitude, and how
+// far its frequency lies from hz by the phase it turns from the first half of x
+// to the second
+func toneAt(x []float64, hz float64) (amp, off float64) {
+	half := len(x) / 2
+	frame := func(at int) complex128 {
+		var s complex128
+		for i := range half {
+			w := 1 - math.Cos(2*math.Pi*float64(i)/float64(half))
+			s += complex(x[at+i]*w, 0) * cmplx.Rect(1, -2*math.Pi*hz*float64(at+i)/AudioSampleRate)
+		}
+		return s * complex(2/float64(half), 0)
+	}
+	a, b := frame(0), frame(half)
+	turn := math.Remainder(cmplx.Phase(b)-cmplx.Phase(a), 2*math.Pi)
+	return cmplx.Abs(a), turn * AudioSampleRate / (2 * math.Pi * float64(half))
+}
+
+// TestEachEarPlaysTheCarrierLessAndPlusHalfTheBeat: under a bed the left ear is
+// one tone at the carrier less half the beat and the right one at it plus half,
+// each at the bed's level and neither in the other's ear.
+func TestEachEarPlaysTheCarrierLessAndPlusHalfTheBeat(t *testing.T) {
+	const carrier, level = 220.0, 0.25
+	for _, beat := range []float64{10, 25} {
+		left, right, at := bedStream(t, Binaural{Carrier: carrier, Beat: beat, Level: level}, 20, nil)
+		left, right = left[at:], right[at:]
+		low, high := carrier-beat/2, carrier+beat/2
+		lAmp, lOff := toneAt(left, low)
+		rAmp, rOff := toneAt(right, high)
+		lOther, _ := toneAt(left, high)
+		rOther, _ := toneAt(right, low)
+		t.Logf("beat %g Hz on %g: left %.4f Hz at %.4f, right %.4f Hz at %.4f; the other ear's tone at %.5f and %.5f",
+			beat, carrier, low+lOff, lAmp, high+rOff, rAmp, lOther, rOther)
+		if math.Abs(lOff) > 0.01 || math.Abs(rOff) > 0.01 || math.Abs(lAmp-level) > 0.01*level || math.Abs(rAmp-level) > 0.01*level {
+			t.Errorf("beat %g: left %.4f Hz at %.4f and right %.4f Hz at %.4f, want %g and %g Hz at %g", beat, low+lOff, lAmp, high+rOff, rAmp, low, high, level)
+		}
+		if lOther > 0.01*level || rOther > 0.01*level {
+			t.Errorf("beat %g: an ear holds the other's tone, at %.5f left and %.5f right", beat, lOther, rOther)
+		}
+	}
+}
+
+// TestAChangedBedKeepsEachEarsPhase: a new beat, carrier or level is moved to
+// with each ear's tone carried on, so no sample steps further than a tone of
+// the bed's level does, where a phase begun again or a level set at once would
+// jump; it settles on the tone asked, and a bed set off fades on its own tone.
+func TestAChangedBedKeepsEachEarsPhase(t *testing.T) {
+	const level = 0.25
+	from := Binaural{Carrier: 220, Beat: 10, Level: level}
+	for _, to := range []Binaural{{Carrier: 220, Beat: 25, Level: level}, {Carrier: 330, Beat: 10, Level: level}, {}} {
+		left, right, at := bedStream(t, from, 80, func(m *Mixer) { m.apply(audioCmd{op: cmdBinaural, bed: to}) })
+		steep := level*2*math.Pi*(max(from.Carrier, to.Carrier)+max(from.Beat, to.Beat)/2)/AudioSampleRate + 2.0/32767
+		for ear, x := range [][]float64{left[at-1:], right[at-1:]} {
+			for i := 1; i < len(x); i++ {
+				if d := math.Abs(x[i] - x[i-1]); d > steep {
+					t.Fatalf("to %+v: ear %d steps %.4f at sample %d of the change, a tone's steepest being %.4f", to, ear, d, i, steep)
+				}
+			}
+		}
+		// the last second is twelve time constants into the glide; an ear at rest writes zeros
+		last := right[len(right)-AudioSampleRate:]
+		if amp, off := toneAt(last, to.Carrier+to.Beat/2); to.Level == 0 && checkBuffer(t, "off", last) != 0 ||
+			to.Level > 0 && (math.Abs(amp-level) > 0.01*level || math.Abs(off) > 0.01) {
+			t.Errorf("to %+v: the right ear settled at %.4f, %.3f Hz from %g", to, amp, off, to.Carrier+to.Beat/2)
+		}
+		if _, off := toneAt(right[at:at+AudioSampleRate], from.Carrier+from.Beat/2); to.Level == 0 && math.Abs(off) > 0.01 {
+			t.Errorf("set off, the right ear fades %.3f Hz from the %g it played", off, from.Carrier+from.Beat/2)
+		}
+	}
+}
+
+// TestASoundEffectDoesNotDuckTheBed: the bed holds its level while a sounding
+// effect ducks the music under it.
+func TestASoundEffectDoesNotDuckTheBed(t *testing.T) {
+	const level = 0.25
+	var mix *Mixer
+	left, _, at := bedStream(t, Binaural{Carrier: 220, Beat: 10, Level: level}, 10, func(m *Mixer) {
+		mix = m
+		m.apply(audioCmd{op: cmdPlayBuffer, buf: make(floatBuffer, AudioSampleRate), f1: 1}) // a second of silence ducks as any sound
+	})
+	if amp, _ := toneAt(left[at+len(left[at:])/2:], 215); mix.duckGain > MusicDuckAmount+0.01 || math.Abs(amp-level) > 0.01*level {
+		t.Errorf("under a duck of %.2f the left ear plays at %.4f, want the bed's %g", mix.duckGain, amp, level)
+	}
+}
+
+// TestTheBedComesInWithTheMusic: when the music starts the bed rises from
+// silence over the music's own fade-in, never at the level it was left at.
+func TestTheBedComesInWithTheMusic(t *testing.T) {
+	const level = 0.25
+	fade := int(MusicStartFadeIn.Seconds() * AudioSampleRate)
+	left, _, at := bedStream(t, Binaural{Carrier: 220, Beat: 10, Level: level}, fade/bufferFrames(AudioBufferDuration)+2, func(m *Mixer) {
+		m.apply(audioCmd{op: cmdMusicStop})
+		m.apply(audioCmd{op: cmdMusicStart})
+	})
+	// the fade lags the stream by the limiter's look-ahead
+	in := left[at+LimiterLookahead:]
+	first, half, whole := checkBuffer(t, "first", in[:fade/100]), checkBuffer(t, "half", in[:fade/2]), checkBuffer(t, "whole", in[fade:])
+	if first > 0.02*level || half > 0.51*level || whole < 0.99*level {
+		t.Errorf("the bed peaks at %.4f in the fade's first hundredth, %.4f by its half and %.4f after it, of %g", first, half, whole, level)
+	}
+}
+
+// TestTheLimiterHoldsBothEarsUnderItsCeiling: a bed and music that pass full
+// scale together sound in each ear under the ceiling, by what the release gives
+// back over the look-ahead, as one channel's mix does.
+func TestTheLimiterHoldsBothEarsUnderItsCeiling(t *testing.T) {
+	var stream bytes.Buffer
+	m, _ := handMixer(t, &stream)
+	m.apply(audioCmd{op: cmdBinaural, bed: Binaural{Carrier: 220, Beat: 10, Level: 1}})
+	for range 60 {
+		m.renderTick()
+	}
+	held := LimiterCeiling * math.Pow(limRel, -(LimiterLookahead+1))
+	left, right := ears(stream.Bytes())
+	l, r := checkBuffer(t, "left", left), checkBuffer(t, "right", right)
+	t.Logf("a bed at full scale over the music peaks at %.4f left and %.4f right, the ceiling %.2f held to %.4f", l, r, LimiterCeiling, held)
+	if l > held || r > held || l < LimiterCeiling/2 || r < LimiterCeiling/2 {
+		t.Errorf("the ears peak at %.4f and %.4f, want each within the %.4f the limiter holds", l, r, held)
+	}
+}
+
+// TestTheMusicRecordingIsWhatPlaysInBothEars: under a bed the music recording
+// holds each ear's own tone, the frames the stream plays a look-ahead later.
+func TestTheMusicRecordingIsWhatPlaysInBothEars(t *testing.T) {
+	var stream bytes.Buffer
+	m, tap := handMixer(t, &stream)
+	m.apply(audioCmd{op: cmdBinaural, bed: Binaural{Carrier: 220, Beat: 10, Level: 0.2}})
+	for range 30 {
+		m.renderTick()
+	}
+	ahead := LimiterLookahead * AudioBytesPerFrame
+	if !bytes.Equal(stream.Bytes()[ahead:], tap.Bytes()[:tap.Len()-ahead]) {
+		t.Fatal("the recording is not the stream a look-ahead before it plays")
+	}
+	if left, right := ears(tap.Bytes()); slices.Equal(left, right) {
+		t.Error("the recording's two ears are one channel: the bed is not in it")
 	}
 }
 

@@ -84,15 +84,15 @@ func ReadWAV(r io.Reader) (mono []float64, rate int, err error) {
 	return mono, rate, nil
 }
 
-// WriteWAV emits samples as 16-bit stereo PCM. The sample path is floatToBytes
-// — the same soft limiter, hard clip and L/R duplication the mixer uses — so an
+// WriteWAV emits mono samples as 16-bit stereo PCM, each in both ears. The sample
+// path is floatToBytes, the hard clip and the bytes the mixer writes, so an
 // exported file is sample-identical to playback.
 func WriteWAV(w io.Writer, samples []float64) error {
 	if len(samples) > (math.MaxUint32-wavHeaderSize)/AudioBytesPerFrame {
 		return fmt.Errorf("wav: %d samples exceeds the format limit", len(samples))
 	}
 	data := make([]byte, len(samples)*AudioBytesPerFrame)
-	floatToBytes(samples, data)
+	floatToBytes(samples, samples, data)
 	if err := writeWAVHeader(w, uint32(len(data))); err != nil {
 		return err
 	}
@@ -121,13 +121,10 @@ func writeWAVHeader(w io.Writer, n uint32) error {
 }
 
 // wavSink is the "wav:<path>" backend: the mixer's byte stream captured to a
-// file. The header is written with zero sizes at open and patched on Close, so
-// a capture cut short by a crash still parses.
-//
-// The mutex is not optional. Write runs on the mix goroutine and Close on
-// whoever calls Stop or failover, and Close seeks to the header — an
-// interleaved Write would land at offset 0. It costs one uncontended
-// lock per 50ms tick.
+// file, its header written with zero sizes at open and patched on Close, so a
+// capture cut short by a crash still parses. The mutex is not optional: Write
+// runs on the mix goroutine and Close, which seeks to the header, on whoever
+// calls Stop or failover. It costs one uncontended lock a tick.
 type wavSink struct {
 	f      *os.File
 	w      *bufio.Writer // a disk stall must not reach the mix goroutine each period

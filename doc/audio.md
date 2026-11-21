@@ -45,17 +45,20 @@ sounds, voices or patterns; `bank` embeds the ones vif and stapes ship.
 
 ## 2. Stream contract
 
-- 44,100 Hz, two channels (the mix is mono, written to both), signed 16-bit
-  little-endian PCM, four bytes a frame;
+- 44,100 Hz, two channels, signed 16-bit little-endian PCM, four bytes a
+  frame: the music and the sfx are one channel written to both, and the two
+  differ only by the binaural bed (§6);
 - a 50 ms buffer (`AudioBufferDuration`) unless `AudioConfig.Buffer` names
   another, 441 frames per 10 ms (2,205 at 50).
 
 Every mixer pass drains pending commands, renders music and sfx into separate
-floating-point buses, sidechain-ducks music under sfx, applies the pause gain
-ramp, holds the sum under a peak limiter (it sees each peak 64 samples ahead and
-ramps its gain over that time, releasing over 80 ms, so stacked kicks duck
-without a click), converts samples, and writes one PCM buffer. The output writer
-is the only backend-specific part of that path.
+floating-point buses, sidechain-ducks music under sfx, adds the bed's tone to
+each ear, applies the pause gain ramp, holds the two ears under one peak limiter
+(it follows the louder ear, sees each peak 64 samples ahead and ramps its gain
+over that time, releasing over 80 ms, so stacked kicks duck without a click),
+converts samples, and writes one PCM buffer. The release starts as a peak
+passes, so the peak sounds up to 1.9% over the ceiling, at 0.917. The output
+writer is the only backend-specific part of that path.
 
 ## 3. Backend detection and failover
 
@@ -81,8 +84,9 @@ and shutdown can race.
 of two synthetic backends, never detected, that automation uses: `null` runs the
 full mixer and discards samples, and `wav:<path>` captures the live stream into a
 finalized WAV file. `RecordMusic` writes the music bus alone, before ducking, to a
-WAV file: what plays, so a muted or paused stretch adds nothing. It needs a
-running mixer, which `null` gives a machine with no device.
+WAV file, each ear with its tone of the bed: what plays, so a muted or paused
+stretch adds nothing. It needs a running mixer, which `null` gives a machine
+with no device.
 
 If no backend survives, `Start` returns `ErrNoAudioBackend` and the engine stays
 valid and silent: sound requests become no-ops with rejection telemetry, so the
@@ -263,6 +267,35 @@ change of pattern. A track mask (`SetTrackMask`, a bit a track, which the reveal
 also drives) silences tracks of one pattern: the slot holds it for that pattern
 and sets it whenever the pattern begins there, so a mask set while the slot waits
 for its bar line lands with it, and another pattern begins whole.
+
+The binaural bed (`SetBinaural`, a `Binaural` of carrier, beat and level) is a
+tone under the music that the mixer makes itself: a sine at the carrier less
+half the beat in the left ear and at the carrier plus half in the right, each
+at the level, which headphones give as one tone beating at the beat. Through
+speakers both ears hear both tones, a fainter beat in the air. A level of zero,
+where an engine starts, is no bed, and both ears are then the one mix to the
+bit. It joins the mix after the duck:
+
+    left  = music·duck + bed left  + sfx
+    right = music·duck + bed right + sfx      each × pause, then the limiter
+
+- It sounds while the music does: under the music's mute, its stop and its
+  pause, with no mute of its own, and a sounding sfx does not duck it. A mute
+  or a stop cuts it as it cuts the music.
+- Nothing before the mix knows of it: voices, tracks and the sequencer stay
+  one channel, and so does every offline render (`RenderMusic`,
+  `RenderTimeline`, `RenderBars`), which holds no bed whatever the engine
+  plays.
+- A change never steps the wave: each ear's phase runs on through a new
+  carrier or beat, glided to with a time constant of 250 ms (`BinauralGlide`),
+  so a carrier following a key glides on a key change; a new level is crossed
+  to over the music's own fade-in (`MusicStartFadeIn`), a bed set off fading on
+  the tones it played, and the bed rises from silence with the music when that
+  starts.
+- It takes a carrier of 60 Hz to 1 kHz and a beat up to 40 Hz
+  (`MinBinauralCarrier`, `MaxBinauralCarrier`, `MaxBinauralBeat`): a beat is
+  heard best on carriers of a few hundred hertz, fades over about 1 kHz and
+  blurs into roughness over about 30 Hz.
 
 ## 7. Music sequencer
 

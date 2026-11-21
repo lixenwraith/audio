@@ -116,6 +116,11 @@ the registry, `PlayBuffer` auditions it, `RenderVariants` renders the set,
 report what plays. `ResetRegistries` clears everything between a Stop and the
 next Start.
 
+`SetBinaural` lays a binaural bed under the music, the one thing the two
+channels differ by: a tone in each ear, a beat apart around a carrier, at a
+level of its own, which headphones give as a beat. It is off until set, and
+then the stream is what it was without one.
+
 ## Ripping a recording
 
 `RipWAV` and `RipSamples` listen to a recording and estimate its tempo, meter,
