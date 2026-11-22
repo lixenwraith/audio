@@ -344,11 +344,11 @@ holds it.
 - Priority: P3
 - Affected files: `rip.go`
 
-The rip reads 4/4, 3/4 and 6/8, and names them ([Audio
+The rip reads 4/4, 3/4 and 6/8, heard beats 12/8 too, and names them ([Audio
 §9](audio.md#9-ripping-a-recording)): a 2-beat bar is 4/4 at double tempo, a
 6- or 8-beat bar 3/4 or 4/4 at half, a triple bar of tracked triplets 3/4, so
 a slow waltz, a slow 4/4 and a jazz waltz tracked on its swing read right. 5/4,
-7/8, 9/8 and 12/8 still read as whichever of those fits. Offered as readings
+7/8, 9/8 and the cues' 12/8 still read as whichever of those fits. Offered as readings
 beside the three, they cost the margin chain 4/4 labels, and a linear score over
 path score, repetition and a prior per meter held fewer than the chain. The
 smallest close: 5/4 and 7/4 as readings taken only by the full margin, graded on
@@ -387,11 +387,12 @@ What is left here, each to settle on trained weights:
   plain tracker's prior (110 over 0.9 octaves) holds 70 there and turns at
   0.35. `tempo_prior` and `tempo_width` are tune's genes.
 - **A fast beat.** The beat is cut to the finest one the head marks
-  (`finest`), so a fast beat whose weak beats the head marks over halfway is
-  no longer halved by the prior. Where it marks them lower (a guitar's weak
-  beats), the prior still parts a beat from its pairs: without it a half-note
-  beat wins on one guitar recording in eleven. The prior's centre and width
-  are tune's genes, moved only once its score counts the tempo.
+  (`finest`), so a fast beat whose weak beats the head marks seven tenths of
+  the way to its strong ones is no longer halved by the prior. Where it marks
+  them lower (a guitar's weak beats), the prior still parts a beat from its
+  pairs: without it a half-note beat wins on one guitar recording in eleven.
+  The prior's centre and width are tune's genes, its truths' bars scored with
+  their beats.
 - **A bar that slips.** A bar holds its beats exactly, so a beat the tracker
   adds or loses in a ritardando moves every line after it; the cues' path
   absorbs one at `bar_move`. A cost in the head's own units is to be fitted on
@@ -399,12 +400,15 @@ What is left here, each to settle on trained weights:
 - **The stream** holds the phase of its first bars, as before: the downbeat
   head is not read again once they freeze. Reading it at every bar is the
   sections thread's.
-- **Half and double bars** are not offered (2 and 8 heard beats), nor 5/4,
-  7/8 and 12/8: a 12/8 reads 6/8, a bar of two of its own, or 4/4 over its
-  dotted quarters. A 6/8 whose eighths the head marks under `beat_cut_3` of
-  its dotted quarters keeps those as the beat and reads 4/4 or 6/4 over them,
-  at two thirds of its tempo; one tracked on two eighths, which no meter
-  holds, reads them halved where its eighths pass 240 a minute.
+- **Half and double bars** are not offered (2 and 8 heard beats), nor 5/4
+  and 7/8. 12/8 is, as two bars of 6/8 where the head stands at its lines
+  over 6/8's along the same stretch: a 6/8 whose head marks every other line
+  over the rest reads 12/8, and a 12/8 whose head marks its half bar as its
+  line reads 6/8, the head's own reading either way. A 6/8 or 12/8 whose
+  eighths the head marks under `beat_cut_3` of its dotted quarters keeps those
+  as the beat and reads 4/4 or 6/4 over them, at two thirds of its tempo; one
+  tracked on two eighths, which no meter holds, reads them as eighths at half
+  its tempo, or halved where its eighths pass 240 a minute.
 
 ## The live rip
 

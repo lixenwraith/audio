@@ -87,7 +87,7 @@ func DefaultRipParams() RipParams {
 		OnsetFloor: 2.0, OnsetMin: 0.1, OnsetGap: 0.06, KickShare: 0.06, SnareShare: 0.45, SnareNoise: 0.1, HatShare: 0.3,
 		Harmonics: 6, HarmonicDecay: 0.8, Voicing: 0.3, Jump: 0.06, Switch: 0.35, Retrigger: 0.4, MinNote: 0.06,
 		SecondVoice: 0.5, Compress: 1, Cross: 0.003, Strike: 0.8, StrikeLow: 0.9, StrikeHold: 0.9, StrikeGap: 0.12, StrikeAgain: 0.95, Release: 0.8,
-		TempoComb: 0.5, BeatComb2: 0.8, BeatComb3: 0.5, BeatComb4: 0.6, BeatCut2: 0.5, BeatCut3: 0.33,
+		TempoComb: 0.5, BeatComb2: 0.8, BeatComb3: 0.5, BeatComb4: 0.6, BeatCut2: 0.7, BeatCut3: 0.33,
 		BarLine: 1, BarBeat: 1, BarAccent: 0.5, BarHead: 1, BarMove: 2,
 		MeterMargin: 0.35, MeterHead: 1, RepeatMargin: 0.03, NearMargin: 0.07, NearRepeat: 0.015,
 	}
@@ -2127,18 +2127,19 @@ func (f *RipFrames) meter(pulses []int, k int, bpm float64, hits [InstrClap][]ri
 			unlike, near = f.repeats(rd), g.nearest(notes, hits, rootPC)
 		}
 		need := p.MeterMargin
-		var same, nested, longer bool
+		var same, nested, longer, two bool
 		if best.bars() > 0 {
 			a, b := rd.bar(bestRd)
-			same, nested, longer = a == b, a != b && a%b == 0, a > b // the same bar under another name; whole bars of best's: only stronger lines
+			same, nested, longer, two = a == b, a != b && a%b == 0, a > b, a == 2*b // the same bar under another name; whole bars of best's: only stronger lines
 		}
 		if best.bars() > 0 && !same && rd.m.Compound() && !f.heard() { // a compound meter only names a simple reading's bar, but six heard beats are one of their own
 			continue
 		}
 		// a longer bar of heard beats has fewer lines and more places for them, so its best
 		// scores higher by chance, and a head marking the half bar too marks six beats as it
-		// marks four: it is read only where the head stands at its lines over the best's
-		if f.heard() && longer && !nested && head <= bestHead+p.MeterHead {
+		// marks four: it is read only where the head stands at its lines over the best's, two
+		// of the best's bars over the best's lines along the same stretch, and never more
+		if f.heard() && longer && (!nested && head <= bestHead+p.MeterHead || nested && (!two || f.standsOver(rd.pulses, lines, best.lines) <= p.MeterHead)) {
 			continue
 		}
 		if nested {
@@ -2353,9 +2354,9 @@ func (f *RipFrames) readings(pulses []int, k int, bpm float64, pin *Meter, given
 }
 
 // heardReadings is the ways meter reads beats that were heard, every k-th of the
-// pulses, bpm a minute: 4/4, 3/4 and 6/8, a bar the meter's own beats (Rip.Beats)
-// at the tempo that makes its quarter, the note moved by octaves into the
-// sequencer's range; or a pin alone, the beat moved so. A tempo given is a
+// pulses, bpm a minute: 4/4, 3/4, 6/8 and 12/8, a bar the meter's own beats
+// (Rip.Beats) at the tempo that makes its quarter, the note moved by octaves into
+// the sequencer's range; or a pin alone, the beat moved so. A tempo given is a
 // quarter's, the meters those of the note the head marks there (claims).
 func (f *RipFrames) heardReadings(pulses []int, k int, bpm float64, pin *Meter, given bool) ([]ripReading, error) {
 	beats := make([]int, 0, len(pulses)/k+1)
@@ -2387,7 +2388,7 @@ func (f *RipFrames) heardReadings(pulses []int, k int, bpm float64, pin *Meter, 
 		}
 	}
 	var readings []ripReading
-	for _, m := range [...]Meter{{}, {3, 4}, {6, 8}} {
+	for _, m := range [...]Meter{{}, {3, 4}, {6, 8}, {12, 8}} {
 		if m = m.norm(); given && m.Beat() != note {
 			continue
 		}
@@ -2558,15 +2559,13 @@ func (f *RipFrames) heardLines(rd ripReading, c *ripLineCues, anchored bool) (li
 	o := f.onsets()
 	span := float64(rd.pulses[n-1]-rd.pulses[0]) / float64(n-1) * float64(4*rd.stride) // four tracked beats
 	c.beats(o, rd.pulses, rd.stride)
-	read := n // the beats the head is read at: it has not heard one on the recording's last frames
-	if rd.pulses[n-1]+ripHeadReach >= f.frames()-1 {
+	read := n // the beats the head is read at
+	if _, ok := f.lineHead(rd.pulses[n-1]); !ok {
 		read--
 	}
-	v, mean := make([]float64, read), 0.0 // the head at each, its highest within ripHeadReach frames
+	v, mean := make([]float64, read), 0.0
 	for i, b := range rd.pulses[:read] {
-		for t := max(b-ripHeadReach, 0); t <= b+ripHeadReach && t < len(f.Downbeat); t++ {
-			v[i] = max(v[i], f.Downbeat[t])
-		}
+		v[i], _ = f.lineHead(b)
 		mean += v[i] / float64(read)
 	}
 	phase := 0
@@ -2595,6 +2594,39 @@ func (f *RipFrames) heardLines(rd ripReading, c *ripLineCues, anchored bool) (li
 		lines = append(lines, rd.pulses[i])
 	}
 	return lines, score, felt, head
+}
+
+// lineHead is the downbeat head at a beat, its highest within ripHeadReach frames,
+// and whether it is read there: it has not heard a beat on the recording's last frames
+func (f *RipFrames) lineHead(at int) (float64, bool) {
+	var v float64
+	for t := max(at-ripHeadReach, 0); t <= at+ripHeadReach && t < len(f.Downbeat); t++ {
+		v = max(v, f.Downbeat[t])
+	}
+	return v, at+ripHeadReach < f.frames()-1
+}
+
+// standsOver is how far the downbeat head stands at a bar's lines over the lines
+// of a shorter reading from its first line to its last, in its mean level at the
+// beats: over one stretch, so the longer bar's phase leaves out no low line
+func (f *RipFrames) standsOver(beats, lines, shorter []int) float64 {
+	mean := func(at []int, keep func(int) bool) (float64, bool) {
+		var sum, n float64
+		for _, b := range at {
+			if v, ok := f.lineHead(b); ok && keep(b) {
+				sum, n = sum+v, n+1
+			}
+		}
+		return sum / max(n, 1), n > 0
+	}
+	every := func(int) bool { return true }
+	level, _ := mean(beats, every)
+	on, _ := mean(lines, every)
+	within, ok := mean(shorter, func(b int) bool { return b >= lines[0] && b <= lines[len(lines)-1] })
+	if !ok || level == 0 {
+		return 0
+	}
+	return (on - within) / level
 }
 
 // barPath decodes a reading's bars as a path over the pulses, each a whole bar's

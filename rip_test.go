@@ -3052,14 +3052,14 @@ func TestARecordingUnderSixBarsIsNotToldByItsRepetition(t *testing.T) {
 
 // TestAMeterIsTheBeatsHeardToItsBar: heard beats take a meter by the margins the
 // cues' readings do, and its bar holds the meter's own beats: three heard beats
-// 3/4 and four 4/4 at the beats' tempo, six 6/8 at half of it, the quarter two
-// of its eighths
+// 3/4 and four 4/4 at the beats' tempo, six 6/8 and twelve 12/8 at half of it,
+// the quarter two of its eighths
 func TestAMeterIsTheBeatsHeardToItsBar(t *testing.T) {
 	for _, c := range []struct {
 		beat, per int
 		want      Meter
 		tempo     float64
-	}{{40, 4, Meter{}, 129.2}, {40, 3, Meter{3, 4}, 129.2}, {36, 6, Meter{6, 8}, 71.8}} {
+	}{{40, 4, Meter{}, 129.2}, {40, 3, Meter{3, 4}, 129.2}, {36, 6, Meter{6, 8}, 71.8}, {36, 12, Meter{12, 8}, 71.8}} {
 		const n = 3000
 		f := headFrames(n, c.beat, c.beat, 0, c.per, 2)
 		g, bpm := barsOf(t, f, [InstrClap][]ripHit{InstrHihat: hitsEvery(n, c.beat, 1, 0)})
@@ -3069,8 +3069,38 @@ func TestAMeterIsTheBeatsHeardToItsBar(t *testing.T) {
 	}
 }
 
+// TestALongerHeardBarNeedsTheHeadAndIsNeverThreeOfTheBests: with no margin,
+// heard beats with a kick on every twelfth and the head marking every sixth alike
+// read 6/8, as two of its bars are read only where the head stands at their lines
+// over its; and the head at 0.5 every fourth beat and 0.98 every twelfth reads
+// 4/4, which a bar of three of its own never takes
+func TestALongerHeardBarNeedsTheHeadAndIsNeverThreeOfTheBests(t *testing.T) {
+	const n, beat = 3000, 36
+	p := DefaultRipParams()
+	p.MeterMargin = 0
+	twelfth := headFrames(n, beat, beat, 0, 12, 0)
+	for i := 4; i*beat < n; i += 4 {
+		for k := i*beat - 1; k <= i*beat+1 && k < n && i%12 != 0; k++ {
+			twelfth.Downbeat[k] = 0.5
+		}
+	}
+	hats := hitsEvery(n, beat, 1, 0)
+	for _, c := range []struct {
+		f    *RipFrames
+		hits [InstrClap][]ripHit
+		want Meter
+	}{
+		{headFrames(n, beat, beat, 0, 6, 0), [InstrClap][]ripHit{InstrKick: hitsEvery(n, beat, 12, 0), InstrHihat: hats}, Meter{6, 8}},
+		{twelfth, [InstrClap][]ripHit{InstrHihat: hats}, Meter{}},
+	} {
+		if g, _, _, err := (Ripper{}).grid(c.f, ripEvents{hits: c.hits}, p); err != nil || g.m != c.want {
+			t.Errorf("%s (%v), lines %v: want %s", g.m, err, g.lines[:min(len(g.lines), 5)], c.want)
+		}
+	}
+}
+
 // TestTheTempoIsTheFinestBeatTheHeadMarks: a head marking every beat 27 frames
-// apart, each second one at 0.6, reads 191, where the prior took the pairs at 96;
+// apart, each second one at 0.8, reads 191, where the prior took the pairs at 96;
 // one marking a 6/8's eighths 20 frames apart, the dotted quarters at 0.98 and
 // the eighths between at 0.45, reads them, 6/8 at 129, where the search stopped
 // at the dotted quarter's 86; a 4/4's eighths at 0.55 past 240 a minute are no beat
@@ -3082,7 +3112,7 @@ func TestTheTempoIsTheFinestBeatTheHeadMarks(t *testing.T) {
 		every      int // marks from one at 0.98 to the next, those between at low
 		want       Meter
 		tempo      float64
-	}{{27, 4, 0.6, 2, Meter{}, 191.4}, {20, 6, 0.45, 3, Meter{6, 8}, 129.2}, {20, 8, 0.55, 2, Meter{}, 129.2}} {
+	}{{27, 4, 0.8, 2, Meter{}, 191.4}, {20, 6, 0.45, 3, Meter{6, 8}, 129.2}, {20, 8, 0.55, 2, Meter{}, 129.2}} {
 		f := headFrames(n, c.step, c.step, 0, c.line, 0)
 		for i := 0; i*c.step < n; i++ {
 			for k := max(i*c.step-1, 0); k <= i*c.step+1 && k < n && i%c.every != 0; k++ {
