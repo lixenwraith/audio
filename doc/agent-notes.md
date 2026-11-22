@@ -456,6 +456,17 @@ that a document now states, and link the document instead.
   place by chance: six beats need the head at their lines over four's
   (`meter_head`). A test of it writes the half bar's marks too, and the marks
   six beats apart highest; a head marking every fourth beat alone never failed.
+- **A longer reading's phase can leave out a low line.** Each reading takes
+  the phase that scores best over the whole recording, and a longer bar has
+  more phases and fewer lines: on a four-bar 6/8 whose head marks every line
+  but the first (heard late), twelve eighths took a one-bar phase that skipped
+  it and stood 1.6 mean beats over 6/8, which must keep it. Weigh a bar of two
+  of the shorter's against the shorter's lines along the same stretch
+  (`standsOver`), not each reading's own lines (`head`), which favour fewer.
+- **Count a reading of more beats on loops of every meter.** Twelve heard
+  eighths took 5/4 and 4/4 loops over their heard quarters, three bars of
+  theirs to one of its, at half the tempo (5/4's tempo 17 of 19 to 6) while
+  lifting 12/8's bars, so three or more of the best's bars are never read.
 - **The cues' path leans on the recording's start, the heads' reading on
   nothing.** The path sums its bars, so one from the first pulse that fits a bar
   more wins, which gives it the bars of loops that start on a bar line where the

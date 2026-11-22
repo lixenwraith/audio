@@ -682,7 +682,7 @@ heard: offline the rip is that of the frames without them.
   follows. The lag found is then cut to the finest beat the head marks
   (`finest`): beats tracked at it, their spans cut in two or in three, and the
   cuts taken as beats where the head on them stands from its level between
-  them toward its level on the beats by `beat_cut_2` (0.5) or `beat_cut_3`
+  them toward its level on the beats by `beat_cut_2` (0.7) or `beat_cut_3`
   (0.33), again from the cut lag. So the recording, not the prior, parts a
   beat from the pairs a head marking strong beats over weak ones repeats at
   most, and a compound meter's eighths, which the head marks as its beat, from
@@ -698,9 +698,9 @@ heard: offline the rip is that of the frames without them.
   five beats a first bar needs included: a line falls on a tracked beat, and
   the grid cuts each bar in its meter's steps.
 - **A beat is the meter's own note**, as `Rip.Beats` lists it: a quarter in
-  4/4 and 3/4, an eighth in 6/8, six to the bar, never the felt dotted
-  quarter. So a reading is a bar of its meter's beats (`heardReadings`): four
-  heard beats 4/4 and three 3/4 at the beats' tempo, six 6/8 at half of it;
+  4/4 and 3/4, an eighth in 6/8 and 12/8, never the felt dotted quarter. So a
+  reading is a bar of its meter's beats (`heardReadings`): four heard beats
+  4/4 and three 3/4 at the beats' tempo, six 6/8 and twelve 12/8 at half of it;
   where that tempo is outside the sequencer's range the note moves by octaves
   (four beats at 352 are 4/8 at 176). A pinned meter keeps its name and moves
   the beat instead: a heard beat is its note moved by octaves into the range,
@@ -723,15 +723,20 @@ heard: offline the rip is that of the frames without them.
 - **The meter** is chosen as the cues' readings choose it, 4/4 first and
   another taken by `meter_margin` over it, twice for whole bars of the best's,
   so a waltz read 3/4 keeps it over 6/8's every other line; six heard beats
-  are a bar of their own, not a name for 3/4's. Two rules are the heads' own.
-  A longer bar that is no whole number of the best's, six beats against four,
-  is read only where the head at its lines stands over the head at the best's
-  by `meter_head` (1, in its mean beat's level): a longer bar has fewer lines
-  and more places for them, so its best place scores higher by chance, and a
-  head that marks the half bar as it marks the line marks every line of six
-  beats as of four. And how a reading repeats (`repeats`, `nearest`) says
-  nothing under six bars of 4/4, where the cues read no other meter at all:
-  there the score alone takes a meter.
+  are a bar of their own, not a name for 3/4's, and twelve one of their own,
+  not two of 6/8's. Two rules are the heads' own. A longer bar is read only
+  where the head at its lines stands over the head at the best's by
+  `meter_head` (1, in its mean beat's level): a longer bar has fewer lines and
+  more places for them, so its best place scores higher by chance, and a head
+  that marks the half bar as it marks the line marks every line of six beats
+  as of four, of twelve as of six. A bar that is no whole number of the
+  best's, six beats against four, is weighed so; a bar of two of the best's
+  against the best's lines along its own stretch (`standsOver`), since its
+  phase can leave out a line the head marks low, a recording's first, which
+  the best must keep; and three or more of the best's bars are never read,
+  twelve heard quarters being three bars of 4/4. And how a reading repeats
+  (`repeats`, `nearest`) says nothing under six bars of 4/4, where the cues
+  read no other meter at all: there the score alone takes a meter.
 - **A bar holds its beats**, no more and no fewer: the path's slack of a pulse
   or two is not taken here, since what a slipped bar should cost against a
   head's posterior is a number nothing fits yet
