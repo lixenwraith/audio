@@ -137,7 +137,9 @@ over `BandFrames`, which also hears the voices the notes are played with
 (`VoiceDef.Genes`). A front end that hears strikes has its notes held to the
 recording, by installed scores or by a trained judge loaded beside its notes
 model (`LoadRipJudge`, `Ripper.Judge`), and the strikes judged can be read with
-their verdicts and rows (`Ripper.Strikes`, `Rip.Strikes`). `ReadWAV` reads any
+their verdicts and rows (`Ripper.Strikes`, `Rip.Strikes`); where a notes model
+also hears where notes start (`RipFrames.Start`), a start no strike answers
+begins a note of the pitch that rises under it. `ReadWAV` reads any
 PCM or float width to mono. The primitives a search fits a rip with are here and
 the searches are not: `RenderNote` plays a voice at a note offline and
 `MelDistance` compares mel frames, `StruckFromGenes` makes a drum of genes,

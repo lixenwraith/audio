@@ -637,10 +637,15 @@ that a document now states, and link the document instead.
   frames' range, which `TestARipReadsThePitchesItsFramesSay` holds beside the
   padding. The accounting's templates are a MIDI key's (`accKeys`), so no
   range reaches them.
-- **A rip reads no frame head of a notes model but the measure.** `notesHeads`
-  names `voicing`, which `New` therefore asks of the file, and `read` never
-  reads it; the onset, drums, wave and voice are the frame model's. So what a
-  notes model's pooled regions hold moves no rip, only its trainer's loss.
+- **A rip reads two frame heads of a notes model: the measure and the onset.**
+  `notesHeads` names `voicing`, which `New` therefore asks of the file, and
+  `read` never reads it; the drums, wave and voice are the frame model's, and
+  so is the onset strength (`Flux`), the notes model's onset read beside it into
+  `RipFrames.Start`, never in its place, as the beats and a judge's row read the
+  flux. So what a notes model's pooled regions hold moves a rip by its starts.
+- A `Rip` carries its `RipParams`, so a digest of rips' JSON taken before and
+  after a new parameter differs on every rip, a zeroed `Params` too, since it
+  marshals the new keys: hash each rip's JSON with the `Params` key deleted.
 - A change that must leave the rips of files saved before it alone is held on
   such files: `NewRandom` of both specs saved by a scratch module on the last
   tag (the sure row zeroed), then on each build every exported field of the
