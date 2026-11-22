@@ -824,6 +824,13 @@ that a document now states, and link the document instead.
   calls). Notes that start on one frame are walked as `streams`' unstable sort
   leaves the decoders' order, and the parting follows that order with no cost
   tied ([todo](todo.md#walk-the-notes-that-start-together-in-an-order-of-their-own)).
+- **The parting keeps a cost a state and one back-pointer a note.** After note
+  k every state but the newest came by k joining the line of the note before
+  it, so only the newest says where it came from (`from`); a table of every
+  state at every note was a state a pair of notes, 205 MB over 4,000 notes and
+  1.8 GB over 12,000. A change to it is held by the old function kept beside it
+  in a scratch test, over random notes of quantized lengths and strengths, whose
+  costs tie.
 
 ## A live rip
 
