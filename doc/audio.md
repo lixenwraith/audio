@@ -832,6 +832,25 @@ and tempo map, placed on the recording by the agreement's map (`MIDIScore.Beats`
 downbeats from the first full bar), and a JAMS file its `beat_position`
 annotation in the recording's own clock (`ReadJAMSBeats`, as GuitarSet's,
 position 1 a downbeat).
+An agreement keeps the pairs it matched (`LineAgreement.Pairs`,
+`HitLine.Pairs`), and what a truth says past pitch and onset is read over those
+matched by pitch and onset, each a reading of its own. `Ends`: a note's end is
+right within a fifth of the given note's length or 50 ms, the more of the two,
+as MIREX's note tracking takes offsets, the given's placed by the map, and each
+end's offset is kept in the given's lengths. `Levels`: a velocity's dB over the
+given's, less the median of its group's, right within 3 dB, half the step
+between two dynamics; the group is the recording for notes, whose front end
+reads it at its peak, and each drum for hits (`HitsAgreement.Levels`), which a
+rip reads against its drum's loudest. `Parts`: the lines, melody, under and
+bass, against the parts a truth names (`RipNote.Part`) as BCubed reads a
+clustering against classes, each note's share of its line's notes that are of
+its part and of its part's notes that are on its line, so neither side's names
+nor how many lines it has enter. `MatchKey` reads the tonic by its pitch class
+and the scale; `MatchChords` reads a second of the chords given (`RipChord`)
+right where a bar of the rip's names its root, its `Progression` degree's in
+the rip's key, which is all a rip says of a chord, and wrong where no bar lies.
+A rhythm's note gives no end and no velocity, nor does a given velocity of zero
+or under.
 `NoteLevels` reads how loud the recording plays each note given, its first
 harmonics' peak around its onset placed by the agreement's map (`Agreement.At`,
 through the notes the line leading it matched), so the notes heard can be counted by
