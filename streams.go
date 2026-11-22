@@ -94,28 +94,22 @@ func streams(notes []ripNote, hop float64, lead LeadRule) []ripNote {
 		}
 		return c
 	}
-	// state after note k: the index of the other stream's last note, -1 for
-	// none, at states[k][other+1]; note k is the last of its own. Each holds its
-	// cheapest cost and from where it came, as the other stream's last note before
-	// k and whether k joined the stream of k-1. A tie goes to the earliest other,
-	// met first in the walk, so the parting is the notes' whatever the run.
-	type arrival struct {
-		cost float64
-		from int
-		same bool
-	}
-	states := make([][]arrival, n)
-	states[0] = []arrival{{cost: streamStart, from: -1, same: true}}
+	// state after note k: the other stream's last note, -1 for none, its cheapest
+	// cost at costs[other+1]; note k is the last of its own. Every state but the
+	// newest came by k joining the stream of k-1, so only that one keeps where it
+	// came from (from[k]). A tie goes to the earliest other, met first in the
+	// walk, so the parting is the notes' whatever the run.
+	costs, from := make([]float64, 1, n), make([]int, n)
+	costs[0] = streamStart
 	for k := 1; k < n; k++ {
-		states[k] = make([]arrival, k+1)
-		for i, prev := range states[k-1] {
+		join, apart := cost(k-1, k), !together(k-1, k)
+		var best float64
+		for i, prev := range costs {
 			other := i - 1
-			// k joins the stream of k-1
-			states[k][i] = arrival{cost: prev.cost + cost(k-1, k), from: other, same: true}
 			// k joins the other stream, started here or continued from other;
 			// the change costs nothing where k sounds together with k-1
-			c := prev.cost
-			if !together(k-1, k) {
+			c := prev
+			if apart {
 				c += streamSwitch
 			}
 			if other < 0 || k-1-other > streamMemory { // no note, or one long silent and forgotten
@@ -123,23 +117,25 @@ func streams(notes []ripNote, hop float64, lead LeadRule) []ripNote {
 			} else {
 				c += cost(other, k)
 			}
-			if i == 0 || c < states[k][k].cost {
-				states[k][k] = arrival{cost: c, from: other, same: false}
+			if i == 0 || c < best {
+				best, from[k] = c, other
 			}
+			costs[i] = prev + join // k joins the stream of k-1
 		}
+		costs = append(costs, best)
 	}
 	// the cheapest end, walked back into stream numbers
 	best, at := math.Inf(1), -1
-	for i, a := range states[n-1] {
-		if a.cost < best {
-			best, at = a.cost, i-1
+	for i, c := range costs {
+		if c < best {
+			best, at = c, i-1
 		}
 	}
 	same := make([]bool, n)
 	for k := n - 1; k >= 1; k-- {
-		a := states[k][at+1]
-		same[k] = a.same
-		at = a.from
+		if same[k] = at != k-1; !same[k] {
+			at = from[k]
+		}
 	}
 	stream := make([]int, n)
 	for k := 1; k < n; k++ {
