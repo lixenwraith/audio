@@ -235,7 +235,7 @@ func sureSpread(notes *transformer.Model) (lo, hi float32) {
 // model when there is one, and reads their heads into frames: the onset and drum
 // scores as strengths, the pitch scores as salience and chroma, the wave scores
 // and voice genes, and where a model has them the strikes, releases, velocities,
-// the family's shares, the beat, the downbeat, the cents and what plays each pitch.
+// family shares, beat, downbeat, cents, what plays each pitch and note starts.
 func (fe *FrontEnd) Hear(x []float64, rate int, _ audio.RipParams) (*audio.RipFrames, error) {
 	in := features(audio.BandFrames(x, rate), fe.pcen())
 	out := fe.Frame.Forward(fe.planes(in))
@@ -292,6 +292,9 @@ func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 		if head(HeadCents, 0) != nil {
 			f.Cents, f.CentsError = make([]float32, 0, n*rg.Len()), make([]float32, 0, n*rg.Len())
 		}
+		if len(fe.Notes.Slice(notes[0], HeadOnset)) == 1 { // the notes model's own, beside the frame model's flux
+			f.Start = make([]float64, n)
+		}
 		f.VoiceAt, f.Voices = make([]uint8, 0, n*audio.RipVoiceCells), make([]uint8, 0, n*audio.RipVoiceCells*audio.RipVoiceSize)
 		f.Sure = float64(head(HeadSure, 0)[0])
 	}
@@ -322,6 +325,9 @@ func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 		}
 		f.Family = appendSoftmax(f.Family, head(HeadFamily, t))
 		f.Beat[t], f.Downbeat[t] = sigmoid(head(HeadBeat, t)[0]), sigmoid(head(HeadDownbeat, t)[0])
+		if f.Start != nil {
+			f.Start[t] = sigmoid(fe.Notes.Slice(notes[t], HeadOnset)[0])
+		}
 		if f.Cents != nil {
 			c := head(HeadCents, t)
 			for i, v := range c[:rg.Len()] {

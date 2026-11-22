@@ -194,7 +194,8 @@ step's bend cannot hold is heard and dropped:
   the note, as a voice has them, read from the cents along it.
 - A note struck again in its own cell: the cents say nothing there, so
   `StrikeAgain` judges it as before. Repeats inside a sung note, where the voice
-  never leaves the cell, are of this kind.
+  never leaves the cell, are of this kind, and a start heard there names no
+  pitch, as one still sounding never rises (below).
 - A sound is followed within the register its note was struck in: a glide
   across E3 reads the cells past it, but takes in no note the other register
   made there.
@@ -202,6 +203,26 @@ step's bend cannot hold is heard and dropped:
   length, as stapes' `notes` reads its support: while a bent note moves, and
   through a scoop's rise, the sound is not there. The cells a followed sound
   passed are in `ripNote.cells`, where the accounting already reads them.
+
+### Read more of what a start says
+
+- Priority: P2
+- Affected files: `rip.go`, `account.go`, `judge.go`
+
+A note begins where a notes model's onset head hears a start that no strike of
+its pitch answers ([Audio §9](audio.md#9-ripping-a-recording)). What is left:
+
+- **No judge rules such a note.** It stays on the heads' word, listed held, and
+  stapes' `judge.py` fits on no held row. The smallest close: a stage of their
+  own once `rows` has written enough of them, or a row that reads the onset.
+- **One note a start.** A start names the pitch that rises most under it, so a
+  chord no strike answers is read by one of its notes, and a second line's start
+  under the first's is none of its own.
+- **A note sung again inside itself** begins none, as a pitch still sounding
+  never rises. The smallest close: the dip between two syllables read as a rise.
+- **A stream's first frames.** A start heard there reads the frames before the
+  window as silence, so a sound that began before it can rise; such a start lies
+  in the context bars, which never freeze again.
 
 ### Account for a note written beside the cell it sounds in
 

@@ -615,14 +615,12 @@ func TestAReleaseEndsANoteStillSounding(t *testing.T) {
 	}
 }
 
-// TestStrikesStartNotesWhileOthersRing: under a pedal, three pitches struck in turn
-// ring on together and one struck again while it rings is two notes. A strike whose
-// pitch never sounds, a weaker one an octave over a note struck, one again within
-// StrikeGap, and one of a ringing pitch under StrikeAgain or under a neighbour's are
-// none; a bass strike two octaves under hides no melody note.
-func TestStrikesStartNotesWhileOthersRing(t *testing.T) {
+// pedalFrames is pitches struck in turn under a pedal and strikes that start no
+// note, as a front end that hears each pitch struck gives them, with the frames
+// each strike peaks on, and the notes (midi, start, end) the strikes read
+func pedalFrames() (f *RipFrames, struck []int, want [][3]int) {
 	const frames = 300
-	f := &RipFrames{Hop: RipFrameSec, Flux: make([]float64, frames), Salience: make([]float32, frames*RipPitches), Strike: make([]float32, frames*RipPitches)}
+	f = &RipFrames{Hop: RipFrameSec, Flux: make([]float64, frames), Salience: make([]float32, frames*RipPitches), Strike: make([]float32, frames*RipPitches)}
 	for _, n := range []struct {
 		midi, at, end int
 		strike        float32
@@ -632,15 +630,127 @@ func TestStrikesStartNotesWhileOthersRing(t *testing.T) {
 		f.Strike[n.at*RipPitches+n.midi-RipMinMIDI] = n.strike
 		for t := n.at; t < n.end; t++ {
 			f.Salience[t*RipPitches+n.midi-RipMinMIDI] = 0.9
+			if n.midi == 84 { // the octave's partial heard louder than the note under it
+				f.Salience[t*RipPitches+n.midi-RipMinMIDI] = 0.95
+			}
 		}
+		struck = append(struck, n.at)
 	}
-	var got [][3]int
-	for _, n := range f.notes(RipMelodyLow, RipMaxMIDI, DefaultRipParams()) {
+	return f, struck, [][3]int{{72, 0, 150}, {76, 40, 250}, {79, 80, 250}, {72, 150, 250}, {80, 180, 200}, {69, 220, 240}, {74, 260, 266}}
+}
+
+// played is the notes (midi, start, end) a register's decoder reads
+func played(notes []ripNote) (got [][3]int) {
+	for _, n := range notes {
 		got = append(got, [3]int{n.midi, n.start, n.end})
 	}
-	want := [][3]int{{72, 0, 150}, {76, 40, 250}, {79, 80, 250}, {72, 150, 250}, {80, 180, 200}, {69, 220, 240}, {74, 260, 266}}
-	if !slices.Equal(got, want) {
+	return got
+}
+
+// TestStrikesStartNotesWhileOthersRing: under a pedal, three pitches struck in turn
+// ring on together and one struck again while it rings is two notes. A strike whose
+// pitch never sounds, a weaker one an octave over a note struck, one again within
+// StrikeGap, and one of a ringing pitch under StrikeAgain or under a neighbour's are
+// none; a bass strike two octaves under hides no melody note.
+func TestStrikesStartNotesWhileOthersRing(t *testing.T) {
+	f, _, want := pedalFrames()
+	if got := played(f.notes(RipMelodyLow, RipMaxMIDI, DefaultRipParams())); !slices.Equal(got, want) {
 		t.Errorf("notes (midi, start, end) %v, want %v", got, want)
+	}
+}
+
+// TestAStruckLineReadsAsBeforeWhereItsStartsAreHeard: the pedal's strikes read
+// the same notes where a start is heard on each of them, as a front end hearing
+// both heads hears them: a start a strike of its pitch answers begins none, the
+// octave's partial the decoder dropped included, nor one where no pitch rises
+func TestAStruckLineReadsAsBeforeWhereItsStartsAreHeard(t *testing.T) {
+	f, struck, want := pedalFrames()
+	f.Start = make([]float64, f.frames())
+	for _, at := range struck {
+		f.Start[at] = 0.9
+	}
+	if got := played(f.notes(RipMelodyLow, RipMaxMIDI, DefaultRipParams())); !slices.Equal(got, want) {
+		t.Errorf("notes (midi, start, end) %v, want %v as without the starts", got, want)
+	}
+}
+
+// heardFrames is glideFrames of one sound at at[t] cents, its start plane heard
+// at frames starts and silent elsewhere
+func heardFrames(at []float64, starts ...int) *RipFrames {
+	f := glideFrames(at, 5)
+	f.Start = make([]float64, len(at))
+	for _, t := range starts {
+		f.Start[t] = 0.9
+	}
+	return f
+}
+
+// TestAStartNoStrikeAnswersBeginsTheNoteThatRises: a line of joined notes no
+// strike answers is read note by note where its starts are heard, each at the
+// pitch that rises there and to where it stops sounding; heard by the strikes
+// alone it is no note at all.
+func TestAStartNoStrikeAnswersBeginsTheNoteThatRises(t *testing.T) {
+	f := heardFrames(sung(140, 10, 6000, 50, 6200, 50, 6200, 90, 6500, 90, 6500, 130), 10, 50, 90)
+	got, notes := heardNotes(f)
+	if want := [][3]int{{60, 10, 50}, {62, 50, 90}, {65, 90, 130}}; !slices.Equal(got, want) {
+		t.Errorf("notes (midi, start, end) %v, want %v", got, want)
+	}
+	if !slices.ContainsFunc(notes, func(n ripNote) bool { return n.heard }) || slices.ContainsFunc(notes, func(n ripNote) bool { return !n.heard }) {
+		t.Error("a note begun at a heard start is not marked so, or one begun at a strike is")
+	}
+	if f.Start = nil; len(f.strikes(RipBassTop, RipMaxMIDI, DefaultRipParams())) != 0 {
+		t.Error("the strikes alone read notes in a line none of whose pitches is struck")
+	}
+}
+
+// TestAStrikeBesideThePitchThatSoundsAnswersNoStart: a strike a semitone under
+// the pitch that sounds, its own cell silent, starts no note and answers no
+// start: the start heard with it begins the note of the pitch that sounds.
+func TestAStrikeBesideThePitchThatSoundsAnswersNoStart(t *testing.T) {
+	f := heardFrames(sung(100, 10, 6000, 80), 10)
+	f.Strike[10*RipPitches+59-RipMinMIDI] = 0.99
+	if got, _ := heardNotes(f); !slices.Equal(got, [][3]int{{60, 10, 80}}) {
+		t.Errorf("notes (midi, start, end) %v, want the one of 60 from the start", got)
+	}
+	if f.Start = nil; len(f.strikes(RipBassTop, RipMaxMIDI, DefaultRipParams())) != 0 {
+		t.Error("the strike beside the pitch that sounds read a note without the start")
+	}
+}
+
+// TestAStartWithNoPitchRisingUnderItBeginsNone: a start heard over a sound no
+// note holds, over a note struck a little before it, over a pitch that rises
+// short of StrikeHold of the reference and over silence but for that sound
+// begins no note; the struck note sounds on through them.
+func TestAStartWithNoPitchRisingUnderItBeginsNone(t *testing.T) {
+	f := heardFrames(sung(220, 30, 6000, 150), 30, 45, 100, 170, 200)
+	f.Strike[30*RipPitches+60-RipMinMIDI] = 0.99
+	for u := range 190 {
+		f.Salience[u*RipPitches+72-RipMinMIDI] = 0.95 // a pad no strike begins, sounding on
+		if u >= 100 && u < 150 {
+			f.Salience[u*RipPitches+67-RipMinMIDI] = 0.5 // a doubt of a pitch rising under the note
+		}
+	}
+	if got, _ := heardNotes(f); !slices.Equal(got, [][3]int{{60, 30, 150}}) {
+		t.Errorf("notes (midi, start, end) %v, want the struck 60 alone, to 150", got)
+	}
+}
+
+// TestAStrikeNoStartAnswersMustBeSurer: where a front end hears note starts, a
+// strike over Strike with none heard within StartGap starts no note under
+// StrikeAlone and one over it does, while a start heard beside the doubtful one
+// gives it the bar it had; without the starts both stand.
+func TestAStrikeNoStartAnswersMustBeSurer(t *testing.T) {
+	f := heardFrames(sung(200, 10, 6000, 80, 0, 80, 0, 100, 6400, 100, 6400, 170))
+	f.Strike[10*RipPitches+60-RipMinMIDI], f.Strike[100*RipPitches+64-RipMinMIDI] = 0.9, 0.99
+	if got, _ := heardNotes(f); !slices.Equal(got, [][3]int{{64, 100, 170}}) {
+		t.Errorf("no start heard: notes (midi, start, end) %v, want the surer 64 alone", got)
+	}
+	f.Start[14] = 0.9
+	if got, _ := heardNotes(f); !slices.Equal(got, [][3]int{{60, 10, 80}, {64, 100, 170}}) {
+		t.Errorf("a start heard four frames on: notes %v, want both", got)
+	}
+	if f.Start = nil; len(f.strikes(RipBassTop, RipMaxMIDI, DefaultRipParams())) != 2 {
+		t.Error("without the starts the doubtful strike starts no note")
 	}
 }
 

@@ -861,7 +861,9 @@ margins are among them (`tempo_comb`, `beat_comb_2` to `4`, `beat_cut_2`, `beat_
 `bar_beat`, `bar_accent`, `bar_head`, `bar_move`, `meter_margin`, `meter_head`,
 `repeat_margin`, `near_margin`, `near_repeat`), each at the value the decoders
 were written with, so a document that names none leaves a rip without the
-heads as it was.
+heads as it was, and so are the starts' (`start`, `start_gap`, `start_wait`,
+`start_span`, `strike_alone`), which frames without a notes model's onset never
+read.
 `DefaultRipParams` is the hand-set start. The engine grades a set itself:
 `RenderMusic` plays registered patterns offline in a meter, `ExpectedRip` is the
 rip a perfect listener would make of them (`ExpectedRipBars` of a timeline under
@@ -969,6 +971,45 @@ of 270 bins, bin k band k, from the semitone under A0 to the one over C8, each
 ending in its plane's scalar, the cell of key 21+i at bin 3+3i. Without it the
 frame model gives those five heads too.
 
+A notes model's file has an onset head of its own, which the front end reads
+beside the frame model's as where a note of any pitch starts (`RipFrames.Start`,
+a value a frame); the frame model's stays the onset strength the beats, the
+drums, `Fidelity` and a judge's row read. Where the frames carry it, a start is
+heard at a peak of it at `start` (0.5) or over, and the strikes are read beside
+the starts:
+
+- **A start no strike answers begins a note.** It names the pitch that rises
+  under it: of the pitches whose mean salience over `start_span` (0.12 s) from
+  `start_wait` (0) after the start stands over their mean over the `start_span`
+  that ends `start_gap` (0.12 s) before it by `voicing` of the louder register's
+  reference, the one heard most after, where it reaches `strike_hold` of that
+  reference within the span (`rises`). A strike of that pitch peaking over its
+  register's bar within `start_gap` answers the start, whatever the decoder
+  makes of it, and so does a note of it sounding there; else a note of it begins
+  at the start (`begun`), in its register, and lasts as a struck note does,
+  `min_note` at least from where its pitch first reaches `strike_hold`. So a
+  sung line no strike hears is read note by note, a strike a semitone beside the
+  sound that never sounds answers no start, and a start over silence or over a
+  sound already sounding begins nothing: a pitch still sounding never rises, so
+  a note sung again inside itself is `strike_again`'s to judge, as before.
+- **A strike no start answers counts for less.** One with no start heard within
+  `start_gap` must clear `strike_alone` (0.95) as well as its register's bar to
+  start a note or renew one; one under it is dropped, and is a candidate the
+  accounting may bring back, as the decoder's other drops are.
+- **A note begun at a start stays on the heads' word.** The accounting fits it
+  with the others, so its sound explains what it covers, and keeps it whatever
+  its odds, listed as held (`RipStrike.Held`), as no score or judge was fitted
+  on such notes. The glides follow its sound as a struck note's; started by no
+  sure strike, it goes into a sound that passes into its cell unbroken.
+
+The defaults are set by reason, for stapes' `tune ... truth` to fit: `start` is
+the bar the trainer reads the head's peaks at; `start_gap` and `start_span` are
+`strike_gap`'s, the span over which the decoder already takes strikes of one
+pitch for one; `start_wait` reads a start's pitch from the start, as a strike's
+sound is read from the strike; `strike_alone` is the strike head's half-sure, as
+`strike_again` is. A front end without the head, the analysis, a frame model
+alone or a notes model whose file lacks it, rips as before.
+
 A notes model trained with one has a cents head too (`ripmodels.HeadCents`, two
 values a pitch): how far each pitch's sound sits from its cell's centre, and the
 error the head states for that reading, both in cents (`RipFrames.Cents`,
@@ -1049,8 +1090,8 @@ the reported notes' stage, then the dropped strikes':
 u64 FNV-1a 64 of all before it; little-endian, float32, an output's inputs together
 ```
 
-With a judge loaded a reported note stays when its odds reach a half, and the
-covered, held note still stays on the heads' word. Every strike over a half that
+With a judge loaded a reported note stays when its odds reach a half, and a
+held note, covered or begun at a start, still stays on the heads' word. Every strike over a half that
 starts no reported note is a candidate, in both registers, the strongest of its
 pitch within `StrikeGap` standing, a pitch still sounding included. It is
 measured against the kept notes as before and comes back when its odds reach a
