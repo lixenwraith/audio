@@ -323,18 +323,25 @@ func TestTwoNotesOfOnePitchAtOneStartAreOneButATwin(t *testing.T) {
 	}
 }
 
-// TestANoteDroppedMovesNoEnd: a note struck where the note of its pitch before
-// it was let go, which the accounting drops as that note's ring, leaves the note
-// before ending where it was let go
-func TestANoteDroppedMovesNoEnd(t *testing.T) {
-	const frames = 500
+// TestAKeptNoteRingsOnThroughADroppedOneButNoTwin: under RingOn a note kept
+// sounds on to the end of a restrike of its pitch the accounting drops as its
+// ring, and not to that restrike's twin's, which goes with it; a twin kept is not
+// rung on through a restrike dropped where it ends. RingOn 0 moves no end.
+func TestAKeptNoteRingsOnThroughADroppedOneButNoTwin(t *testing.T) {
+	const frames = 1000
 	x := make([]float64, frames*RipHop)
 	accTone(x, 57, 50, 400, 0.3, 8)
-	reported := []ripNote{{start: 50, end: 200, midi: 57, vel: 0.5}, {start: 200, end: 400, midi: 57, vel: 0.5}}
-	f := accFrames(frames, reported, nil)
-	f.Strike[200*RipPitches+57-RipMinMIDI] = 0.8
-	if _, melody, _ := f.account(x, DefaultRipParams(), accAsk{}, nil, reported); !slices.Equal(played(melody), [][3]int{{57, 50, 200}}) {
-		t.Errorf("notes (midi, start, end) %v, want the A3 let go at 200 and the restrike its ring explains gone", played(melody))
+	accTone(x, 60, 600, 950, 0.3, 8)
+	reported := []ripNote{{start: 50, end: 200, midi: 57, vel: 0.5}, {start: 200, end: 400, midi: 57, vel: 0.5}, {start: 205, end: 450, midi: 57, vel: 0.5, twin: true},
+		{start: 600, end: 700, midi: 60, vel: 0.5}, {start: 605, end: 800, midi: 60, vel: 0.5, twin: true}, {start: 800, end: 950, midi: 60, vel: 0.5}}
+	f := accFrames(frames, reported, map[int]float32{200*1000 + 57: 0.8, 800*1000 + 60: 0.8})
+	p := DefaultRipParams()
+	for ring, end := range map[int]int{1: 400, 0: 200} {
+		p.RingOn = ring
+		want := [][3]int{{57, 50, end}, {60, 600, 700}, {60, 605, 800}}
+		if _, melody, _ := f.account(x, p, accAsk{}, nil, slices.Clone(reported)); !slices.Equal(played(melody), want) {
+			t.Errorf("ring_on %d: notes (midi, start, end) %v, want %v", ring, played(melody), want)
+		}
 	}
 }
 

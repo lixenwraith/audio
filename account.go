@@ -971,7 +971,7 @@ func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody [
 			strikes = append(strikes, st)
 		}
 	}
-	var kept []*accNote
+	var kept, dropped []*accNote
 	for i, n := range notes {
 		if n.of != nil {
 			continue
@@ -995,6 +995,8 @@ func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody [
 		}
 		if st.Kept {
 			kept = append(kept, n)
+		} else {
+			dropped = append(dropped, n)
 		}
 		if n.whole != nil {
 			st.MIDI = n.whole.midi
@@ -1006,6 +1008,9 @@ func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody [
 		if n.of != nil && slices.Contains(kept, n.of) {
 			kept = append(kept, n)
 		}
+	}
+	if p.RingOn == 1 {
+		accRingOn(kept, dropped)
 	}
 	// a twin goes where the note its strike started does
 	gap := int(p.StrikeGap / f.Hop)
@@ -1179,6 +1184,20 @@ func (f *RipFrames) accRefs() [2]float64 {
 		refs[1] = r.ref
 	}
 	return refs
+}
+
+// accRingOn lets a kept note sound on to the end of a dropped note of its pitch
+// struck while it sounded or as it ended: a strike its ring explains is no new
+// note but the same one sounding. A twin, kept or dropped with its strike's
+// note, neither rings on nor is rung on.
+func accRingOn(kept, dropped []*accNote) {
+	for _, d := range dropped {
+		for _, k := range kept {
+			if k.midi == d.midi && k.start < d.start && k.end >= d.start-accDup && k.end < d.end {
+				k.end = d.end
+			}
+		}
+	}
 }
 
 // accDedup merges two notes of one pitch starting within accDup frames of each

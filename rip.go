@@ -82,7 +82,8 @@ type RipParams struct {
 	KeyClose float64 `toml:"key_close"` // and the last, where the recording was heard to its end
 	KeyBar   float64 `toml:"key_bar"`   // the share of a bar's music a bar must hold to be one of the music's bars
 
-	Twins int `toml:"twins"` // 1 holds two notes of one pitch where its releases or a second strike within StrikeGap say both sound; 0 one note a pitch at a time
+	Twins  int `toml:"twins"`   // 1 holds two notes of one pitch where its releases or a second strike within StrikeGap say both sound; 0 one note a pitch at a time
+	RingOn int `toml:"ring_on"` // 1 rings a kept note on through a dropped one of its pitch that starts where it ends (accRingOn); 0 leaves each its own end
 }
 
 // ripDrumsPerMinute is the least a drum strikes to be part of the music, ripLineNote
@@ -110,7 +111,7 @@ func DefaultRipParams() RipParams {
 		BarLine: 1, BarBeat: 1, BarAccent: 0.5, BarHead: 1, BarMove: 2,
 		MeterMargin: 0.35, MeterHead: 1, RepeatMargin: 0.03, NearMargin: 0.07, NearRepeat: 0.015,
 		JointMove: 100, JointBeat: 0.3, JointLine: 0.3, JointMargin: 3,
-		KeyBars: 1, KeyOpen: 0, KeyClose: 0, KeyBar: 0.5, Twins: 1,
+		KeyBars: 1, KeyOpen: 0, KeyClose: 0, KeyBar: 0.5, Twins: 1, RingOn: 1,
 	}
 }
 
@@ -181,6 +182,7 @@ var ripGenes = []ripGene{
 	{"key_close", 0, 3, func(p *RipParams) *float64 { return &p.KeyClose }},
 	{"key_bar", 0.1, 1, func(p *RipParams) *float64 { return &p.KeyBar }},
 	{"twins", 0, 1, nil},
+	{"ring_on", 0, 1, nil},
 }
 
 // ripCounts are the integer parameters' fields by their genes' names
@@ -188,6 +190,7 @@ var ripCounts = map[string]func(*RipParams) *int{
 	"harmonics": func(p *RipParams) *int { return &p.Harmonics },
 	"joint":     func(p *RipParams) *int { return &p.Joint },
 	"twins":     func(p *RipParams) *int { return &p.Twins },
+	"ring_on":   func(p *RipParams) *int { return &p.RingOn },
 }
 
 func (g *ripGene) get(p *RipParams) float64 {
