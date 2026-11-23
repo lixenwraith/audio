@@ -372,15 +372,20 @@ func ripWays() map[string]Ripper {
 }
 
 // BenchmarkRip is the offline rip of the loop, twelve bars, through a front end
-// that hears strikes, so the accounting runs, each of ripWays.
+// that hears strikes, so the accounting runs, each of ripWays, and unjudged
+// keeping its stages (Ripper.Stages).
 func BenchmarkRip(b *testing.B) {
 	ae, slots := startLoopEngine(b)
 	buf, err := ae.RenderMusic(slots, 140, Meter{}, 12, DefaultRootNote, ScalePhrygian, nil, 1)
 	if err != nil {
 		b.Fatal(err)
 	}
-	for _, way := range slices.Sorted(maps.Keys(ripWays())) {
-		rp := ripWays()[way]
+	ways := ripWays()
+	staged := ways["unjudged"]
+	staged.Stages = true
+	ways["staged"] = staged
+	for _, way := range slices.Sorted(maps.Keys(ways)) {
+		rp := ways[way]
 		b.Run(way, func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
