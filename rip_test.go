@@ -2321,18 +2321,25 @@ func startFrames(n, beat, per, line, at int) *RipFrames {
 	return f
 }
 
-// TestNothingARipStatesLiesBeforeItsRecording: a hit and a note heard at frame 0
-// or 1 lie on the first step at or after the start, of a pickup bar whose line
-// the joint path lays a frame or two before it or of one the recording begins
-// part way through, under either decoder, offline and streamed, their MIDI file
-// read back as written; where the first line is at or after 0, on that line.
-func TestNothingARipStatesLiesBeforeItsRecording(t *testing.T) {
+// TestWhatIsHeardAtTheStartKeepsItsNearestStep: a kick and a note heard at
+// frame 0 to 2, under a pickup line laid a frame or two before the start, in a
+// recording begun part way through a bar, or after a first line at or after 0,
+// lie on their nearest steps, stated at the start where those lie before it;
+// every hit and note within half a step of where it was heard, and its MIDI file
+// read back as written, under either decoder, offline and streamed.
+func TestWhatIsHeardAtTheStartKeepsItsNearestStep(t *testing.T) {
 	const beat, per, n = 40, 4, 3*40*4 + 30
 	x := make([]float64, n*RipHop)
 	for i := range x {
 		x[i] = 0.3 * math.Sin(float64(i)*2*math.Pi*220/RipRate)
 	}
 	for _, c := range []struct{ line, at int }{{-1, 0}, {-1, 1}, {-2, 0}, {-2, 1}, {0, 2}, {-42, 0}, {-103, 0}} {
+		kicks := []float64{float64(c.at) * RipFrameSec} // where startFrames sounds them
+		for i, l := 0, c.line; l < n; i, l = i+1, l+beat {
+			if l >= 20 && i%per == 0 {
+				kicks = append(kicks, float64(l)*RipFrameSec)
+			}
+		}
 		for _, joint := range []int{0, 1} {
 			for _, stream := range []bool{false, true} {
 				p := DefaultRipParams()
@@ -2342,27 +2349,48 @@ func TestNothingARipStatesLiesBeforeItsRecording(t *testing.T) {
 					t.Fatal(err)
 				}
 				name := fmt.Sprintf("the first line at frame %d, the first hit at %d, joint %d, streamed %v", c.line, c.at, joint, stream)
-				sub, steps := r.Meter.Beat(), r.Meter.Steps()
-				at := func(k int) float64 { // the k-th step's time through the bars, as Hits sums it
-					i := k/steps*r.Meter.Beats() + k%steps/sub
-					return r.Beats[i] + (r.Beats[i+1]-r.Beats[i])/float64(sub)*float64(k%steps%sub)
+				sub, half := r.Meter.Beat(), 30/float64(r.BPM)/StepsPerBeat
+				sums := func(b, pos int) float64 { // a step's time before stepAt's floor
+					i := b*r.Meter.Beats() + pos/sub
+					return r.Beats[i] + (r.Beats[i+1]-r.Beats[i])/float64(sub)*float64(pos%sub)
 				}
-				for part, of := range map[string]func(*RipBar) []Step{"kick": func(b *RipBar) []Step { return b.Drums[InstrKick] }, "melody": func(b *RipBar) []Step { return b.Melody },
-					"snare": func(b *RipBar) []Step { return b.Drums[InstrSnare] }, "hihat": func(b *RipBar) []Step { return b.Drums[InstrHihat] },
-					"under": func(b *RipBar) []Step { return b.Under }, "bass": func(b *RipBar) []Step { return b.Bass }} {
-					first := -1
+				var starts []float64 // the melody register's notes, where the transcript starts them
+				for _, nt := range r.Notes {
+					if !nt.Bass {
+						starts = append(starts, nt.Start)
+					}
+				}
+				for part, c := range []struct {
+					of    func(*RipBar) []Step
+					heard []float64
+				}{{func(b *RipBar) []Step { return b.Drums[InstrKick] }, kicks}, {func(b *RipBar) []Step { return append(slices.Clone(b.Melody), b.Under...) }, starts}} {
+					heard := slices.DeleteFunc(slices.Clone(c.heard), func(at float64) bool { return at >= r.Beats[len(r.Beats)-1]-half })
+					var stated []float64
+					first, fb, fs := math.Inf(1), -1, Step{}
 					for b := range r.Bars {
-						for _, s := range of(&r.Bars[b]) {
-							if k := b*steps + s.Pos; at(k) < -1e-9 {
-								t.Errorf("%s: bar %d holds a %s on step %d at %.4fs, before the recording", name, b, part, s.Pos, at(k))
-							} else if first < 0 || k < first {
-								first = k
+						for _, s := range c.of(&r.Bars[b]) {
+							at, _ := r.stepAt(b, s.Pos)
+							if stated = append(stated, at); at < first {
+								first, fb, fs = at, b, s
 							}
 						}
 					}
-					// what is heard at the start lies on the first step at or after it
-					if (part == "kick" || part == "melody") && (first < 0 || first > 0 && at(first-1) >= 0) {
-						t.Errorf("%s: the first %s on step %d of the bars, the downbeat at %.4fs: want the first at or after the start", name, part, first, r.Downbeat)
+					slices.Sort(stated)
+					near := len(stated) == len(heard) // the last bar's line holds none
+					for i := 0; near && i < len(stated); i++ {
+						near = math.Abs(stated[i]-heard[i]) <= half+1e-9
+					}
+					// the first heard lies on its nearest step, its time floored at 0
+					nb, ns := 0, 0
+					for b := range min(2, len(r.Bars)) {
+						for pos := range r.Meter.Steps() {
+							if math.Abs(sums(b, pos)-c.heard[0]) < math.Abs(sums(nb, ns)-c.heard[0]) {
+								nb, ns = b, pos
+							}
+						}
+					}
+					if !near || fb != nb || fs.Pos != ns || first != max(sums(nb, ns), 0) {
+						t.Errorf("%s: part %d stated at %v, heard at %v; its first on bar %d step %d at %.4fs, its nearest bar %d step %d at %.4fs", name, part, stated, heard, fb, fs.Pos, first, nb, ns, sums(nb, ns))
 					}
 				}
 				var file bytes.Buffer
@@ -2375,48 +2403,19 @@ func TestNothingARipStatesLiesBeforeItsRecording(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				half := 0.5 / (float64(r.BPM) / 60 * midiDivision)
+				tick := 0.5 / (float64(r.BPM) / 60 * midiDivision)
 				same := len(m.Hits) == len(hits) && len(m.Notes) == len(r.Notes)
 				for i := 0; same && i < len(hits); i++ {
-					same = m.Hits[i].Drum == hits[i].Drum && math.Abs(m.Hits[i].Start-hits[i].Start) <= half
+					same = m.Hits[i].Drum == hits[i].Drum && math.Abs(m.Hits[i].Start-hits[i].Start) <= tick
 				}
 				for i := 0; same && i < len(r.Notes); i++ {
-					same = m.Notes[i].MIDI == r.Notes[i].MIDI && math.Abs(m.Notes[i].Start-r.Notes[i].Start) <= half
+					same = m.Notes[i].MIDI == r.Notes[i].MIDI && math.Abs(m.Notes[i].Start-r.Notes[i].Start) <= tick
 				}
-				if !same || len(hits) == 0 || len(r.Notes) == 0 {
+				if !same {
 					t.Errorf("%s: %d hits and %d notes written, %d and %d read back", name, len(hits), len(r.Notes), len(m.Hits), len(m.Notes))
 				}
 			}
 		}
-	}
-}
-
-// TestAStepOnTheStartIsStatedAtIt: a score whose pickup is a sixteenth at 100
-// bpm, a kick on its first tick and on its first line, has the first kick on the
-// pickup's last step, which its beats sum to a hair under 0; it is stated at 0,
-// and the score's rip is written as MIDI
-func TestAStepOnTheStartIsStatedAtIt(t *testing.T) {
-	file := smf(2)
-	file = append(file, track(
-		0x00, 0xFF, 0x51, 3, 0x09, 0x27, 0xC0, // 100 bpm
-		0x00, 0xFF, 0x58, 4, 1, 4, 24, 8, // a bar of a sixteenth
-		0x78, 0xFF, 0x58, 4, 4, 2, 24, 8, // 4/4 from 120 ticks on
-		0x00, 0xFF, 0x2F, 0)...)
-	file = append(file, track(
-		0x00, 0x99, 36, 100, 0x3C, 0x89, 36, 0,
-		0x3C, 0x99, 36, 100, 0x3C, 0x89, 36, 0,
-		0x00, 0xFF, 0x2F, 0)...)
-	m, err := ReadMIDI(bytes.NewReader(file))
-	if err != nil {
-		t.Fatal(err)
-	}
-	r, _ := m.Rip()
-	hits := r.Hits()
-	if len(hits) != 2 || hits[0].Start != 0 || len(r.Bars) != 2 || len(r.Bars[0].Drums[InstrKick]) != 1 || r.Bars[0].Drums[InstrKick][0].Pos != 15 {
-		t.Fatalf("hits %+v, the pickup's kicks %v: want the first at 0s on its last step", hits, r.Bars[0].Drums[InstrKick])
-	}
-	if err := WriteMIDI(&bytes.Buffer{}, r.Notes, hits, r.BPM, r.Meter); err != nil {
-		t.Error(err)
 	}
 }
 

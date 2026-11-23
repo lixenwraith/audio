@@ -348,22 +348,25 @@ that a document now states, and link the document instead.
   0 opens none, so the corpus reads the same. `Downbeat` is negative then,
   `progression` reads no frame before zero, and `CompareRips` skips the pickup
   bar against a truth without one.
-- **A pickup's steps before the recording held notes more often than hits.** The
-  test loop cut part way through a bar put a melody note on one in 61 of 120
-  rips (to 64 ms early), the bass in 34 and the hihat in 8, the notes being
-  placed their median lag early; only the hits met `WriteMIDI`'s refusal, as it
-  writes the transcript. A digest of such cuts on main and a branch shows the
-  rips a change at the start moves.
+- **What is heard at the start keeps its nearest step, stated at 0.** On 120
+  cuts of the test loop a pickup step before frame 0 held a melody note in 61
+  rips (to 64 ms early), the bass in 34 and the hihat in 8, the hits alone
+  meeting `WriteMIDI`'s refusal. Moved to the first step after the start, 99
+  events sat past half a step and 4 of the 24 hits on the recordings' first step
+  went unmatched; stated at 0 (`stepAt`), every rip stays byte for byte.
+- **A step is stated up to half a frame off where `at` rounds onto it.** `at`
+  cuts a bar's span evenly and `stepAt` reads its rounded beats, so of some
+  14,000 events on those cuts 42 lie past half a step from their frame, none by
+  more than half a frame: count a quantized event's distance with that slack.
 - **The present decoder lays no pickup line a frame or two before the start.**
   Its tracker reaches back to within half a beat of frame 0 and the first line
   falls on that pulse; the joint path starts on the first beat heard, so heads
   that leave the first line unheard (`startFrames`) give it a pickup at -1 or -2.
   The present decoder meets the fault where a beat falls a frame before frame 0.
-- **A step on frame 0 between two beats can sum to a hair under 0.** The
-  decoders' whole-frame beats in the sequencer's range never do, but a score's
-  tempo map does, a pickup of a sixteenth at 13 of 121 tempos
-  (`TestAStepOnTheStartIsStatedAtIt`): `before` reads the step exactly, in
-  frames or ticks, and `Hits` states such a step at 0.
+- **A step on the start between two beats sums a hair either side of 0.** A
+  score's tempo map puts a sixteenth's pickup's first tick at -5.6e-17 s at 13 of
+  121 tempos, which `WriteMIDI` refuses, where the decoders' whole-frame beats in
+  the sequencer's range never do: the floor is in seconds, not in frames.
 - The pitch paths start late against the onsets the beats sit on: the median
   phase of the notes is taken out before quantizing. Under that sharper grid the
   second pass's fragments cost the pad test's melody two hundredths against the
