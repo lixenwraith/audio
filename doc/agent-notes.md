@@ -505,6 +505,10 @@ that a document now states, and link the document instead.
   at one, so a decoder that keeps the first of equal frames puts each beat a
   frame early, two where it reads the head's highest within a frame: the joint
   path centres each beat on the frames the head holds its peak on (`centre`).
+  The strikes, releases and starts keep a plateau's last frame (`peaks`,
+  `heardAt`), a frame late, and `pickHits` a hit's first: inside the matchers'
+  windows, but a sound gone from its first cell within two frames no longer
+  sounds where its strike is read.
 - **A tempo counted against a loop's `bpm` counts its drift.** Seven loops in
   ten of stapes' corpus drift, three in ten slowing or quickening to 3 to 8% by
   their end, and a label's `bpm` is the first bar's: with the labels as heads
@@ -663,7 +667,8 @@ that a document now states, and link the document instead.
   after a new parameter differs on every rip, a zeroed `Params` too, since it
   marshals the new keys: hash each rip's JSON with the `Params` key deleted.
   Each of its notes marshals `Part` since v0.40.0, empty for a note heard:
-  across that version delete it from every note too.
+  across that version delete it from every note too, and `Stages` since
+  v0.43.0, null unless asked, from the rip.
 - A change that must leave the rips of files saved before it alone is held on
   such files: `NewRandom` of both specs saved by a scratch module on the last
   tag (the sure row zeroed), then on each build every exported field of the

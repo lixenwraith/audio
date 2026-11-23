@@ -698,7 +698,7 @@ func TestAStartNoStrikeAnswersBeginsTheNoteThatRises(t *testing.T) {
 	if !slices.ContainsFunc(notes, func(n ripNote) bool { return n.heard }) || slices.ContainsFunc(notes, func(n ripNote) bool { return !n.heard }) {
 		t.Error("a note begun at a heard start is not marked so, or one begun at a strike is")
 	}
-	if f.Start = nil; len(f.strikes(RipBassTop, RipMaxMIDI, DefaultRipParams())) != 0 {
+	if f.Start = nil; len(f.strikes(RipBassTop, RipMaxMIDI, DefaultRipParams(), nil)) != 0 {
 		t.Error("the strikes alone read notes in a line none of whose pitches is struck")
 	}
 }
@@ -712,7 +712,7 @@ func TestAStrikeBesideThePitchThatSoundsAnswersNoStart(t *testing.T) {
 	if got, _ := heardNotes(f); !slices.Equal(got, [][3]int{{60, 10, 80}}) {
 		t.Errorf("notes (midi, start, end) %v, want the one of 60 from the start", got)
 	}
-	if f.Start = nil; len(f.strikes(RipBassTop, RipMaxMIDI, DefaultRipParams())) != 0 {
+	if f.Start = nil; len(f.strikes(RipBassTop, RipMaxMIDI, DefaultRipParams(), nil)) != 0 {
 		t.Error("the strike beside the pitch that sounds read a note without the start")
 	}
 }
@@ -749,7 +749,7 @@ func TestAStrikeNoStartAnswersMustBeSurer(t *testing.T) {
 	if got, _ := heardNotes(f); !slices.Equal(got, [][3]int{{60, 10, 80}, {64, 100, 170}}) {
 		t.Errorf("a start heard four frames on: notes %v, want both", got)
 	}
-	if f.Start = nil; len(f.strikes(RipBassTop, RipMaxMIDI, DefaultRipParams())) != 2 {
+	if f.Start = nil; len(f.strikes(RipBassTop, RipMaxMIDI, DefaultRipParams(), nil)) != 2 {
 		t.Error("without the starts the doubtful strike starts no note")
 	}
 }
@@ -799,7 +799,7 @@ func sung(n, from int, level float64, to int, then ...float64) []float64 {
 
 // heardNotes is the melody register's notes as strikes reads them: pitch, start, end
 func heardNotes(f *RipFrames) (got [][3]int, notes []ripNote) {
-	notes = f.strikes(RipBassTop, RipMaxMIDI, DefaultRipParams())
+	notes = f.strikes(RipBassTop, RipMaxMIDI, DefaultRipParams(), nil)
 	for _, n := range notes {
 		got = append(got, [3]int{n.midi, n.start, n.end})
 	}
@@ -966,7 +966,7 @@ func TestALowNoteNeedsASurerStrike(t *testing.T) {
 		}
 	}
 	p := DefaultRipParams()
-	if low, high := f.strikes(RipMinMIDI, RipBassTop, p), f.strikes(RipBassTop, RipMaxMIDI, p); len(low) != 0 || len(high) != 1 {
+	if low, high := f.strikes(RipMinMIDI, RipBassTop, p, nil), f.strikes(RipBassTop, RipMaxMIDI, p, nil); len(low) != 0 || len(high) != 1 {
 		t.Errorf("%d low notes and %d high, want none and one", len(low), len(high))
 	}
 }
@@ -992,7 +992,7 @@ func TestLowNotesAreReadByStrikes(t *testing.T) {
 			x[i] += math.Sin(2 * math.Pi * 440 * math.Pow(2, float64(n.midi-69)/12) * float64(i) / RipRate)
 		}
 	}
-	bass, melody := f.lines(x, DefaultRipParams())
+	bass, melody := f.lines(x, DefaultRipParams(), nil)
 	var got []int
 	for _, n := range bass {
 		got = append(got, n.midi)
@@ -1122,7 +1122,7 @@ func TestANoteWrittenBesideItsCellIsToldFromIt(t *testing.T) {
 		f.Salience[u*RipPitches+61-RipMinMIDI] = 0.01
 	}
 	f.Strike[10*RipPitches+60-RipMinMIDI] = 0.99
-	notes := f.strikes(RipBassTop, RipMaxMIDI, DefaultRipParams())
+	notes := f.strikes(RipBassTop, RipMaxMIDI, DefaultRipParams(), nil)
 	if len(notes) != 1 || notes[0].midi != 61 {
 		t.Fatalf("notes %+v, want one written at 61", notes)
 	}

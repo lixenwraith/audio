@@ -876,6 +876,22 @@ right where a bar of the rip's names its root, its `Progression` degree's in
 the rip's key, which is all a rip says of a chord, and wrong where no bar lies.
 A rhythm's note gives no end and no velocity, nor does a given velocity of zero
 or under.
+A rip asked (`Ripper.Stages`) keeps what each stage of the decoders made,
+dropped or moved of its notes and hits (`Rip.Stages`, a `RipChange` each, in
+the order they ran): the strikes, with each strike surer than a half they
+started no note at and why (`RipWhy`), the starts begun, the glides, the path,
+the bass's own-pitch and steady-rise rules, the settling, the accounting and the
+music's start, then each drum's picks and the bars they are laid on; offline
+only, and what it decodes is the same. `ReadStages` reads it against an
+agreement (`StageReading`, a count by stage): a note given that the rip lacks
+at the first stage after which no note of its pitch starts within the
+matcher's window of it, counted from the first stage that made a note, with
+why the strikes refused the strike nearest it where they lost it, and a twin's
+where a note of its pitch stood there to the end; an added note at the stage
+that last made it; a wrong end of those matched at the first stage that left it
+wrong; a lost hit by what became of the picked hit nearest it within the hits'
+tolerance, dropped at the music's start or outside the bars, on a step another
+holds, laid more than the tolerance off, or none picked.
 `NoteLevels` reads how loud the recording plays each note given, its first
 harmonics' peak around its onset placed by the agreement's map (`Agreement.At`,
 through the notes the line leading it matched), so the notes heard can be counted by
