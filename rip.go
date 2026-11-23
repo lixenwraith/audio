@@ -295,6 +295,10 @@ type Rip struct {
 	// and its front end hears strikes; a stream's bars carry none
 	// (RipStream.Strikes)
 	Strikes []RipStrike
+	// Stages is what each stage of the decoders made, dropped or moved of its
+	// notes and hits, in the order they ran, when the Ripper asked for them; a
+	// stream's bars carry none
+	Stages []RipChange
 }
 
 // RipStrike is a strike the accounting judged: a note the decoder reported, or
@@ -368,21 +372,28 @@ type RipHit struct {
 // Hits are the drums' hits in seconds, each bar's steps placed on its beats
 func (r *Rip) Hits() []RipHit {
 	var out []RipHit
-	per, sub := r.Meter.Beats(), r.Meter.Beat()
 	for b, bar := range r.Bars {
 		for d, steps := range bar.Drums {
 			for _, s := range steps {
-				i := per*b + s.Pos/sub
-				if i+1 >= len(r.Beats) {
-					continue
+				if at, ok := r.stepAt(b, s.Pos); ok {
+					out = append(out, RipHit{Start: at, Drum: InstrumentType(d), Vel: s.Vel})
 				}
-				span := (r.Beats[i+1] - r.Beats[i]) / float64(sub)
-				out = append(out, RipHit{Start: r.Beats[i] + span*float64(s.Pos%sub), Drum: InstrumentType(d), Vel: s.Vel})
 			}
 		}
 	}
 	slices.SortStableFunc(out, func(a, b RipHit) int { return cmpFloat(a.Start, b.Start) })
 	return out
+}
+
+// stepAt is the second step pos of bar b falls on, between its beats
+func (r *Rip) stepAt(b, pos int) (float64, bool) {
+	per, sub := r.Meter.Beats(), r.Meter.Beat()
+	i := per*b + pos/sub
+	if i+1 >= len(r.Beats) {
+		return 0, false
+	}
+	span := (r.Beats[i+1] - r.Beats[i]) / float64(sub)
+	return r.Beats[i] + span*float64(pos%sub), true
 }
 
 // RipBar is one bar: each drum's hits, kick, snare and hihat in instrument order,
@@ -643,6 +654,9 @@ type Ripper struct {
 	// Strikes has the rip list every strike judged (Rip.Strikes,
 	// RipStream.Strikes), and Rows each one's row with it
 	Strikes, Rows bool
+	// Stages has the rip keep what each stage made, dropped or moved
+	// (Rip.Stages), offline: what it decodes is the same either way
+	Stages bool
 }
 
 // RipGrid pins the grid a recording is read on, as a render's is known, so a
@@ -739,7 +753,11 @@ func (rp Ripper) Samples(x []float64, rate int) (*Rip, error) {
 	if f.frames() < 2 {
 		return nil, errors.New("rip: the front end heard nothing")
 	}
-	ev := rp.events(f, x, p)
+	var tr *ripTrace
+	if rp.Stages {
+		tr = &ripTrace{hop: f.Hop}
+	}
+	ev := rp.events(f, x, p, tr)
 	if t := musicStart(x); t > 0 {
 		ev.from(t)
 	}
@@ -758,7 +776,7 @@ func (rp Ripper) Samples(x []float64, rate int) (*Rip, error) {
 	}
 	r.MelodyVoice, r.UnderVoice, r.BassVoice = voiceOf(lead), voiceOf(under), voiceOf(ev.bass)
 	r.Tone = drumTones(x, raw, rate, hitStarts(x, ev.seconds(f.Hop)))
-	r.Strikes = ev.strikes
+	r.Strikes, r.Stages = ev.strikes, tr.list()
 	return r, nil
 }
 
@@ -770,27 +788,58 @@ type ripEvents struct {
 	scale        ScaleID
 	bass, melody []ripNote
 	strikes      []RipStrike
+	trace        *ripTrace // what the stages did, nil where no rip asked
 }
 
 // from drops the events before frame t, where the music starts (heardFrom)
 func (ev *ripEvents) from(t int) {
+	var before []ripNote
+	if tr := ev.trace; tr != nil {
+		before = slices.Concat(ev.bass, ev.melody)
+		for d, hs := range ev.hits {
+			for _, h := range hs {
+				if h.frame < t-2 {
+					tr.hit(StageMusicStart, RipDropped, WhyNone, InstrumentType(d), h.frame, 0)
+				}
+			}
+		}
+	}
 	ev.hits, ev.bass, ev.melody = heardFrom(t, ev.hits, ev.bass, ev.melody)
 	ev.strikes = slices.DeleteFunc(ev.strikes, func(s RipStrike) bool { return s.Frame < t-2 })
+	if ev.trace != nil {
+		ev.trace.between(StageMusicStart, before, slices.Concat(ev.bass, ev.melody))
+	}
 }
 
 // events reads the hits, the key and the lines off the frames, x their samples
 // at RipRate: the registers' notes settled between them, their dynamics, held
 // to the recording, each told its voice, and the melody register parted into
-// its lines
-func (rp Ripper) events(f *RipFrames, x []float64, p RipParams) ripEvents {
-	ev := ripEvents{hits: f.drumHits(p)}
+// its lines; tr keeps what each stage did, nil nothing
+func (rp Ripper) events(f *RipFrames, x []float64, p RipParams, tr *ripTrace) ripEvents {
+	ev := ripEvents{hits: f.drumHits(p), trace: tr}
+	for d, hs := range ev.hits {
+		for _, h := range hs {
+			tr.hit(StagePicks, RipMade, WhyNone, InstrumentType(d), h.frame, 0)
+		}
+	}
 	ev.root, ev.scale = f.key()
-	ev.bass, ev.melody = f.lines(x, p)
+	ev.bass, ev.melody = f.lines(x, p, tr)
+	var before []ripNote
+	if tr != nil {
+		before = slices.Concat(ev.bass, ev.melody)
+	}
 	ev.bass, ev.melody = settle(ev.bass, ev.melody)
+	if tr != nil {
+		tr.between(StageSettle, before, slices.Concat(ev.bass, ev.melody))
+		before = slices.Concat(ev.bass, ev.melody)
+	}
 	if f.Velocity != nil {
 		dynamics(x, f.Hop, ev.melody, ev.bass)
 	}
 	ev.bass, ev.melody, ev.strikes = f.account(x, p, accAsk{judge: rp.Judge, strikes: rp.Strikes, rows: rp.Rows}, ev.bass, ev.melody)
+	if tr != nil {
+		tr.between(StageAccounting, before, slices.Concat(ev.bass, ev.melody))
+	}
 	f.tell(ev.bass)
 	f.tell(ev.melody)
 	ev.melody = streams(ev.melody, f.Hop, rp.Lead)
@@ -1039,7 +1088,7 @@ func (g ripGrid) lay(f *RipFrames, x []float64, ev ripEvents, bpm float64, shift
 	for i := range r.Beats {
 		r.Beats[i] = float64(g.beat(i)) * f.Hop
 	}
-	g.drums(r, ev.hits, loud)
+	g.drums(r, ev.hits, loud, ev.trace)
 	early := func(n ripNote) ripNote {
 		n.start, n.end = n.start-shift, n.end-shift
 		return n
@@ -2284,7 +2333,7 @@ func (g *ripGrid) sixteenths(notes []ripNote) float64 {
 // across the bars does not.
 func (g *ripGrid) nearest(notes []ripNote, hits [InstrClap][]ripHit, root int) float64 {
 	r := &Rip{Root: root, Scale: ScaleMajor, Meter: g.m, Bars: make([]RipBar, g.bars())}
-	g.drums(r, hits, [InstrClap]float64{})
+	g.drums(r, hits, [InstrClap]float64{}, nil)
 	for _, n := range notes {
 		part := func(b *RipBar) *[]Step { return &b.Melody }
 		if n.midi < RipBassTop {
@@ -3027,8 +3076,8 @@ func (f *RipFrames) drumHits(p RipParams) [InstrClap][]ripHit {
 }
 
 // drums quantizes the hits to the grid, a hit's velocity its strength against
-// the drum's loudest, loud's where it is not zero
-func (g *ripGrid) drums(r *Rip, hits [InstrClap][]ripHit, loud [InstrClap]float64) {
+// the drum's loudest, loud's where it is not zero; tr keeps where each went
+func (g *ripGrid) drums(r *Rip, hits [InstrClap][]ripHit, loud [InstrClap]float64, tr *ripTrace) {
 	for d := range hits {
 		loudest := loud[d]
 		for _, h := range hits[d] {
@@ -3037,23 +3086,33 @@ func (g *ripGrid) drums(r *Rip, hits [InstrClap][]ripHit, loud [InstrClap]float6
 			}
 		}
 		for _, h := range hits[d] {
-			g.hit(r, InstrumentType(d), h.frame, 0.4+0.6*h.strength/loudest)
+			bar, step, why := g.hit(r, InstrumentType(d), h.frame, 0.4+0.6*h.strength/loudest)
+			if tr == nil {
+				continue
+			}
+			if why != WhyNone {
+				tr.hit(StageBars, RipDropped, why, InstrumentType(d), h.frame, 0)
+			} else if at, ok := r.stepAt(bar, step); ok {
+				tr.hit(StageBars, RipMoved, WhyNone, InstrumentType(d), h.frame, at)
+			}
 		}
 	}
 }
 
-// hit quantizes a drum's hit to the grid, the louder of two on one step kept
-func (g *ripGrid) hit(r *Rip, d InstrumentType, frame int, vel float64) {
+// hit quantizes a drum's hit to the grid, the louder of two on one step kept:
+// its bar and step, or why it is not laid there
+func (g *ripGrid) hit(r *Rip, d InstrumentType, frame int, vel float64) (bar, step int, why RipWhy) {
 	bar, step, ok := g.at(frame)
 	if !ok {
-		return
+		return 0, 0, WhyOutside
 	}
 	evs := &r.Bars[bar].Drums[d]
 	if i := slices.IndexFunc(*evs, func(s Step) bool { return s.Pos == step }); i >= 0 {
 		(*evs)[i].Vel = max((*evs)[i].Vel, vel)
-		return
+		return bar, step, WhyHeld
 	}
 	*evs = append(*evs, Step{Pos: step, Vel: vel})
+	return bar, step, WhyNone
 }
 
 // ripNote is a stretch of frames the pitch track held one pitch over, with the
@@ -3078,7 +3137,7 @@ type ripNote struct {
 // parts into its lines once settle has given the bass what both registers heard.
 func (f *RipFrames) notes(lo, hi int, p RipParams) []ripNote {
 	if f.Strike != nil && lo >= RipMelodyLow {
-		return f.strikes(lo, hi, p)
+		return f.strikes(lo, hi, p, nil)
 	}
 	if p.SecondVoice <= 0 || lo < RipMelodyLow {
 		return f.path(lo, hi, p)
@@ -3121,11 +3180,33 @@ func (f *RipFrames) peaks(h []float32, t, midi int, over float64) bool {
 // StrikeLow under the melody's register, and over StrikeAlone where the front
 // end hears note starts and none is heard within StartGap of it
 func (r register) struck(t, s int, p RipParams) bool {
-	f, bar := r.f, p.Strike
+	f := r.f
+	return f.peaks(f.Strike, t, r.lo+s, r.bar(p)) && (f.Start == nil || float64(f.head(f.Strike, t, r.lo+s)) >= p.StrikeAlone || f.started(t, p))
+}
+
+// bar is how sure a strike of the register must be: StrikeLow under the
+// melody's register
+func (r register) bar(p RipParams) float64 {
 	if r.lo < RipBassTop {
-		bar = p.StrikeLow
+		return p.StrikeLow
 	}
-	return f.peaks(f.Strike, t, r.lo+s, bar) && (f.Start == nil || float64(f.head(f.Strike, t, r.lo+s)) >= p.StrikeAlone || f.started(t, p))
+	return p.Strike
+}
+
+// refusal is why state s's strike at t starts no note, in the order strikes
+// asks, with the pitch's last strike at last; WhyNone where it starts one
+func (r register) refusal(t, s, last, gap int, p RipParams, sounds func(t, s int) bool) RipWhy {
+	switch {
+	case !r.struck(t, s, p):
+		return WhyUnderBar
+	case t-last < gap:
+		return WhyAgain
+	case r.f.stronger(t, r.lo+s, r.lo, -12, -19, -24): // partials of the register's own strikes only, as a bass note often doubles a melody note
+		return WhyPartial
+	case !sounds(t, s):
+		return WhySilent
+	}
+	return WhyNone
 }
 
 // heardAt reports whether a start is heard at frame t: the start plane peaks
@@ -3265,9 +3346,12 @@ func (r register) until(t, s int, p RipParams) int {
 // and lasts, any number at once, to its end (until). None starts where the pitch
 // never sounds, at a stronger strike's partial, or within StrikeGap. A front end
 // that hears note starts also begins one where no strike answers a start (begun).
-func (f *RipFrames) strikes(lo, hi int, p RipParams) []ripNote {
+func (f *RipFrames) strikes(lo, hi int, p RipParams, tr *ripTrace) []ripNote {
 	r, ok := f.register(lo, hi)
 	if !ok {
+		for midi := lo; tr != nil && midi < lo+registerReach(lo, hi); midi++ {
+			tr.passed(f, 0, f.frames(), midi, WhyUnheard)
+		}
 		return nil
 	}
 	T, short, gap := f.frames(), max(int(p.MinNote/f.Hop), 1), int(p.StrikeGap/f.Hop)
@@ -3283,8 +3367,8 @@ func (f *RipFrames) strikes(lo, hi int, p RipParams) []ripNote {
 	for s := range r.reach {
 		last := -gap
 		for t := 0; t < T; {
-			// partials of the register's own strikes only, as a bass note often doubles a melody note
-			if !r.struck(t, s, p) || t-last < gap || f.stronger(t, lo+s, lo, -12, -19, -24) || !sounds(t, s) {
+			if why := r.refusal(t, s, last, gap, p, sounds); why != WhyNone {
+				tr.refuse(r, t, s, why, p)
 				t++
 				continue
 			}
@@ -3296,19 +3380,31 @@ func (f *RipFrames) strikes(lo, hi int, p RipParams) []ripNote {
 					n.vel = min(max(float64(f.head(f.Velocity, t, lo+s)), 0.1), 1)
 				}
 				notes = append(notes, n)
+			} else {
+				tr.refuse(r, t, s, WhyShort, p)
 			}
+			tr.passed(f, t+1, end, lo+s, WhyInside)
 			t = end
 			// let go under a pedal it rings on, and only a sure strike starts it again
 			for t < T && r.sal(t, s) >= p.Voicing*r.ref && !r.renews(t, s, p) {
 				t++
 			}
+			tr.passed(f, end, t, lo+s, WhyRung)
 		}
 	}
-	notes = append(notes, r.begun(notes, p)...)
+	tr.made(StageStrikes, notes...)
+	begun := r.begun(notes, p)
+	tr.made(StageBegun, begun...)
+	notes = append(notes, begun...)
 	slices.SortFunc(notes, func(a, b ripNote) int { return cmp.Or(a.start-b.start, a.midi-b.midi) })
 	if f.Cents != nil {
+		var before []ripNote
+		if tr != nil {
+			before = slices.Clone(notes)
+		}
 		notes = r.glides(notes, p, func(t, midi int) bool { return r.renews(t, midi-lo, p) },
 			func(t, midi int) bool { return f.peaks(f.Release, t, midi, p.Release) })
+		tr.between(StageGlides, before, notes)
 	}
 	return notes
 }
@@ -3580,13 +3676,16 @@ func (r register) glided(struck ripNote, g []ripVisit, short int) ripNote {
 // sounds, as a plain bass's are struck softly, and long and strong enough to be sure.
 // A low note with little sound at its own pitch is a higher note's shadow, and one
 // that rises over none of its partials' steady levels is a tone that never stops.
-func (f *RipFrames) lines(x []float64, p RipParams) (bass, melody []ripNote) {
+func (f *RipFrames) lines(x []float64, p RipParams, tr *ripTrace) (bass, melody []ripNote) {
 	rg := f.Pitches()
 	line := f.notes(rg.Min, RipBassReach, p)
 	if f.Strike == nil {
-		return line, f.notes(RipMelodyLow, rg.Max, p)
+		melody = f.notes(RipMelodyLow, rg.Max, p)
+		tr.made(StagePath, line...)
+		tr.made(StagePath, melody...)
+		return line, melody
 	}
-	melody, bass = f.strikes(RipBassTop, rg.Max, p), f.strikes(rg.Min, RipBassTop, p)
+	melody, bass = f.strikes(RipBassTop, rg.Max, p, tr), f.strikes(rg.Min, RipBassTop, p, tr)
 	struck := slices.Clone(bass)
 	for _, n := range line {
 		if n.midi >= RipBassTop || float64(n.end-n.start)*f.Hop < ripLineNote || n.strength < ripLineStrength {
@@ -3598,11 +3697,20 @@ func (f *RipFrames) lines(x []float64, p RipParams) (bass, melody []ripNote) {
 		}
 		if 4*over < n.end-n.start {
 			bass = append(bass, n)
+			tr.made(StagePath, n)
 		}
 	}
 	steady := map[[2]int]ripSteady{}
 	bass = slices.DeleteFunc(bass, func(n ripNote) bool {
-		return ownPitch(x, n, f.Hop) < ripOwnPitch || steadyRise(x, n, f.Hop, steady) < ripSteadyRise
+		switch {
+		case ownPitch(x, n, f.Hop) < ripOwnPitch:
+			tr.note(StageOwnPitch, RipDropped, WhyNone, n)
+			return true
+		case steadyRise(x, n, f.Hop, steady) < ripSteadyRise:
+			tr.note(StageSteadyRise, RipDropped, WhyNone, n)
+			return true
+		}
+		return false
 	})
 	slices.SortFunc(bass, func(a, b ripNote) int { return cmp.Or(a.start-b.start, a.midi-b.midi) })
 	return bass, melody

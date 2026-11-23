@@ -206,7 +206,7 @@ func TestARipReadsThePitchesItsFramesSay(t *testing.T) {
 		}
 		f.Strike[f.cell(50, midi)], f.Velocity[f.cell(50, midi)] = 0.95, 0.5
 	}
-	if bass, melody := f.lines(x, DefaultRipParams()); !slices.Equal(accPitches(bass), []int{23}) || !slices.Equal(accPitches(melody), []int{105}) {
+	if bass, melody := f.lines(x, DefaultRipParams(), nil); !slices.Equal(accPitches(bass), []int{23}) || !slices.Equal(accPitches(melody), []int{105}) {
 		t.Errorf("a B0 and an A7 struck in the piano's planes read as the bass %v and the melody %v", accPitches(bass), accPitches(melody))
 	}
 }

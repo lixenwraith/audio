@@ -381,7 +381,7 @@ func (s *RipStream) decode(upto int, end bool) error {
 			return nil
 		}
 	}
-	ev := s.rp.events(&f, x, s.p)
+	ev := s.rp.events(&f, x, s.p, nil)
 	if !s.held {
 		return s.hold(&f, x, ev, end)
 	}
