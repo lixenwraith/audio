@@ -925,7 +925,9 @@ E1 to C7 dropped; each line plays on the shipped voice its program plays on
 (`MIDIScore.Voices`, through §8's table). `WriteMIDI` writes a transcript the
 other way, a track a line and the drums on the drum channel at the rip's tempo,
 a hit on its key or its line's first, a note's glide as pitch bend (§8), to
-correct in a sequencer. The song a rip
+correct in a sequencer; a line's twins, the first struck the first let go, read
+back each to its own end, as a reader gives a note-off to the earliest note of
+its channel and key. The song a rip
 compresses into carries the recording's tuning (`SongDef.Tuning`), and the
 engine plays or renders it there (`AudioEngine.SetTuning`), as a voice fit
 renders its candidate notes there (`RenderNoteAt`), so a render stands beside
@@ -946,7 +948,8 @@ heads as it was, and the joint path's (`joint`, an integer as `harmonics` is,
 `joint_move`, `joint_beat`, `joint_line`, `joint_margin`), and the key's (`key_bars`, `key_open`,
 `key_close`, `key_bar`), and so are the starts' (`start`, `start_gap`, `start_wait`,
 `start_span`, `strike_alone`), which frames without a notes model's onset never
-read.
+read, and `twins` and `ring_on`, integers at 0 and 1 as the decoders read before
+either, which frames without strikes never read.
 `DefaultRipParams` is the hand-set start. The engine grades a set itself:
 `RenderMusic` plays registered patterns offline in a meter, `ExpectedRip` is the
 rip a perfect listener would make of them (`ExpectedRipBars` of a timeline under
@@ -982,15 +985,30 @@ no pitch is struck there (`Struck`), its genes over `StruckGeneNames`
 (`StruckLoudness`, a velocity); a file with some of the three heads and not all
 is refused, one with none gives none, and no decoder reads them yet.
 From strikes both registers' notes start where a pitch is struck, as hard
-as it was, and last while
-it sounds or until it is let go (`Release`, the pitch ringing on as far as a new
-strike goes), any number at once, in place of the two-line path, which stays on
-the notes a pedal leaves ringing; a low note's strike must clear the surer
-`StrikeLow`, as every attack rings a body's or a room's low mode (a guitar's at
-about 104 Hz, whatever the note); a strike starts none when its pitch never
-sounds, when it is a stronger strike's partial in the register, or within
-`StrikeGap` of the pitch's last, and one under `StrikeAgain`, or under a strike a
-tone either side, leaves the pitch's sounding note ringing. The bass line's own
+as it was, and last while it sounds or until it is let go (`Release`), any
+number at once, in place of the two-line path, which stays on the notes a pedal
+leaves ringing; a low note's strike must clear the surer `StrikeLow`, as every
+attack rings a body's or a room's low mode (a guitar's at about 104 Hz, whatever
+the note); a strike starts none when its pitch never sounds, when it is a
+stronger strike's partial in the register, or within `StrikeGap` of the pitch's
+last, and one under `StrikeAgain`, or under a strike a tone either side, leaves
+the pitch's sounding notes ringing. Under `twins` 1 a pitch holds as many
+notes as it is let go (`held`): a release ends the note of its pitch struck
+first, as a MIDI reader pairs them and as two parts on one pitch overlap most in
+stapes' corpus, and the pitch falling silent every one. A sure strike while
+notes sound starts one beside them where the releases from it until the pitch
+falls silent, and on the frame after, as the heads mark a frame past a note's
+end, are as many as the notes then sounding and those struck after it, the
+recording's end letting go the last (`twins`); else they end at it, a repeat, as
+a part playing a pitch again lets it go first, so a missed release costs a
+note's end and no more. A pitch struck again within `StrikeGap`, which the
+strikes take for one strike, let go, sounding on unstruck `MinNote` and let go
+again, held a second note from that second strike, a twin, which no repeat
+leaves. One strike let go twice is one note, as a restrike the head missed
+leaves the same, and so are two notes that start and end together; a pitch let
+go once and ringing on, as under a pedal, is one note. `twins` 0, the default
+until a model's heads are read both ways, reads one note a pitch at a time, a
+sure strike on a sounding pitch ending its note. The bass line's own
 notes stay only where no strike sounds, for 0.15 s at least and at 0.8 of the
 register's reference (`lines`), as a plain bass is struck softly. A note's velocity
 is the head's moved by the loudness of the second around it against the recording's
@@ -1025,12 +1043,17 @@ reads a step as large as the new sound in whatever phase it adds, and a ring
 that only sounds on reads none, is
 weighed with the heads' sureness in a logistic score set on graded recordings,
 and a note under the bar goes: a pitch struck again that its ring explains, a
-partial of the note under it, a shadow without a fundamental of its own; a kept
-note sounds on through a dropped restrike that started where it ended. A note
+partial of the note under it, a shadow without a fundamental of its own. Under
+`ring_on` (1) a kept note sounds on to the end of a dropped one of its pitch
+struck while it sounded or as it ended, the same note still sounding where heads
+strike falsely inside a ring, so a note held beside it that goes gives it its
+end; a twin neither rings on nor is rung on. `ring_on` 0 moves no end. A note
 held a second or more, seven tenths of whose harmonics the fit cannot see as its
 own, under the floor or a third of them another pitch's, is a soft line under a
 chord and stays on the heads' word. Two notes of one pitch at one start are one, as the strike and the bass
-line's path can both report a note. Then every strike over the bar the decoder dropped, a stronger
+line's path can both report a note, but a twin: struck within `StrikeGap` of the
+note before it, its sound is that note's to one template a pitch, so it is not
+fitted and stands or goes with that note. Then every strike over the bar the decoder dropped, a stronger
 strike's partial, a pitch it heard not sounding or a ringing pitch struck under
 `StrikeAgain`, is judged the same way against the notes kept, with an
 activation of its own alone, and comes back where its sound is its own, unless
@@ -1203,7 +1226,8 @@ With no judge loaded the read still lists every strike over a half, each with
 the installed verdict, a strike the installed scores never weigh dropped at
 odds of zero; a candidate they weighed is the strike of its pitch nearest it
 within `StrikeGap`, or, where a decoder's bar under a half leaves it none,
-listed itself, so every note the scores keep is a strike read. Its row is then
+listed itself, so every note the scores keep is a strike read, a twin its
+strike's. Its row is then
 fitted against the kept notes apart, from its activation as measured, on the
 floor as it stood before the installed candidates' fit, so it is the row a
 judge that kept the same notes would read, and asking changes no note.
@@ -1386,7 +1410,9 @@ judge when it has one. The engine's loops at
 100 and 140 bpm, a waltz and a jig, fed in 50 ms blocks, freeze `RipSamples`'s
 bars from the third on, note for note; a lag taken as the notes come can round a
 note to the next step where the whole's does not (one note a bar in the third to
-seventh bars of a loop at 175 bpm, read at 88).
+seventh bars of a loop at 175 bpm, read at 88). A frozen note keeps the end the
+read that froze it heard, so a twin freezes as offline where that read hears its
+pitch let go for each note, and as one note where a second rings on past it.
 
 A stream is read from outside too, for a view of the rip at work. `Frames`
 gives the frames heard from a frame on, as the ear gave them, and the index of

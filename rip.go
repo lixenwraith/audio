@@ -81,6 +81,9 @@ type RipParams struct {
 	KeyOpen  float64 `toml:"key_open"`  // and where the first of them is
 	KeyClose float64 `toml:"key_close"` // and the last, where the recording was heard to its end
 	KeyBar   float64 `toml:"key_bar"`   // the share of a bar's music a bar must hold to be one of the music's bars
+
+	Twins  int `toml:"twins"`   // 1 holds two notes of one pitch where its releases or a second strike within StrikeGap say both sound; 0 one note a pitch at a time
+	RingOn int `toml:"ring_on"` // 1 rings a kept note on through a dropped one of its pitch that starts where it ends (accRingOn); 0 leaves each its own end
 }
 
 // ripDrumsPerMinute is the least a drum strikes to be part of the music, ripLineNote
@@ -108,7 +111,7 @@ func DefaultRipParams() RipParams {
 		BarLine: 1, BarBeat: 1, BarAccent: 0.5, BarHead: 1, BarMove: 2,
 		MeterMargin: 0.35, MeterHead: 1, RepeatMargin: 0.03, NearMargin: 0.07, NearRepeat: 0.015,
 		JointMove: 100, JointBeat: 0.3, JointLine: 0.3, JointMargin: 3,
-		KeyBars: 1, KeyOpen: 0, KeyClose: 0, KeyBar: 0.5,
+		KeyBars: 1, KeyOpen: 0, KeyClose: 0, KeyBar: 0.5, Twins: 0, RingOn: 1,
 	}
 }
 
@@ -178,12 +181,16 @@ var ripGenes = []ripGene{
 	{"key_open", 0, 3, func(p *RipParams) *float64 { return &p.KeyOpen }},
 	{"key_close", 0, 3, func(p *RipParams) *float64 { return &p.KeyClose }},
 	{"key_bar", 0.1, 1, func(p *RipParams) *float64 { return &p.KeyBar }},
+	{"twins", 0, 1, nil},
+	{"ring_on", 0, 1, nil},
 }
 
 // ripCounts are the integer parameters' fields by their genes' names
 var ripCounts = map[string]func(*RipParams) *int{
 	"harmonics": func(p *RipParams) *int { return &p.Harmonics },
 	"joint":     func(p *RipParams) *int { return &p.Joint },
+	"twins":     func(p *RipParams) *int { return &p.Twins },
+	"ring_on":   func(p *RipParams) *int { return &p.RingOn },
 }
 
 func (g *ripGene) get(p *RipParams) float64 {
@@ -3244,6 +3251,7 @@ type ripNote struct {
 	strength         float64 // mean salience over the note, against the register's reference loudness
 	second           bool    // heard under another note of the register
 	heard            bool    // begun at a start heard where no strike answers it (begun)
+	twin             bool    // held from a second strike within StrikeGap of its pitch's last, judged as that one's note (held)
 	bright           float64 // RipNote.Bright
 	bend, bendAt     float64 // RipNote.Bend and BendAt
 	voice, said      []float64
@@ -3315,18 +3323,29 @@ func (r register) bar(p RipParams) float64 {
 
 // refusal is why state s's strike at t starts no note, in the order strikes
 // asks, with the pitch's last strike at last; WhyNone where it starts one
-func (r register) refusal(t, s, last, gap int, p RipParams, sounds func(t, s int) bool) RipWhy {
+func (r register) refusal(t, s, last int, p RipParams) RipWhy {
 	switch {
 	case !r.struck(t, s, p):
 		return WhyUnderBar
-	case t-last < gap:
+	case t-last < int(p.StrikeGap/r.f.Hop):
 		return WhyAgain
 	case r.f.stronger(t, r.lo+s, r.lo, -12, -19, -24): // partials of the register's own strikes only, as a bass note often doubles a melody note
 		return WhyPartial
-	case !sounds(t, s):
+	case !r.sounds(t, s, p):
 		return WhySilent
 	}
 	return WhyNone
+}
+
+// sounds reports whether state s reaches StrikeHold of the reference within
+// MinNote of t
+func (r register) sounds(t, s int, p RipParams) bool {
+	for u := t; u < min(t+max(int(p.MinNote/r.f.Hop), 1), r.f.frames()); u++ {
+		if r.sal(u, s) >= p.StrikeHold*r.ref {
+			return true
+		}
+	}
+	return false
 }
 
 // heardAt reports whether a start is heard at frame t: the start plane peaks
@@ -3447,10 +3466,15 @@ func (r register) renews(t, s int, p RipParams) bool {
 	return r.struck(t, s, p) && float64(f.head(f.Strike, t, r.lo+s)) >= p.StrikeAgain && !f.stronger(t, r.lo+s, f.Pitches().Min, -2, -1, 1, 2)
 }
 
-// until is the frame a note of state s struck at t ends on: after MinNote, where
-// its salience falls under Voicing of the reference or its release peaks over
-// Release, or where a sure strike renews it, within MinNote or past StrikeGap
+// until is the frame a note of state s struck at t ends on: as held reads it
+// under Twins; else after MinNote, where its salience falls under Voicing of
+// the reference or its release peaks over Release, or where a sure strike
+// renews it, within MinNote or past StrikeGap, one note a pitch at a time
 func (r register) until(t, s int, p RipParams) int {
+	if p.Twins == 1 {
+		notes, _ := r.held(t, s, p, nil)
+		return notes[0].end
+	}
 	f := r.f
 	T, short, gap := f.frames(), max(int(p.MinNote/f.Hop), 1), int(p.StrikeGap/f.Hop)
 	end := t + 1
@@ -3461,9 +3485,111 @@ func (r register) until(t, s int, p RipParams) int {
 	return end
 }
 
+// again reports whether a strike at t starts a note of state s while it sounds:
+// a sure one that refusal passes, past StrikeGap of the last note's strike
+func (r register) again(t, s, last int, p RipParams) bool {
+	return r.renews(t, s, p) && r.refusal(t, s, last, p) == WhyNone
+}
+
+// twins reports whether state s, n notes sounding and struck again at t, holds
+// them all past t: its releases from there until it falls silent, and on the
+// frame after, are as many as those notes and every one struck after t, the
+// frames' end letting go the last of them
+func (r register) twins(t, s, n int, p RipParams) bool {
+	f, midi := r.f, r.lo+s
+	need, have, last := n+1, 0, t
+	for u := t + 1; u < f.frames(); u++ {
+		if f.peaks(f.Release, u, midi, p.Release) {
+			have++
+		}
+		if u-last >= max(int(p.MinNote/f.Hop), 1) && r.sal(u, s) < p.Voicing*r.ref {
+			if f.peaks(f.Release, u+1, midi, p.Release) {
+				have++
+			}
+			return have >= need
+		}
+		if r.again(u, s, last, p) {
+			need, last = need+1, u
+		}
+	}
+	return have+1 >= need
+}
+
+// held is the notes state s holds from a strike at t until it falls silent, and
+// the frame it does or the frames end: each lasts MinNote, then to a release, the
+// earliest struck first, or to the silence. A sure strike while notes sound
+// starts one beside them where twins holds them all, else they end at it; one
+// struck again within StrikeGap, let go twice, held a second note from there.
+func (r register) held(t, s int, p RipParams, tr *ripTrace) (notes []ripNote, end int) {
+	f, midi := r.f, r.lo+s
+	T, short, gap := f.frames(), max(int(p.MinNote/f.Hop), 1), int(p.StrikeGap/f.Hop)
+	var open []int // the notes sounding, the earliest struck first
+	// the last note's strike, where a second it holds begins (a strike refused
+	// within StrikeGap of it, which no repeat leaves), the frame its pitch was let
+	// go to ring on, and whether it held its second or holds none, struck on a
+	// ring or beside notes sounding, whose releases are theirs
+	last, from, rung, twinned := t, t, -1, false
+	strike := func(u int) {
+		twinned = rung >= 0 || len(open) > 0
+		open, notes = append(open, len(notes)), append(notes, ripNote{start: u, end: T, midi: midi})
+		last, from, rung = u, u, -1
+	}
+	strike(t)
+	for end = t + 1; end < T; end++ {
+		quiet, released := r.sal(end, s) < p.Voicing*r.ref, f.peaks(f.Release, end, midi, p.Release)
+		if len(open) == 0 {
+			if from != last && !twinned && end-rung >= short && (released || quiet && f.peaks(f.Release, end+1, midi, p.Release)) {
+				notes, twinned = append(notes, ripNote{start: from, end: end, midi: midi, twin: true}), true
+			}
+			if quiet {
+				return notes, end
+			}
+		}
+		keep := open[:0]
+		for _, i := range open {
+			switch {
+			case end-notes[i].start < short:
+			case quiet:
+				notes[i].end = end
+				continue
+			case released:
+				notes[i].end, released = end, false
+				continue
+			}
+			keep = append(keep, i)
+		}
+		if open = keep; len(open) == 0 && rung < 0 {
+			if quiet {
+				return notes, end
+			}
+			rung = end
+		}
+		switch {
+		case r.again(end, s, last, p):
+			if len(open) > 0 && !r.twins(end, s, len(open), p) {
+				for _, i := range open {
+					notes[i].end = end
+				}
+				open = open[:0]
+			}
+			strike(end)
+		case len(open) > 0:
+			tr.refuse(r, end, s, WhyInside, p)
+		case r.renews(end, s, p):
+			tr.refuse(r, end, s, r.refusal(end, s, last, p), p)
+		default:
+			tr.refuse(r, end, s, WhyRung, p)
+		}
+		if from == last && end-last < gap && r.struck(end, s, p) {
+			from = end
+		}
+	}
+	return notes, T
+}
+
 // strikes reads a register's notes from a front end that hears each pitch struck:
 // a note starts where a strike peaks over Strike, as hard as the front end heard,
-// and lasts, any number at once, to its end (until). None starts where the pitch
+// and lasts, any number at once, to its end (held). None starts where the pitch
 // never sounds, at a stronger strike's partial, or within StrikeGap. A front end
 // that hears note starts also begins one where no strike answers a start (begun).
 func (f *RipFrames) strikes(lo, hi int, p RipParams, tr *ripTrace) []ripNote {
@@ -3475,21 +3601,30 @@ func (f *RipFrames) strikes(lo, hi int, p RipParams, tr *ripTrace) []ripNote {
 		return nil
 	}
 	T, short, gap := f.frames(), max(int(p.MinNote/f.Hop), 1), int(p.StrikeGap/f.Hop)
-	sounds := func(t, s int) bool {
-		for u := t; u < min(t+short, T); u++ {
-			if r.sal(u, s) >= p.StrikeHold*r.ref {
-				return true
-			}
-		}
-		return false
-	}
 	var notes []ripNote
 	for s := range r.reach {
 		last := -gap
 		for t := 0; t < T; {
-			if why := r.refusal(t, s, last, gap, p, sounds); why != WhyNone {
+			if why := r.refusal(t, s, last, p); why != WhyNone {
 				tr.refuse(r, t, s, why, p)
 				t++
+				continue
+			}
+			if p.Twins == 1 {
+				held, end := r.held(t, s, p, tr)
+				for _, h := range held {
+					if !h.twin {
+						last = h.start
+					}
+					if h.end-h.start < short {
+						tr.refuse(r, h.start, s, WhyShort, p)
+						continue
+					}
+					n := r.note(h.start, h.end, s)
+					n.twin = h.twin
+					notes = append(notes, n)
+				}
+				t = end
 				continue
 			}
 			last = t
@@ -3745,7 +3880,7 @@ func (r register) parted(struck ripNote, sound []ripVisit, short int) []ripNote 
 // stood there
 func (r register) glided(struck ripNote, g []ripVisit, short int) ripNote {
 	f, start, end := r.f, g[0].start, g[len(g)-1].end
-	n := ripNote{start: start, end: end, midi: g[0].midi, vel: struck.vel, heard: struck.heard, voice: f.voiceOver(start, end)}
+	n := ripNote{start: start, end: end, midi: g[0].midi, vel: struck.vel, heard: struck.heard, twin: struck.twin, voice: f.voiceOver(start, end)}
 	// edge is where the sound sits at frame at of a visit: where it stands over
 	// the MinNote of frames a to b around it, or else that frame's own reading
 	edge := func(a, b, midi, at int) (float64, float64) {

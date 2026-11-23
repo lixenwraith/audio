@@ -99,17 +99,50 @@ What is theirs, largest first, each with the smallest close:
 - **The accounting** drops 4,816 true notes, 6,883 through the room: chord
   tones and octave doubles whose partials a lower note's fit explains, as the
   installed scores weigh a strike and a salience against the fit's share and
-  span. It rings a kept note on through a dropped one, 679 ends late. Close: a
-  judge fitted on rows of perfect heads beside a trained model's, or a note the
-  heads are sure of kept, as one the fit cannot see is (`Held`).
-- **One note a pitch at a time**: two parts on one pitch are one note, 1,249
-  lost to a twin, and its end is the first release or strike of either, among
-  the strikes' 2,467 ends early. Close: a second note of a sounding pitch where
-  a sure strike comes before the release head lets the first go.
+  span. The scores were fitted on notes cut at their pitch's next strike: under
+  `twins` 1 a note sounding to its own end over a twin's reads less of its span
+  its own, and a strike dropped on a pitch still sounding stays dropped, 106
+  and 82 more. Close: a judge fitted on rows of perfect heads beside a trained
+  model's, or a note the heads are sure of kept, as one the fit cannot see is
+  (`Held`).
+- **Two notes on one pitch** are one note at `twins` 0, 1,249 lost to a twin
+  and 2,467 ends early; `twins` 1 holds both where the heads say so, 1,161
+  lost to a twin. Left under it:
+  - Two struck together, or close enough that their strikes' marks merge, are
+    one note, as one strike let go twice is also a restrike the head missed.
+    What could tell them: the accounting's memory, which reads a restrike's new
+    sound at the first release where a twin's ring steps down; or an onset head
+    that names the pitch starting.
+  - A short note over a held one of its pitch takes the held one's end and gives
+    it its own, the first release going to the earliest struck as most of the
+    corpus's overlaps cross (strikes late 681). What could: what plays each, where
+    the two voices differ, over the frames each sounds alone.
+  - A stream reads a twin where the read freezing its bar hears both releases;
+    a strike a judge brings back on a pitch still sounding ends the note before.
+  - The parts read 0.633 where `twins` 0 reads 0.637, the ring-on on or off.
+    Ruled out: the twins' own lines (0.633 with every twin taken out after the
+    accounting) and the ring-on. Left: the other notes, whose ends the twins'
+    walk moves and 106 of which the accounting drops, and which line each takes.
+- **`twins` and `ring_on` wait for trained heads**, at 0 and 1, the decoders as
+  they were before either: perfect heads cannot show what either is worth.
+  `twins` 1 hears 46 more notes, adds 3 fewer, loses 106 more at the accounting
+  and 0.004 of the parts, the ends within 0.002 (47, 7, 82, 0.003 and 0.001
+  through the room); `ring_on`, a kept note sounding on to the end of a dropped
+  one of its pitch, made for heads that strike falsely inside a ringing note,
+  reads the ends 0.887 where 0 reads 0.908, and 0.889 where 0 reads 0.912 under
+  `twins` (0.883, 0.908, 0.882, 0.909). Read a model's heads at all four on
+  held-out loops and recordings:
+  - `twins` on where the notes found rise by more than the notes added and the
+    ends read no fewer right than at 0. The design is wrong where the notes
+    added at the strikes rise by more than those found, as a head peaking twice
+    within `strike_gap` over one attack or letting go twice in one note makes,
+    or the ends fall under `twins` 0's.
+  - `ring_on` off where 0 reads more ends right with `twins` at 0 and at 1, the
+    notes found and added holding.
 - **The last bar**: the present path (`Joint` 0) lays a bar between two lines
   heard, so a recording's last bar holds no hit and no chord, 1,518 of 8,828
-  hits outside the bars on four-bar loops, its chords 0.704 of their seconds;
-  the joint path loses 573 and reads 0.850. Close: the present path's last bar
+  hits outside the bars on four-bar loops, its chords 0.707 of their seconds;
+  the joint path loses 573 and reads 0.851. Close: the present path's last bar
   laid to the end where its line falls within a beat of it.
 - **`dynamics`** moves a velocity the head already says: the loudness reads
   0.895, 0.769 through the room. Close: one of the two, the head taught the

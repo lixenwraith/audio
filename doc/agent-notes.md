@@ -283,9 +283,10 @@ that a document now states, and link the document instead.
 
 - A MIDI note-off names no note: `ReadMIDI` ends the earliest sounding note of
   its channel and pitch, so a note nested inside a longer one of its pitch reads
-  back with the two ends exchanged. A rip's line never holds such a pair; a file
-  from a sequencer can. `pip install --user mido` reads a written file for a
-  check from outside the package (`mido.MidiFile(path).tracks`).
+  back with the two ends exchanged. A rip's twins cross, the first struck the
+  first let go, which one channel holds; a file from a sequencer can nest them.
+  `pip install --user mido` reads a written file for a check from outside the
+  package (`mido.MidiFile(path).tracks`).
 - A score's notes quantize on its ticks, not its seconds: the grid's `place`
   sizes a note by the mean step over every bar, so under a tempo change a
   quarter in seconds read as eleven steps where the file holds eight.
@@ -870,6 +871,21 @@ that a document now states, and link the document instead.
   voiced frames alone, and a test's hand-built frames need the cell beside a
   sound over `StrikeHold` of the reference before the strikes make the note a
   smear test is about; at 0.6 that test passed with nothing to drop.
+- **A label's release peaks on the frame after its pitch falls silent.** Its
+  mark lies a frame either side of the note's end and `peaks` reads a plateau's
+  last frame, so a note alone ends at the silence before its release is read,
+  and one ending while a twin sounds on ends at its release, a frame late. A
+  count of a pitch's releases up to its silence takes the frame after (`twins`).
+- **Which of two notes of one pitch a release ends is a prior.** In stapes'
+  corpus a part's own overlaps cross, the earlier ending first, 3,193 to 469,
+  and two parts' nest 1,040 to 501: given to the earliest struck the first
+  release reads 7,388 of those ends right, to the latest 3,018, cut at the
+  restrike as before 1,509. Nothing in the heads tells the two apart.
+- **One strike let go twice is a twin or a restrike the head missed**, a legato
+  repeat's or a second part's: the strike and release heads read alike. Read so
+  (`twins` taking such a pair), stapes' corpus with a tenth of its strikes
+  missing added 274 notes for 194 found; a second strike's peak within
+  `StrikeGap`, which no repeat leaves, added none. Count a twin rule spoiled.
 - **The parting ties by its costs' shape, and walks simultaneous notes in an
   order it is given.** Two pairings of a dyad onto the next cost the same in
   exact arithmetic where the level term is linear across them, the lengths' logs
