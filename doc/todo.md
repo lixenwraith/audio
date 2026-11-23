@@ -89,34 +89,48 @@ fill at the eq's neighbouring value, once a recording shows it audible.
 - Affected files: `account.go`, `rip.go`, `ripmodels/ripmodels.go`
 
 With every head written off stapes' labels as the trainer's targets, no model
-loaded, the decoders' notes read 0.895 by F1 against 35,724 labelled on 580
-generated loops, 0.852 through a room, a mix and a tuning off A440, each loss
+loaded, the decoders' notes read 0.896 by F1 against 35,724 labelled on 580
+generated loops, 0.853 through a room, a mix and a tuning off A440, each loss
 put at its stage by the rip's own record (`Rip.Stages`, `ReadStages`, which
 stapes' `truth` and `tune ... truth` print: [Rip training
 §11](https://github.com/lixenwraith/stapes/blob/main/doc/rip-training.md#the-decoder-alone)).
 What is theirs, largest first, each with the smallest close:
 
-- **The accounting** drops 4,816 true notes, 6,883 through the room: chord
+- **The accounting** drops 4,922 true notes, 6,965 through the room: chord
   tones and octave doubles whose partials a lower note's fit explains, as the
   installed scores weigh a strike and a salience against the fit's share and
-  span. It rings a kept note on through a dropped one, 679 ends late. Close: a
-  judge fitted on rows of perfect heads beside a trained model's, or a note the
-  heads are sure of kept, as one the fit cannot see is (`Held`).
-- **One note a pitch at a time**: two parts on one pitch are one note, 1,249
-  lost to a twin, and its end is the first release or strike of either, among
-  the strikes' 2,467 ends early. Close: a second note of a sounding pitch where
-  a sure strike comes before the release head lets the first go.
+  span. The scores were fitted on notes cut at their pitch's next strike: a note
+  sounding to its own end over a twin's reads less of its span its own, and a
+  strike dropped on a pitch still sounding stays dropped, 106 and 82 more than
+  `twins` 0. Close: a judge fitted on rows of perfect heads beside a trained
+  model's, or a note the heads are sure of kept, as one the fit cannot see is
+  (`Held`).
+- **Two notes on one pitch** (`twins`): 1,161 still lost to a twin. Left:
+  - Two struck together, or close enough that their strikes' marks merge, are
+    one note, as one strike let go twice is also a restrike the head missed.
+    What could tell them: the accounting's memory, which reads a restrike's new
+    sound at the first release where a twin's ring steps down; or an onset head
+    that names the pitch starting.
+  - A short note over a held one of its pitch takes the held one's end and gives
+    it its own, the first release going to the earliest struck as most of the
+    corpus's overlaps cross (strikes late 670). What could: what plays each, where
+    the two voices differ, over the frames each sounds alone.
+  - A stream reads a twin where the read freezing its bar hears both releases;
+    a strike a judge brings back on a pitch still sounding ends the note before.
+  - The parts read 0.633 where `twins` 0 reads 0.637, as low with the twins
+    taken out after the accounting: the loss is in the other notes, whose ends
+    and losses the twins move; which line each goes on is untraced.
 - **The last bar**: the present path (`Joint` 0) lays a bar between two lines
-  heard, so a recording's last bar holds no hit and no chord, 1,518 of 8,828
+  heard, so a recording's last bar holds no hit and no chord, 1,525 of 8,828
   hits outside the bars on four-bar loops, its chords 0.704 of their seconds;
   the joint path loses 573 and reads 0.850. Close: the present path's last bar
   laid to the end where its line falls within a beat of it.
 - **`dynamics`** moves a velocity the head already says: the loudness reads
-  0.895, 0.769 through the room. Close: one of the two, the head taught the
+  0.896, 0.769 through the room. Close: one of the two, the head taught the
   note's level over its passage or the move dropped.
 - **The tuning**: a model's front end states none, so the accounting and
   `bright` measure at A440, which the room's loops, up to a quarter tone off,
-  pay for among the accounting's 2,067 more. Close: `RipFrames.Tuning` read off
+  pay for among the accounting's 2,043 more. Close: `RipFrames.Tuning` read off
   the cents head over the sounding cells.
 - **The key** is a profile's: 201 of 411 right. Close: the tonic weighed where
   the bass and phrases rest.
