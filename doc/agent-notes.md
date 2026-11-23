@@ -668,7 +668,7 @@ that a document now states, and link the document instead.
   marshals the new keys: hash each rip's JSON with the `Params` key deleted.
   Each of its notes marshals `Part` since v0.40.0, empty for a note heard:
   across that version delete it from every note too, and `Stages` since
-  v0.42.0, null unless asked, from the rip.
+  v0.43.0, null unless asked, from the rip.
 - A change that must leave the rips of files saved before it alone is held on
   such files: `NewRandom` of both specs saved by a scratch module on the last
   tag (the sure row zeroed), then on each build every exported field of the
