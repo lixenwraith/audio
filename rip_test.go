@@ -1061,14 +1061,62 @@ func TestLowNotesAreReadByStrikes(t *testing.T) {
 }
 
 // TestALowNoteNeedsItsOwnPitch: a low strike stands where its pitch sounds and goes
-// where only the note an octave over it does, whose partials it shares.
+// where the note an octave over it sounds 26 dB louder, whose partials it shares,
+// under the bar own_pitch, which a bar under its own pitch lets it through
 func TestALowNoteNeedsItsOwnPitch(t *testing.T) {
-	x := make([]float64, RipRate)
-	for i := range x {
-		x[i] = math.Sin(2 * math.Pi * 220 * float64(i) / RipRate)
+	const n = 200
+	for _, c := range []struct {
+		octave, bar float64
+		kept        bool
+	}{{0, -10, true}, {20, -10, false}, {20, -30, true}} {
+		x := make([]float64, n*RipHop)
+		for i := 20 * RipHop; i < 70*RipHop; i++ { // a quarter of the recording, which rises over its steady level
+			s := float64(i) / RipRate
+			x[i] = 0.05*math.Sin(2*math.Pi*110*s) + c.octave*0.05*math.Sin(2*math.Pi*220*s)
+		}
+		f := glideFrames(sung(n, 20, 4500, 70), 5)
+		f.Strike[20*RipPitches+45-RipMinMIDI] = 0.99
+		p := DefaultRipParams()
+		p.OwnPitch = c.bar
+		if bass, _ := f.lines(x, p, nil); (len(bass) == 1 && bass[0].midi == 45) != c.kept {
+			t.Errorf("an octave over it %v times as loud, a bar of %v dB: the bass %v, want it kept %v", c.octave, c.bar, bass, c.kept)
+		}
 	}
-	if real, shadow := ownPitch(x, ripNote{midi: 57}, RipFrameSec), ownPitch(x, ripNote{midi: 45}, RipFrameSec); real < ripOwnPitch || shadow >= ripOwnPitch {
-		t.Errorf("its own pitch %.1f dB, its shadow %.1f dB, against a bar of %v", real, shadow, float64(ripOwnPitch))
+}
+
+// TestTheCentsHeadStatesTheTuning: frames whose cents head places every sounding
+// cell 30 cents sharp, a front end that states no tuning, rip at it offline and
+// streamed under cents_tuning 1, at half of it under a half and at A440 under the
+// default; cents the head is unsure of by a quarter tone state none
+func TestTheCentsHeadStatesTheTuning(t *testing.T) {
+	const n = 1500
+	x := make([]float64, n*RipHop)
+	for i := range x {
+		x[i] = 0.3 * math.Sin(float64(i)*2*math.Pi*262.6/RipRate)
+	}
+	for _, c := range []struct{ share, err, want float64 }{{1, 5, 30}, {0.5, 5, 15}, {0, 5, 0}, {1, 60, 0}} {
+		for _, stream := range []bool{false, true} {
+			f := headFrames(n, 20, 40, 0, 4, 0)
+			for d := range f.Onset {
+				f.Onset[d] = make([]float64, n)
+			}
+			f.Salience, f.Cents, f.CentsError = make([]float32, n*RipPitches), make([]float32, n*RipPitches), make([]float32, n*RipPitches)
+			for u := range n {
+				f.Salience[u*RipPitches+60-RipMinMIDI], f.Cents[u*RipPitches+60-RipMinMIDI] = 0.9, 30
+				for m := range RipPitches {
+					f.CentsError[u*RipPitches+m] = float32(c.err)
+				}
+			}
+			p := DefaultRipParams()
+			p.CentsTuning = c.share
+			r, err := framesRip(Ripper{Params: p}, f, x, stream)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if math.Abs(r.Tuning-c.want) > 0.01 {
+				t.Errorf("a share of %v, cents to %v: streamed %v, the tuning %.2f, want %v", c.share, c.err, stream, r.Tuning, c.want)
+			}
+		}
 	}
 }
 
@@ -1085,8 +1133,8 @@ func TestASteadyToneIsNoBassNote(t *testing.T) {
 		}
 	}
 	steady := map[[2]int]ripSteady{}
-	hum := steadyRise(x, ripNote{midi: 31, start: RipRate / RipHop}, RipFrameSec, steady)
-	note := steadyRise(x, ripNote{midi: 36, start: 2 * RipRate / RipHop}, RipFrameSec, steady)
+	hum := steadyRise(x, ripNote{midi: 31, start: RipRate / RipHop}, RipFrameSec, 0, steady)
+	note := steadyRise(x, ripNote{midi: 36, start: 2 * RipRate / RipHop}, RipFrameSec, 0, steady)
 	if hum >= ripSteadyRise || note < ripSteadyRise {
 		t.Errorf("the hum rises %.1f dB, the note %.1f dB, against a bar of %v", hum, note, float64(ripSteadyRise))
 	}
