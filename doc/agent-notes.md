@@ -368,6 +368,20 @@ that a document now states, and link the document instead.
   score's tempo map puts a sixteenth's pickup's first tick at -5.6e-17 s at 13 of
   121 tempos, which `WriteMIDI` refuses, where the decoders' whole-frame beats in
   the sequencer's range never do: the floor is in seconds, not in frames.
+- **The grid's edges were where perfect heads' bars lost what they heard.** With
+  every head stapes' label's on 580 generated loops, the joint path left 573
+  hits outside its bars: 317 past the last line of loops that end part-way into a
+  bar, its own last line laid only within half a beat past the frames, and 254
+  within a tenth of a beat before a first line it centres a frame or two after a
+  hit on frame 0; the present path 1,518, 1,423 past its last line. `pickup` and
+  `closing` lay both ends, a beat the head marks heard as a hit is.
+- **A recording cut mid-sound clicks on its last frames**, an onset the analysis
+  hears there; a stream's joint path, whose last line fell three frames before
+  the offline one's, opened a bar for it, so `closing` leaves the last half
+  window out. A beat on the last line is the last bar's end and opens none.
+- **The grid's edges move the bars and nothing else**: a digest of each rip's
+  `Notes`, `Tuning` and `Strikes` alone held through them on 24 loops of `aug gen
+  glide meters overlaps` where the whole rips moved, 14 of 24 through the analysis.
 - The pitch paths start late against the onsets the beats sit on: the median
   phase of the notes is taken out before quantizing. Under that sharper grid the
   second pass's fragments cost the pad test's melody two hundredths against the
@@ -677,6 +691,12 @@ that a document now states, and link the document instead.
   frames' range, which `TestARipReadsThePitchesItsFramesSay` holds beside the
   padding. The accounting's templates are a MIDI key's (`accKeys`), so no
   range reaches them.
+- **A front end's frames go to every candidate of a search**, as stapes'
+  takes hand one ear's frames on, so the tuning the cents head hears is stated
+  on a copy (`Ripper.Hear`), never on the frames returned; a stream carries its
+  votes over every frame heard (`RipStream.count`). The own-pitch and
+  steady-rise rules read the frames' tuning as the accounting and `bright` do; on
+  the 24-loop digest that moved no rip through the analysis, which measures it.
 - **A rip reads two frame heads of a notes model: the measure and the onset.**
   `notesHeads` names `voicing`, which `New` therefore asks of the file, and
   `read` never reads it; the drums, wave and voice are the frame model's, and
@@ -972,6 +992,10 @@ that a document now states, and link the document instead.
   new scalar on `RipFrames` goes through it the same way.
 - **`Final` rips the samples a stream kept, float32.** A test that compares it
   with `Samples` rounds the recording to float32 first.
+- **Keeping the stages costs nothing a run can tell**: `BenchmarkRip`'s staged
+  way sat within unjudged's spread over five runs (1,129 and 1,137 ms medians),
+  114 allocations and 125 KB more; stapes' search over label frames, which runs no
+  analysis, took 29.4 to 30.4 s for 24 loops with them and 29.5 to 30.5 without.
 - **`BenchmarkRip` and the stream's `struck` ways are mostly the analysis.**
   The accounting is a small share of the loop's rip there, so a judge loaded
   and the read on move them by a few percent; profile for the stage's own

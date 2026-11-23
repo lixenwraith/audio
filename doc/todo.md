@@ -86,7 +86,7 @@ fill at the eq's neighbouring value, once a recording shows it audible.
 ### Keep what perfect heads say
 
 - Priority: P1
-- Affected files: `account.go`, `rip.go`, `ripmodels/ripmodels.go`
+- Affected files: `account.go`, `rip.go`
 
 With every head written off stapes' labels as the trainer's targets, no model
 loaded, the decoders' notes read 0.895 by F1 against 35,724 labelled on 580
@@ -94,7 +94,7 @@ generated loops, 0.852 through a room, a mix and a tuning off A440, each loss
 put at its stage by the rip's own record (`Rip.Stages`, `ReadStages`, which
 stapes' `truth` and `tune ... truth` print: [Rip training
 §11](https://github.com/lixenwraith/stapes/blob/main/doc/rip-training.md#the-decoder-alone)).
-What is theirs, largest first, each with the smallest close:
+What is left, largest first, each with the smallest close:
 
 - **The accounting** drops 4,816 true notes, 6,883 through the room: chord
   tones and octave doubles whose partials a lower note's fit explains, as the
@@ -139,23 +139,19 @@ What is theirs, largest first, each with the smallest close:
     or the ends fall under `twins` 0's.
   - `ring_on` off where 0 reads more ends right with `twins` at 0 and at 1, the
     notes found and added holding.
-- **The last bar**: the present path (`Joint` 0) lays a bar between two lines
-  heard, so a recording's last bar holds no hit and no chord, 1,518 of 8,828
-  hits outside the bars on four-bar loops, its chords 0.707 of their seconds;
-  the joint path loses 573 and reads 0.851. Close: the present path's last bar
-  laid to the end where its line falls within a beat of it.
 - **`dynamics`** moves a velocity the head already says: the loudness reads
   0.895, 0.769 through the room. Close: one of the two, the head taught the
   note's level over its passage or the move dropped.
-- **The tuning**: a model's front end states none, so the accounting and
-  `bright` measure at A440, which the room's loops, up to a quarter tone off,
-  pay for among the accounting's 2,067 more. Close: `RipFrames.Tuning` read off
-  the cents head over the sounding cells.
+- **The tuning**: `cents_tuning` 1 gives the room's loops 0.874 for 0.852, the
+  accounting dropping 5,452 for 6,883 and the own-pitch rule 509 for 372, and
+  is 0 until a trained cents head is read on recordings in tune. Close: its
+  share set where trained heads hold those, and the 46 notes a quarter tone off
+  that the strikes hear in the cell beside read by their cents.
 - **The key** is a profile's: 201 of 411 right. Close: the tonic weighed where
   the bass and phrases rest.
 - **The bass's own-pitch rule** drops 432 low notes whose fundamental stands
-  more than 10 dB under its next partials. Close: the rule only where no sure
-  strike of the pitch stands.
+  more than `own_pitch` (10 dB) under its next partials. Close: the rule only
+  where no sure strike of the pitch stands, and its bar searched on trained heads.
 - **A plateau's peak** is read on its last frame (agent notes), so 51 notes
   (290 through the room) whose sound leaves its first cell start none. Close:
   read a peak at the middle of equal frames, as `centre` does a beat.
@@ -523,15 +519,12 @@ What is left here, each to settle on trained weights:
 - Affected files: `rip.go`
 
 What is heard at a recording's start keeps its nearest step, stated at the start
-where that lies before it ([Audio §9](audio.md#9-ripping-a-recording)). The
-pickup's own line can still lie a frame or two before a recording that begins on
-it, as the joint path extrapolates it a bar back (`Rip.Downbeat` and its first
-beat at -0.012 to -0.023 s); and a note or a hit within half a step before the
-first line, which opens no pickup bar, lies in no bar: a kick on frame 0 under a
-line on frame 1 is lost from `Rip.Hits` and the MIDI file. The smallest close:
-such a line laid at the start, its bar a frame or two shorter, and such a frame
-on the first line; the second moves recordings whose first line lies at or after
-the start, so both are read on recordings first.
+where that lies before it, and what lies within half a step before the first line
+lies on it ([Audio §9](audio.md#9-ripping-a-recording)). The pickup's own line can
+still lie a frame or two before a recording that begins on it, as the joint path
+extrapolates it a bar back (`Rip.Downbeat` and its first beat at -0.012 to -0.023
+s). The smallest close: such a line laid at the start, its bar a frame or two
+shorter, read on recordings first.
 
 ## The live rip
 
