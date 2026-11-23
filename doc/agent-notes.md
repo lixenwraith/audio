@@ -760,6 +760,17 @@ that a document now states, and link the document instead.
 
 ## Decoders
 
+- **A key is counted on loops cut part-way beside whole ones.** Stapes' generated
+  loops open on their tonic chord far more often than a loop cut a bar or two in
+  from each side does, as a recording cut from a longer piece is: a rule leaning
+  on the opening or the close gains on whole loops and loses on cut ones, even as
+  a tie-break beside the lean, so `key_open` and `key_close` stay at 0 ([stapes'
+  rip training §11](https://github.com/lixenwraith/stapes/blob/main/doc/rip-training.md#the-key)).
+- **A key rule is iterated on dumped features.** The bars do not move with the
+  key, so a scratch test that dumps each loop's chroma, its bars' chromas and its
+  lines after `grid` lets a script mirror `keyOver` and `MatchChords` over every
+  variant at once; check the mirror gives the rip's key on every loop first.
+
 - **The wide table never sees a bar line.** Its F1 matches notes through a
   fitted time map, so a bar path that moves every line by a beat scores the
   same; read the rip's bar lines against a truth that has them (GuitarSet's

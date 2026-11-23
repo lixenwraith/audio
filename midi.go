@@ -371,9 +371,9 @@ func foldMeter(num, den int, fold float64) (Meter, bool) {
 // Rip is the score as a rip of it: notes quantized on its own ticks, its first tempo
 // folded by octaves into the sequencer's range with its first meter read at that
 // tempo (foldMeter; 4/4 when the grid plays none), bars from where that signature
-// starts with a pickup bar for notes before it, and the key keyOf its pitch classes.
-// A note outside E1 to C7, the Range a score's rip keeps, is dropped, and counted;
-// a Further one left out.
+// starts with a pickup bar for notes before it, and the key keyOver its pitch
+// classes and its bars'. A note outside E1 to C7, the Range a score's rip keeps, is
+// dropped, and counted; a Further one left out.
 func (m *MIDIScore) Rip() (*Rip, int) {
 	const fine = 64 // the grid's units a tick, so a folded beat is whole
 	at := func(sec float64) int { return int(math.Round(m.ticks(sec) * fine)) }
@@ -405,7 +405,6 @@ func (m *MIDIScore) Rip() (*Rip, int) {
 			b[n.MIDI%12] += n.End - n.Start
 		}
 	}
-	r.Root, r.Scale = keyOf(c, b)
 	var hits [InstrClap][]ripHit
 	for _, h := range m.Hits {
 		hits[h.Drum] = append(hits[h.Drum], ripHit{frame: at(h.Start), strength: h.Vel})
@@ -423,6 +422,14 @@ func (m *MIDIScore) Rip() (*Rip, int) {
 		r.Beats[i] = m.seconds(float64(g.beat(i)) / fine)
 	}
 	r.Downbeat = r.Beats[0]
+	chroma := make([][12]float64, g.bars())
+	for bar := range chroma {
+		lo, hi := r.Beats[per*bar], r.Beats[per*(bar+1)]
+		for _, n := range r.Notes {
+			chroma[bar][n.MIDI%12] += max(min(n.End, hi)-max(n.Start, lo), 0)
+		}
+	}
+	r.Root, r.Scale = keyOver(c, b, chroma, true, DefaultRipParams())
 	for d, hs := range hits {
 		for _, h := range hs {
 			g.hit(r, InstrumentType(d), h.frame, h.strength)
@@ -438,15 +445,7 @@ func (m *MIDIScore) Rip() (*Rip, int) {
 		}
 		g.place(r, n, part)
 	}
-	r.Progression = make([]int, g.bars())
-	for bar := range r.Progression {
-		lo, hi := r.Beats[per*bar], r.Beats[per*(bar+1)]
-		var chroma [12]float64
-		for _, n := range r.Notes {
-			chroma[n.MIDI%12] += max(min(n.End, hi)-max(n.Start, lo), 0)
-		}
-		r.Progression[bar] = chordOf(chroma, r.Root, r.Scale)
-	}
+	r.Progression = progression(chroma, r.Root, r.Scale)
 	return r, dropped
 }
 

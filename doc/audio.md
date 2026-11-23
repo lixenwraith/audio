@@ -622,8 +622,22 @@ heard on its first frames keeps its nearest step, which can lie a frame or two
 before the start, and a step is stated at the start where it lies before it
 (`Rip.stepAt`, as `Hits` and `Stages` read it), so of what a rip states only the
 pickup's line and beats lie before 0. What the front end hears before the recording first comes within 80 dB of
-its loudest block, a model's hits in the silence, is dropped first. The key is the root and scale whose tones hold the most chroma and whose
-others the least, the bass register voting for the tonic.
+its loudest block, a model's hits in the silence, is dropped first.
+
+The key is named once the bars are (`keyOver`). Its scale is the one whose tones
+hold the most of the chroma summed over the recording, less what lies outside
+them (`scaleFit`), which a minor and its relative major, or a mode and its
+others, share. Of the keys that fit best, it is the one whose tonic chord, as
+`chordOf` names a bar's chord in that key, the most of the music's bars rest on
+(`key_bars`), a bar of the music holding half a bar's at least, the upper
+median of the bars' (`key_bar`); then the chroma's lean to the tonic, its share,
+half its fifth's and the bass register's (`tonicLean`), then the table's order.
+The first and the last of those bars may weigh too (`key_open`, `key_close`, the
+last only where the recording was heard to its end); they weigh nothing by
+default, since a recording cut from a longer piece opens and closes anywhere
+(stapes' [rip training §11](https://github.com/lixenwraith/stapes/blob/main/doc/rip-training.md#the-key)).
+The bar lines' cue reads the chroma's key before the bars are known (`keyOf`,
+the fit and the lean summed). Nothing pitched reads C major, as it did.
 
 The meter is a choice among readings of the pulses (`readings`), each a bar
 of so many pulses decoded as above, the snare's backbeats on its felt beats (a
@@ -875,9 +889,12 @@ bass, against the parts a truth names (`RipNote.Part`) as BCubed reads a
 clustering against classes, each note's share of its line's notes that are of
 its part and of its part's notes that are on its line, so neither side's names
 nor how many lines it has enter. `MatchKey` reads the tonic by its pitch class
-and the scale; `MatchChords` reads a second of the chords given (`RipChord`)
-right where a bar of the rip's names its root, its `Progression` degree's in
-the rip's key, which is all a rip says of a chord, and wrong where no bar lies.
+and the scale, and a miss by its kind (`KeyMiss`): the tonic in a scale that
+holds the truth's or is held by it, as a minor holds its pentatonic, the
+truth's tones under another tonic, as its relative major's, or else.
+`MatchChords` reads a second of the chords given (`RipChord`) right where a bar
+of the rip's names its root, its `Progression` degree's in the rip's key, which
+is all a rip says of a chord, and wrong where no bar lies.
 A rhythm's note gives no end and no velocity, nor does a given velocity of zero
 or under.
 A rip asked (`Ripper.Stages`) keeps what each stage of the decoders made,
@@ -902,8 +919,8 @@ through the notes the line leading it matched), so the notes heard can be counte
 level as well. A file read is a rip of its own too (`MIDIScore.Rip`): its notes
 quantized on its ticks, its first tempo folded by octaves into the sequencer's
 range, bars of its first time signature read at that tempo (§8) from where it
-starts, the key `keyOf` its
-notes' pitch classes as the analysis takes it of the chroma, and a note outside
+starts, the key named as the analysis names it (`keyOver`) over its notes'
+pitch classes, the bars' too, and a note outside
 E1 to C7 dropped; each line plays on the shipped voice its program plays on
 (`MIDIScore.Voices`, through §8's table). `WriteMIDI` writes a transcript the
 other way, a track a line and the drums on the drum channel at the rip's tempo,
@@ -926,7 +943,8 @@ margins are among them (`tempo_comb`, `beat_comb_2` to `4`, `beat_cut_2`, `beat_
 `repeat_margin`, `near_margin`, `near_repeat`), each at the value the decoders
 were written with, so a document that names none leaves a rip without the
 heads as it was, and the joint path's (`joint`, an integer as `harmonics` is,
-`joint_move`, `joint_beat`, `joint_line`, `joint_margin`), and so are the starts' (`start`, `start_gap`, `start_wait`,
+`joint_move`, `joint_beat`, `joint_line`, `joint_margin`), and the key's (`key_bars`, `key_open`,
+`key_close`, `key_bar`), and so are the starts' (`start`, `start_gap`, `start_wait`,
 `start_span`, `strike_alone`), which frames without a notes model's onset never
 read.
 `DefaultRipParams` is the hand-set start. The engine grades a set itself:
@@ -1350,7 +1368,8 @@ evenly, the first taking what does not divide: `FrameSpec`'s four attend 12, 12,
 
 Every half second of frames the decoders read what is held. Once six bars
 of 4/4 are tracked, as the other meters need, the grid is decoded as offline and
-its beat, reading, tempo, meter and key hold; each later bar is decoded on from
+its beat, reading, tempo, meter and key hold, the key its first bars name, their
+last no close unless the recording has ended; each later bar is decoded on from
 the last frozen one's line at that beat and reading, the notes' lag the median
 of the frozen notes' and the open bars'. A bar freezes once two follow it, laid
 out as `RipSamples` lays it out (`Bars`), under a second past those two through

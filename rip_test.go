@@ -1590,24 +1590,152 @@ func TestPartsAreReadWhateverTheyAreCalledAndHowManyThereAre(t *testing.T) {
 	}
 }
 
-// TestTheKeyAndTheChordsAreReadByTheirRoots: a rip in G minor names a truth's
-// key of G at any octave, and not its scale where the truth's is major; its
-// bars' chords, each its degree's root in the key, are right over the seconds
-// that root is the given chord's, whatever the chord's other tones, and wrong
-// where no bar of the rip's lies
-func TestTheKeyAndTheChordsAreReadByTheirRoots(t *testing.T) {
-	r := &Rip{Root: 43, Scale: ScaleMinor, Progression: []int{0, 5, 2, 6}}
-	for i := range 4*BeatsPerBar + 1 {
-		r.Beats = append(r.Beats, 1+0.5*float64(i))
-	}
+// TestAKeyIsReadByItsTonicItsScaleAndItsMiss: a rip in G minor names a
+// truth's key of G at any octave, and not its scale where the truth's is
+// major; it misses G's minor pentatonic in a scale that holds it, B♭ major and
+// D phrygian by their tones under another tonic, and G major and A minor else
+func TestAKeyIsReadByItsTonicItsScaleAndItsMiss(t *testing.T) {
+	r := &Rip{Root: 43, Scale: ScaleMinor}
 	for _, k := range []struct {
 		root          int
 		scale         ScaleID
 		tonic, scaled bool
-	}{{31, ScaleMinor, true, true}, {55, ScaleMajor, true, false}, {45, ScaleMinor, false, true}} {
-		if tonic, scaled := MatchKey(r, k.root, k.scale); tonic != k.tonic || scaled != k.scaled {
-			t.Errorf("a key of %d in scale %d: tonic %v, scale %v, want %v and %v", k.root, k.scale, tonic, scaled, k.tonic, k.scaled)
+		miss          KeyMiss
+	}{
+		{31, ScaleMinor, true, true, KeyRight}, {55, ScaleMinorPent, true, false, KeyNested},
+		{46, ScaleMajor, false, false, KeyRelative}, {38, ScalePhrygian, false, false, KeyRelative},
+		{55, ScaleMajor, true, false, KeyOther}, {45, ScaleMinor, false, true, KeyOther},
+	} {
+		if tonic, scaled, miss := MatchKey(r, k.root, k.scale); tonic != k.tonic || scaled != k.scaled || miss != k.miss {
+			t.Errorf("a key of %d in scale %d: tonic %v, scale %v, miss %d, want %v, %v and %d", k.root, k.scale, tonic, scaled, miss, k.tonic, k.scaled, k.miss)
 		}
+	}
+	pent := &Rip{Root: 43, Scale: ScaleMinorPent}
+	if _, _, miss := MatchKey(pent, 31, ScaleDorian); miss != KeyNested {
+		t.Errorf("a minor pentatonic against its dorian: miss %d, want %d", miss, KeyNested)
+	}
+}
+
+// builtChords hears, in place of a recording, bars of 4/4 at 136 a minute, a
+// beat 38 frames: each a bass's pitch class then its chord's, each frame's
+// chroma the bar's notes and the bass register's its bass, the beat and downbeat
+// heads marking each beat and line a frame either side; and hears as it plays
+type builtChords [][]int
+
+func (b builtChords) frames() *RipFrames {
+	const beat = 38
+	n := len(b) * BeatsPerBar * beat
+	f := &RipFrames{Hop: RipFrameSec, Flux: make([]float64, n), Salience: make([]float32, n*RipPitches), Chroma: make([][12]float64, n),
+		BassChroma: make([][12]float64, n), Beat: slices.Repeat([]float64{0.01}, n), Downbeat: slices.Repeat([]float64{0.01}, n)}
+	for d := range f.Onset {
+		f.Onset[d] = make([]float64, n)
+	}
+	for t := range n {
+		bar := b[t/(BeatsPerBar*beat)]
+		if len(bar) > 0 {
+			f.BassChroma[t][bar[0]] = 1
+		}
+		for _, pc := range bar {
+			f.Chroma[t][pc]++
+		}
+	}
+	for c := 0; c < n; c += beat {
+		f.Flux[c] = 1
+		for k := max(c-1, 0); k <= c+1; k++ {
+			f.Beat[k] = 0.9
+			if c%(BeatsPerBar*beat) == 0 {
+				f.Downbeat[k] = 0.9
+			}
+		}
+	}
+	return f
+}
+
+func (b builtChords) Hear([]float64, int, RipParams) (*RipFrames, error) { return b.frames(), nil }
+
+func (b builtChords) Ear(RipParams, bool) (RipEar, error) { return &builtEar{f: b.frames()}, nil }
+
+// builtEar gives a frame once the samples up to its end are in
+type builtEar struct {
+	f       *RipFrames
+	n, gave int
+}
+
+func (e *builtEar) Hear(x []float64) (*RipFrames, error) {
+	e.n += len(x)
+	return e.give(min(e.n/RipHop, e.f.frames())), nil
+}
+
+func (e *builtEar) Close() (*RipFrames, error) { return e.give(e.f.frames()), nil }
+
+func (e *builtEar) give(to int) *RipFrames {
+	g := *e.f
+	g.cut(e.gave, max(to, e.gave))
+	e.gave = max(to, e.gave)
+	return &g
+}
+
+// TestAKeysTonicIsTheChordMostOfItsBarsRestOn: of the keys whose tones fit
+// best, a rip names the one whose tonic chord most of its bars rest on, A minor
+// over bars of A minor on a bass of C, where the chroma alone leans to C major;
+// a stream names the key its first bars rest on and holds it through bars of C;
+// and nothing pitched reads C major, as the chroma alone does
+func TestAKeysTonicIsTheChordMostOfItsBarsRestOn(t *testing.T) {
+	am, onC, f, g, c := []int{9, 9, 0, 4}, []int{0, 9, 0, 4}, []int{5, 5, 9, 0}, []int{7, 7, 11, 2}, []int{0, 0, 4, 7}
+	rip := func(b builtChords) *Rip {
+		t.Helper()
+		r, err := Ripper{Params: DefaultRipParams(), FrontEnd: b}.Samples(make([]float64, b.frames().frames()*RipHop), RipRate)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	inversions := builtChords{onC, onC, f, g, onC, onC, f, g}
+	if root, scale := keyOf(inversions.frames().chroma()); root%12 != 0 || scale != ScaleMajor {
+		t.Fatalf("the chroma alone names %d in scale %d, want C major", root, scale)
+	}
+	if r := rip(inversions); r.Root%12 != 9 || r.Scale != ScaleMinor || r.Progression[0] != 0 {
+		t.Errorf("bars of A minor on C: %d in scale %d, chords %v, want A minor, its first bar on its tonic", r.Root, r.Scale, r.Progression)
+	}
+	turning := builtChords{am, am, f, g, am, am, f, c, c, c, c, c}
+	if r := rip(turning); r.Root%12 != 0 || r.Scale != ScaleMajor {
+		t.Errorf("four bars of A minor and five of C: %d in scale %d, want C major", r.Root, r.Scale)
+	}
+	s, err := NewRipStream(Ripper{Params: DefaultRipParams(), FrontEnd: turning})
+	if err != nil {
+		t.Fatal(err)
+	}
+	x, first := make([]float64, turning.frames().frames()*RipHop), -1
+	for at := 0; at < len(x); at += RipRate / 2 {
+		if err := s.Write(x[at:min(at+RipRate/2, len(x))], RipRate); err != nil {
+			t.Fatal(err)
+		}
+		if b := s.Bars(); b != nil && first < 0 {
+			first = at + RipRate/2
+			if b.Root%12 != 9 || b.Scale != ScaleMinor {
+				t.Errorf("the stream's first bars name %d in scale %d, want A minor", b.Root, b.Scale)
+			}
+		}
+	}
+	r, err := s.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first < 0 || first >= len(x) || r.Root%12 != 9 || r.Scale != ScaleMinor {
+		t.Errorf("the stream named its key at sample %d of %d and closes on %d in scale %d, want before the end and A minor held", first, len(x), r.Root, r.Scale)
+	}
+	if r := rip(builtChords{{}, {}, {}, {}, {}, {}}); r.Root != 36 || r.Scale != ScaleMajor {
+		t.Errorf("nothing pitched: %d in scale %d, want C major at 36", r.Root, r.Scale)
+	}
+}
+
+// TestTheChordsAreReadByTheirRoots: a rip's bars' chords, each its degree's root
+// in its key, are right over the seconds that root is the given chord's,
+// whatever the chord's other tones, and wrong where no bar of the rip's lies
+func TestTheChordsAreReadByTheirRoots(t *testing.T) {
+	r := &Rip{Root: 43, Scale: ScaleMinor, Progression: []int{0, 5, 2, 6}}
+	for i := range 4*BeatsPerBar + 1 {
+		r.Beats = append(r.Beats, 1+0.5*float64(i))
 	}
 	given := []RipChord{{0, 3, []int{7, 10, 2}}, {3, 5, []int{3, 7, 10}}, {5, 7, []int{0, 3, 7}}, {7, 10, []int{5, 9, 0, 3}}}
 	if c := MatchChords(r, given); c.Given != 10 || c.Right != 6 {
