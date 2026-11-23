@@ -111,7 +111,7 @@ func DefaultRipParams() RipParams {
 		BarLine: 1, BarBeat: 1, BarAccent: 0.5, BarHead: 1, BarMove: 2,
 		MeterMargin: 0.35, MeterHead: 1, RepeatMargin: 0.03, NearMargin: 0.07, NearRepeat: 0.015,
 		JointMove: 100, JointBeat: 0.3, JointLine: 0.3, JointMargin: 3,
-		KeyBars: 1, KeyOpen: 0, KeyClose: 0, KeyBar: 0.5, Twins: 1, RingOn: 1,
+		KeyBars: 1, KeyOpen: 0, KeyClose: 0, KeyBar: 0.5, Twins: 0, RingOn: 1,
 	}
 }
 

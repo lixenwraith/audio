@@ -561,8 +561,10 @@ func TestRipStreamFreezesTheTwinsTheOfflineRipReads(t *testing.T) {
 		accTone(x, g[0], g[1], g[2], 0.2, 8)
 	}
 	var rips [2][][3]int
+	p := DefaultRipParams()
+	p.Twins = 1
 	for i, stream := range []bool{false, true} {
-		r, err := framesRip(Ripper{}, f, x, stream)
+		r, err := framesRip(Ripper{Params: p}, f, x, stream)
 		if err != nil {
 			t.Fatal(err)
 		}
