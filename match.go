@@ -659,6 +659,10 @@ type BarScore struct {
 	Downbeats float64 // the share of truth downbeats with a rip bar line within an eighth of their bar, 0 unless Same
 	Phase     float64 // the median offset of the nearest rip bar line from a truth downbeat, in its bars, in [-0.5, 0.5)
 	Beats     float64 // the share of truth beats with a rip beat within a quarter of their beat
+	// Before and After are the truth beats before its first downbeat and after its
+	// last, the grid's edges, and BeforeLost and AfterLost those of them with no
+	// rip beat within a quarter of their beat
+	Before, BeforeLost, After, AfterLost int
 }
 
 // MatchBars scores a rip's bar lines, one every Meter.Beats() of its Beats from
@@ -718,8 +722,22 @@ func MatchBars(r *Rip, beats, downbeats []float64) BarScore {
 	if len(r.Beats) > 0 && len(beats) > 1 {
 		on := 0
 		for j, b := range beats {
-			if math.Abs(nearest(r.Beats, b)-b) <= gap(beats, j)/4 {
+			got := math.Abs(nearest(r.Beats, b)-b) <= gap(beats, j)/4
+			if got {
 				on++
+			}
+			if len(downbeats) == 0 {
+				continue
+			}
+			switch eps := gap(beats, j) / 4; {
+			case b < downbeats[0]-eps:
+				if s.Before++; !got {
+					s.BeforeLost++
+				}
+			case b > downbeats[len(downbeats)-1]+eps:
+				if s.After++; !got {
+					s.AfterLost++
+				}
 			}
 		}
 		s.Beats = float64(on) / float64(len(beats))

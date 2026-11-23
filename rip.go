@@ -796,7 +796,7 @@ func (rp Ripper) Samples(x []float64, rate int) (*Rip, error) {
 	if t := musicStart(x); t > 0 {
 		ev.from(t)
 	}
-	g, bpm, _, err := rp.grid(f, ev, p)
+	g, bpm, _, err := rp.grid(f, ev, p, true)
 	if err != nil {
 		return nil, err
 	}
@@ -963,8 +963,8 @@ type ripTrack struct {
 }
 
 // grid is the bars the Ripper pins, or decodes from the frames and events, and
-// their tempo
-func (rp Ripper) grid(f *RipFrames, ev ripEvents, p RipParams) (ripGrid, float64, ripTrack, error) {
+// their tempo; decoded over the whole recording, they reach what it ends on
+func (rp Ripper) grid(f *RipFrames, ev ripEvents, p RipParams, whole bool) (ripGrid, float64, ripTrack, error) {
 	var bpm float64
 	var g ripGrid
 	var tr ripTrack
@@ -996,12 +996,16 @@ func (rp Ripper) grid(f *RipFrames, ev ripEvents, p RipParams) (ripGrid, float64
 			}
 		}
 		if g.bars() < 1 && f.heard() { // the heads give no reading: the cues', as before them
-			return rp.grid(f.plain(), ev, p)
+			return rp.grid(f.plain(), ev, p, whole)
 		}
 		if g.bars() < 1 {
 			return g, 0, tr, errors.New("rip: no full bar found")
 		}
-		g = g.pickup(slices.Concat(ev.melody, ev.bass), ev.hits)
+		heard, beats := ev.heard(), f.markedBeats(tr.beats())
+		g = g.pickup(slices.Concat(heard, beats))
+		if whole {
+			g = g.closing(heard, beats, f.frames())
+		}
 	}
 	if g.bars() < 1 {
 		return g, 0, tr, errors.New("rip: no full bar found")
@@ -2848,10 +2852,11 @@ func cosine(a, b [12]float64) float64 {
 }
 
 // at is the bar and sixteenth a frame falls in, the bar's span cut in the
-// meter's steps, false before the first bar or after the last.
+// meter's steps, false before the first bar or after the last; one within half
+// a step before the first line lies on it, as one before any other line does.
 func (g *ripGrid) at(frame int) (bar, step int, ok bool) {
 	if frame < g.lines[0] {
-		return 0, 0, false
+		return 0, 0, float64(g.lines[0]-frame) <= g.stepFrames()/2
 	}
 	bar = sort.SearchInts(g.lines, frame+1) - 1
 	if bar >= g.bars() {
@@ -2908,21 +2913,63 @@ func heardFrom(t int, hits [InstrClap][]ripHit, bass, melody []ripNote) ([InstrC
 	return hits, slices.DeleteFunc(bass, early), slices.DeleteFunc(melody, early)
 }
 
-// pickup opens a bar before the first full one when a note or a hit sounds more
-// than half a step before its line, so a phrase that leads into the first bar
-// is kept, as long as the first, into the time before the recording when it
-// begins inside that bar.
-func (g ripGrid) pickup(notes []ripNote, hits [InstrClap][]ripHit) ripGrid {
-	line := float64(g.lines[0]) - g.stepFrames()/2
-	early := slices.ContainsFunc(notes, func(n ripNote) bool { return float64(n.start) < line })
-	for _, hs := range hits {
-		early = early || slices.ContainsFunc(hs, func(h ripHit) bool { return float64(h.frame) < line })
+// heard is the frames the notes the decoders heard start on and their hits lie on
+func (ev ripEvents) heard() (at []int) {
+	for _, n := range slices.Concat(ev.melody, ev.bass) {
+		at = append(at, n.start)
 	}
-	if !early {
-		return g
+	for _, hs := range ev.hits {
+		for _, h := range hs {
+			at = append(at, h.frame)
+		}
 	}
-	g.lines = slices.Concat([]int{2*g.lines[0] - g.lines[1]}, g.lines)
+	return at
+}
+
+// markedBeats are the beats the beat head marks over a half, none where it is
+// unheard
+func (f *RipFrames) markedBeats(beats []int) []int {
+	if !f.heard() {
+		return nil
+	}
+	return slices.DeleteFunc(slices.Clone(beats), func(b int) bool { return peak(f.Beat, float64(b)) <= 0.5 })
+}
+
+// pickup opens a bar before the first, as long as the first, while something
+// heard lies more than half a step before its line, so a phrase that leads into
+// the first full bar is kept with its beats, into the time before the recording
+// when it begins inside that bar.
+func (g ripGrid) pickup(heard []int) ripGrid {
+	for len(heard) > 0 && float64(slices.Min(heard)) < float64(g.lines[0])-g.stepFrames()/2 {
+		g.lines = slices.Concat([]int{2*g.lines[0] - g.lines[1]}, g.lines)
+	}
 	return g
+}
+
+// closing lays a bar after the last, as long as the last, while a note or a hit
+// heard lies past it, or a beat more than half a step past its line, which ends
+// the last bar on a beat: what a recording ends on is laid, the last bar reaching
+// the end, but on the last of its frames, whose window runs off it
+func (g ripGrid) closing(heard, beats []int, frames int) ripGrid {
+	edge := frames - RipN/2/RipHop
+	past := func(t int) bool {
+		_, _, ok := g.at(t)
+		return !ok && t >= g.lines[0] && t < edge
+	}
+	beyond := func(b int) bool { return float64(b) > float64(g.lines[len(g.lines)-1])+g.stepFrames()/2 && b < edge }
+	for slices.ContainsFunc(heard, past) || slices.ContainsFunc(beats, beyond) {
+		k := len(g.lines)
+		g.lines = append(g.lines, 2*g.lines[k-1]-g.lines[k-2])
+	}
+	return g
+}
+
+// beats are the tracked beats among a track's pulses
+func (tr ripTrack) beats() (beats []int) {
+	for i := 0; i < len(tr.pulses); i += max(tr.k, 1) {
+		beats = append(beats, tr.pulses[i])
+	}
+	return beats
 }
 
 // phase is how far a frame sits from its nearest step, in steps, in [-0.5, 0.5)

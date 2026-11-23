@@ -1835,6 +1835,29 @@ func TestMatchBarsReadsDownbeatsABeatEarlyAsPhaseAQuarter(t *testing.T) {
 	}
 }
 
+// TestMatchBarsCountsTheBeatsAtTheGridsEdges: against a truth begun two beats
+// into a bar and ended three beats past its last line, a grid from that line to
+// the first lacks the two beats before the one and the three after the other,
+// and one opened a bar either side lacks none
+func TestMatchBarsCountsTheBeatsAtTheGridsEdges(t *testing.T) {
+	var beats, downbeats []float64
+	for i := range 22 {
+		if beats = append(beats, 0.3+0.5*float64(i)); i%BeatsPerBar == 2 {
+			downbeats = append(downbeats, beats[i])
+		}
+	}
+	inner, outer := &Rip{Beats: beats[2:19]}, &Rip{}
+	for i := -2; i <= 22; i++ {
+		outer.Beats = append(outer.Beats, 0.3+0.5*float64(i))
+	}
+	if s := MatchBars(inner, beats, downbeats); s.Before != 2 || s.BeforeLost != 2 || s.After != 3 || s.AfterLost != 3 {
+		t.Errorf("from the first line to the last: %+v, want 2 of 2 lost before and 3 of 3 after", s)
+	}
+	if s := MatchBars(outer, beats, downbeats); s.Before != 2 || s.BeforeLost != 0 || s.After != 3 || s.AfterLost != 0 {
+		t.Errorf("a bar opened either side: %+v, want none of 2 lost before and none of 3 after", s)
+	}
+}
+
 // TestMatchBarsCallsAHalfLengthGridNotSame: a 4/4 grid at twice the truth's
 // tempo has a line on every truth downbeat, yet its bar is half the truth's, so
 // no downbeat counts
@@ -2426,6 +2449,79 @@ func TestRipReadsADetunedRecording(t *testing.T) {
 	t.Logf("rendered flat %+.1f cents %+v", lowRip.Tuning, c)
 	if lowRip.Tuning < -48 || lowRip.Tuning > -32 || c.Melody < a.Melody-0.1 || c.Bass < a.Bass-0.1 || ae.Tuning() != 0 {
 		t.Errorf("rendered flat: tuning %+.1f, melody %.2f bass %.2f, engine back at %+.0f", lowRip.Tuning, c.Melody, c.Bass, ae.Tuning())
+	}
+}
+
+// TestTheBarsReachWhatTheRecordingHolds: eight whole bars of the loop, and eight
+// begun and cut two beats into a bar, their heads marking the beats and lines,
+// lay every hit heard in a bar, but the click of the cut on the last frames, and
+// a beat on every beat marked, under either decoder, offline and streamed, the
+// first bar and the last holding their kicks; beats marked alone open bars too
+func TestTheBarsReachWhatTheRecordingHolds(t *testing.T) {
+	for _, joint := range []int{0, 1} { // two beats before the first line and after the last, nothing struck
+		p := DefaultRipParams()
+		p.Joint = joint
+		g, _, _, err := Ripper{}.grid(headFrames(500, 1000, 40, 0, 4, 2), ripEvents{}, p, true)
+		if err != nil || len(g.lines) != 5 || !every(g.lines, -80, 160) {
+			t.Errorf("joint %d: %v, lines %v: want five, every 160 frames from -80 to 560", joint, err, g.lines)
+		}
+	}
+	const bpm, bars = 160, 8
+	ae, slots := startLoopEngine(t)
+	full, _ := heardLoop(t, ae, slots, Meter{}, bpm, bpm, bars+3, func(int) (float64, float64) { return 0, 0 })
+	beat := 60.0 / bpm
+	for _, from := range []int{4, 6} { // beats into the render, past its first bar's fade
+		x := full[int(float64(from)*beat*RipRate):int(float64(from+bars*BeatsPerBar)*beat*RipRate)]
+		f, err := analysis{}.Hear(x, RipRate, DefaultRipParams())
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := f.frames()
+		f.Beat, f.Downbeat = slices.Repeat([]float64{0.01}, n), slices.Repeat([]float64{0.01}, n)
+		var marks []float64
+		for i := from; ; i++ {
+			c := int(math.Round((float64(i-from)*beat)/f.Hop)) - ripOnsetLead
+			if c >= n {
+				break
+			}
+			if c >= 0 {
+				marks = append(marks, float64(c)*f.Hop)
+			}
+			for k := max(c-1, 0); k <= c+1 && k < n; k++ {
+				if f.Beat[k] = 0.98; i%BeatsPerBar == 0 {
+					f.Downbeat[k] = 0.98
+				}
+			}
+		}
+		for _, joint := range []int{0, 1} {
+			for _, stream := range []bool{false, true} {
+				p := DefaultRipParams()
+				p.Joint = joint
+				g := *f
+				r, err := framesRip(Ripper{Params: p, Stages: true}, &g, x, stream)
+				if err != nil {
+					t.Fatal(err)
+				}
+				name := fmt.Sprintf("from beat %d, joint %d, streamed %v", from, joint, stream)
+				want := bars + min(from%BeatsPerBar, 1) // a pickup and a closing bar about seven whole
+				kicked := func(b, pos int) bool {
+					return slices.ContainsFunc(r.Bars[b].Drums[InstrKick], func(s Step) bool { return s.Pos == pos })
+				}
+				first := 4 * (from % BeatsPerBar) // the first kick's step
+				if len(r.Bars) != want || len(r.Progression) != want || !kicked(0, first) || !kicked(len(r.Bars)-1, 0) || !kicked(len(r.Bars)-1, 4) {
+					t.Errorf("%s: %d bars, %d chords, the first bar's kicks %v, the last's %v: want %d bars and chords, a kick on step %d first and on 0 and 4 last",
+						name, len(r.Bars), len(r.Progression), r.Bars[0].Drums[InstrKick], r.Bars[len(r.Bars)-1].Drums[InstrKick], want, first)
+				}
+				if s := MatchBars(r, marks, nil); s.Beats != 1 {
+					t.Errorf("%s: %.3f of the beats marked have a beat, the rip's %v", name, s.Beats, r.Beats)
+				}
+				for _, c := range r.Stages {
+					if c.Stage == StageBars && c.Why == WhyOutside && c.Start < float64(len(x)-RipN/2)/RipRate {
+						t.Errorf("%s: a hit heard at %.2fs lies outside the bars", name, c.Start)
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -3207,7 +3303,14 @@ func TestRipFollowsABarThatSlows(t *testing.T) {
 	if r.Meter != three || off > 1 {
 		t.Errorf("ripped %s, %d of %d bar lines more than a step off the render's", r.Meter, off, len(r.Bars))
 	}
-	_, song := r.Song("slow", [RipParts][]int{nil, nil, slices.Repeat([]int{0}, len(r.Bars))})
+	pats, song := r.Song("slow", [RipParts][]int{nil, nil, slices.Repeat([]int{0}, len(r.Bars))})
+	for _, d := range pats {
+		if p, err := d.Pattern(); err != nil {
+			t.Fatal(err)
+		} else {
+			define(p)
+		}
+	}
 	named := 0
 	for _, bar := range song.Bars {
 		if strings.HasSuffix(bar[0], "bpm") {
@@ -3348,14 +3451,6 @@ func TestTheTempoAndTheBeatsAreTheBeatHeads(t *testing.T) {
 	}
 }
 
-// beats are the tracked beats among a track's pulses
-func (tr ripTrack) beats() (beats []int) {
-	for i := 0; i < len(tr.pulses); i += tr.k {
-		beats = append(beats, tr.pulses[i])
-	}
-	return beats
-}
-
 // heardLoop is a loop the engine renders in meter m, at RipRate, and its frames
 // through the analysis with heads written by hand: at(i) the beat and downbeat
 // heads' marks on the i-th of beats a minute, a frame either side as the
@@ -3425,7 +3520,7 @@ func TestTheTempoIsTheBeatHeadsWhereTheOnsetsMisleadIt(t *testing.T) {
 // barsOf decodes the bars of frames with no events but the hits given
 func barsOf(t *testing.T, f *RipFrames, hits [InstrClap][]ripHit) (ripGrid, float64) {
 	t.Helper()
-	g, bpm, _, err := Ripper{}.grid(f, ripEvents{hits: hits}, DefaultRipParams())
+	g, bpm, _, err := Ripper{}.grid(f, ripEvents{hits: hits}, DefaultRipParams(), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3507,7 +3602,10 @@ func TestAHeadOfSmallMarginLeavesTheBarLineToTheCues(t *testing.T) {
 			}
 			return 0.9, 0.25
 		})
-		cues, lines := headLines(ripHeard(t, x, f.plain(), false)), headLines(ripHeard(t, x, f, false))
+		within := func(r *Rip) []int { // a closing bar's line past the recording left out
+			return slices.DeleteFunc(headLines(r), func(l int) bool { return l > len(x)/RipHop })
+		}
+		cues, lines := within(ripHeard(t, x, f.plain(), false)), within(ripHeard(t, x, f, false))
 		if len(cues) < 11 || len(lines) < 11 || !every(cues[1:len(cues)-1], -ripOnsetLead, 152) || !every(lines[1:len(lines)-1], c.at-ripOnsetLead, 152) {
 			t.Errorf("the head %.2f on the first beat, %.2f on the third: lines %v, the cues' %v; want them every 152 frames from beat %d", c.first, c.third, lines, cues, c.at/38)
 		}
@@ -3657,7 +3755,7 @@ func TestALongerHeardBarNeedsTheHeadAndIsNeverThreeOfTheBests(t *testing.T) {
 		{headFrames(n, beat, beat, 0, 6, 0), [InstrClap][]ripHit{InstrKick: hitsEvery(n, beat, 12, 0), InstrHihat: hats}, Meter{6, 8}},
 		{twelfth, [InstrClap][]ripHit{InstrHihat: hats}, Meter{}},
 	} {
-		if g, _, _, err := (Ripper{}).grid(c.f, ripEvents{hits: c.hits}, p); err != nil || g.m != c.want {
+		if g, _, _, err := (Ripper{}).grid(c.f, ripEvents{hits: c.hits}, p, true); err != nil || g.m != c.want {
 			t.Errorf("%s (%v), lines %v: want %s", g.m, err, g.lines[:min(len(g.lines), 5)], c.want)
 		}
 	}
@@ -3702,7 +3800,7 @@ func TestATempoGivenReadsTheMeterOfTheNoteTheHeadMarks(t *testing.T) {
 	}{{40, 3, Meter{3, 4}}, {20, 6, Meter{6, 8}}} {
 		f := headFrames(n, c.beat, c.beat, 0, c.per, 1)
 		hits := [InstrClap][]ripHit{InstrHihat: hitsEvery(n, c.beat, 1, 0)}
-		g, bpm, _, err := Ripper{Grid: &RipGrid{BPM: 129, Downbeat: -1}}.grid(f, ripEvents{hits: hits}, DefaultRipParams())
+		g, bpm, _, err := Ripper{Grid: &RipGrid{BPM: 129, Downbeat: -1}}.grid(f, ripEvents{hits: hits}, DefaultRipParams(), true)
 		if err != nil || g.m != c.want || bpm != 129 || !every(g.lines, c.beat, c.per*c.beat) {
 			t.Errorf("a head marking every %d frames, a line every %d: %s at %.1f, lines %v, %v; want %s at 129, a line every %d frames", c.beat, c.per, g.m, bpm, g.lines[:min(len(g.lines), 4)], err, c.want, c.per*c.beat)
 		}
@@ -3714,7 +3812,7 @@ func TestATempoGivenReadsTheMeterOfTheNoteTheHeadMarks(t *testing.T) {
 // the heads, the onsets on the beats alone or on their quarters too
 func TestFiveHeardBeatsHoldABarWhateverTheOnsetsInsideThem(t *testing.T) {
 	for _, on := range []int{80, 20} {
-		g, _, tr, err := Ripper{}.grid(headFrames(380, on, 80, 0, 4, 0), ripEvents{}, DefaultRipParams())
+		g, _, tr, err := Ripper{}.grid(headFrames(380, on, 80, 0, 4, 0), ripEvents{}, DefaultRipParams(), true)
 		if err != nil || !tr.heard || g.bars() != 1 || !every(g.lines, 0, 320) {
 			t.Errorf("an onset every %d frames, %d pulses a beat: %v, heard %v, lines %v, want one bar from the heads, lines 320 frames apart", on, tr.k, err, tr.heard, g.lines)
 		}
@@ -3736,7 +3834,7 @@ func TestTheJointPathReadsEveryMeterTheCorpusStates(t *testing.T) {
 	}{{40, 4, Meter{}, 129.2}, {40, 3, Meter{3, 4}, 129.2}, {40, 2, Meter{2, 4}, 129.2}, {40, 5, Meter{5, 4}, 129.2},
 		{24, 6, Meter{6, 8}, 107.7}, {24, 12, Meter{12, 8}, 107.7}, {24, 7, Meter{7, 8}, 107.7}} {
 		f := headFrames(c.beat*(bars*c.per+1)+1, c.beat, c.beat, c.beat, c.per, 0)
-		g, bpm, tr, err := Ripper{}.grid(f, ripEvents{}, p)
+		g, bpm, tr, err := Ripper{}.grid(f, ripEvents{}, p, true)
 		if err != nil || !tr.heard || g.m != c.want || math.Abs(bpm-c.tempo) > 1.5 || g.bars() != bars || !every(g.lines, c.beat, c.per*c.beat) {
 			t.Errorf("a line every %d beats of %d frames: %s at %.1f bpm, lines %v (%v); want %s at %.1f, %d bars", c.per, c.beat, g.m, bpm, g.lines, err, c.want, c.tempo, bars)
 		}
@@ -3804,7 +3902,7 @@ func TestAMeterBesides44NeedsTheJointMargin(t *testing.T) {
 	}{{0, Meter{2, 4}}, {DefaultRipParams().JointMargin, Meter{}}} {
 		p := DefaultRipParams()
 		p.Joint, p.JointMargin = 1, c.margin
-		if g, _, _, err := (Ripper{}).grid(f, ripEvents{}, p); err != nil || g.m != c.want {
+		if g, _, _, err := (Ripper{}).grid(f, ripEvents{}, p, true); err != nil || g.m != c.want {
 			t.Errorf("joint_margin %g: %s (%v), want %s", c.margin, g.m, err, c.want)
 		}
 	}
@@ -3833,7 +3931,7 @@ func TestFramesWithoutTheHeadsDecodeByTheOnsetsAndTheCues(t *testing.T) {
 	for _, joint := range []int{0, 1} {
 		p := DefaultRipParams()
 		p.Joint = joint
-		g, bpm, _, err := Ripper{}.grid(f, ripEvents{hits: hits}, p)
+		g, bpm, _, err := Ripper{}.grid(f, ripEvents{hits: hits}, p, true)
 		if err != nil || g.m != (Meter{}) || math.Abs(bpm-60/(beat*f.Hop)) > 1 || !every(g.lines, 0, 4*beat) {
 			t.Errorf("joint %d: %s at %.1f bpm, lines %v (%v): want 4/4 on the kicks, every %d frames from 0", joint, g.m, bpm, g.lines[:min(len(g.lines), 6)], err, 4*beat)
 		}
