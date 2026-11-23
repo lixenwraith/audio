@@ -83,6 +83,47 @@ fill at the eq's neighbouring value, once a recording shows it audible.
 
 ## The rip's notes
 
+### Keep what perfect heads say
+
+- Priority: P1
+- Affected files: `account.go`, `rip.go`, `ripmodels/ripmodels.go`
+
+With every head written off stapes' labels as the trainer's targets, no model
+loaded, the decoders' notes read 0.895 by F1 against 35,724 labelled on 580
+generated loops, 0.852 through a room, a mix and a tuning off A440
+([stapes' Rip training
+§11](https://github.com/lixenwraith/stapes/blob/main/doc/rip-training.md#the-decoder-alone)).
+What is theirs, largest first, each with the smallest close:
+
+- **The accounting** drops 4,816 true notes (6,883 through the room), chord
+  tones and octave doubles whose partials a lower note's fit explains: the
+  installed scores weigh a sure strike and salience at 4.5 of a logit, the
+  fit's share and span at -5.2 on them. Close: a judge fitted on rows of perfect
+  heads beside a trained model's, or a note the heads are sure of kept, as one
+  the fit cannot see is (`Held`).
+- **The tuning**: a model's front end states none, so the accounting and
+  `bright` measure at A440, 1,528 notes on loops up to a quarter tone off.
+  Close: `RipFrames.Tuning` read off the cents head over the sounding cells.
+- **One note a pitch at a time**: two parts on one pitch are one note, which
+  ends at the first release or strike of either: 1,249 notes, 1,515 ends.
+  Close: a second note of a sounding pitch where a sure strike comes before the
+  release head lets the first go.
+- **The last bar**: a bar is laid between two lines heard, so a recording's
+  last bar holds no hit and no chord, 1,399 of 8,828 hits and 0.157 of the
+  chords' seconds on four-bar loops. Close: the last bar laid to the end where
+  its line falls within a beat of it.
+- **`dynamics`** moves a velocity the head already says: the loudness 0.929 as
+  heard, 0.895 after, 0.769 through the room. Close: one of the two, the head
+  taught the note's level over its passage or the move dropped.
+- **The key** is a profile's: 201 of 411 right, 97 in a relative mode. Close: the
+  tonic weighed where the bass and phrases rest.
+- **The bass's own-pitch rule** drops 432 piano and pluck notes whose
+  fundamental stands a median 17.7 dB under its partials. Close: the rule only
+  where no sure strike of the pitch stands.
+- **A plateau's peak** is read on its last frame (agent notes), so 51 notes
+  (290 through the room) whose sound leaves its first cell start none. Close:
+  read a peak at the middle of equal frames, as `centre` does a beat.
+
 ### Hold more of the rip to the recording
 
 - Priority: P2
