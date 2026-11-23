@@ -113,17 +113,25 @@ What is theirs, largest first, each with the smallest close:
     that names the pitch starting.
   - A short note over a held one of its pitch takes the held one's end and gives
     it its own, the first release going to the earliest struck as most of the
-    corpus's overlaps cross (strikes late 670). What could: what plays each, where
+    corpus's overlaps cross (strikes late 681). What could: what plays each, where
     the two voices differ, over the frames each sounds alone.
   - A stream reads a twin where the read freezing its bar hears both releases;
     a strike a judge brings back on a pitch still sounding ends the note before.
-  - The parts read 0.633 where `twins` 0 reads 0.637, as low with the twins
-    taken out after the accounting: the loss is in the other notes, whose ends
-    and losses the twins move; which line each goes on is untraced.
+  - The parts read 0.633 where `twins` 0 reads 0.637, the ring-on on or off.
+    Ruled out: the twins' own lines (0.633 with every twin taken out after the
+    accounting) and the ring-on. Left: the other notes, whose ends the twins'
+    walk moves and 106 of which the accounting drops, and which line each takes.
+- **The ring-on** (`ring_on`, 1): a kept note sounds on to the end of a dropped
+  one of its pitch, made for heads that strike falsely inside a ringing note,
+  which perfect heads cannot show. On, the ends read 0.889 under `twins` and
+  0.887 without; off, 0.912 and 0.908 (0.882, 0.883, 0.909 and 0.908 through
+  the room). Its default waits for a model's heads read both ways, with `twins`
+  1 and 0, on held-out loops and recordings: off where `ring_on` 0 reads more
+  ends right under both and the notes found and added hold.
 - **The last bar**: the present path (`Joint` 0) lays a bar between two lines
   heard, so a recording's last bar holds no hit and no chord, 1,525 of 8,828
-  hits outside the bars on four-bar loops, its chords 0.704 of their seconds;
-  the joint path loses 573 and reads 0.850. Close: the present path's last bar
+  hits outside the bars on four-bar loops, its chords 0.707 of their seconds;
+  the joint path loses 573 and reads 0.851. Close: the present path's last bar
   laid to the end where its line falls within a beat of it.
 - **`dynamics`** moves a velocity the head already says: the loudness reads
   0.896, 0.769 through the room. Close: one of the two, the head taught the
@@ -134,7 +142,7 @@ What is theirs, largest first, each with the smallest close:
   the cents head over the sounding cells.
 - **The key** is a profile's: 201 of 411 right. Close: the tonic weighed where
   the bass and phrases rest.
-- **The bass's own-pitch rule** drops 432 low notes whose fundamental stands
+- **The bass's own-pitch rule** drops 438 low notes whose fundamental stands
   more than 10 dB under its next partials. Close: the rule only where no sure
   strike of the pitch stands.
 - **A plateau's peak** is read on its last frame (agent notes), so 51 notes

@@ -948,8 +948,8 @@ heads as it was, and the joint path's (`joint`, an integer as `harmonics` is,
 `joint_move`, `joint_beat`, `joint_line`, `joint_margin`), and the key's (`key_bars`, `key_open`,
 `key_close`, `key_bar`), and so are the starts' (`start`, `start_gap`, `start_wait`,
 `start_span`, `strike_alone`), which frames without a notes model's onset never
-read, and `twins`, an integer, 1 by the count of stapes' corpus with heads
-written off its labels, which frames without strikes never read.
+read, and `twins` and `ring_on`, integers, which frames without strikes never
+read.
 `DefaultRipParams` is the hand-set start. The engine grades a set itself:
 `RenderMusic` plays registered patterns offline in a meter, `ExpectedRip` is the
 rip a perfect listener would make of them (`ExpectedRipBars` of a timeline under
@@ -1043,8 +1043,11 @@ reads a step as large as the new sound in whatever phase it adds, and a ring
 that only sounds on reads none, is
 weighed with the heads' sureness in a logistic score set on graded recordings,
 and a note under the bar goes: a pitch struck again that its ring explains, a
-partial of the note under it, a shadow without a fundamental of its own; a note
-dropped moves no other's end, each note's being its own. A note
+partial of the note under it, a shadow without a fundamental of its own. Under
+`ring_on` (1) a kept note sounds on to the end of a dropped one of its pitch
+struck while it sounded or as it ended, the same note still sounding where heads
+strike falsely inside a ring, so a note held beside it that goes gives it its
+end; a twin neither rings on nor is rung on. `ring_on` 0 moves no end. A note
 held a second or more, seven tenths of whose harmonics the fit cannot see as its
 own, under the floor or a third of them another pitch's, is a soft line under a
 chord and stays on the heads' word. Two notes of one pitch at one start are one, as the strike and the bass
