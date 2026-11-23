@@ -285,12 +285,12 @@ func ReadStages(r *Rip, ag Agreement, hg *HitsAgreement, tol float64) StageReadi
 		out.Added[stage]++
 	}
 	for _, p := range ag.All.Pairs {
-		start, end := ag.At(p[1].Start), ag.At(p[1].End)
+		start, end, _ := ag.given(p[1])
 		if p[1].MIDI < 0 || end <= start {
 			continue
 		}
 		bound, off := max(EndShare*(end-start), EndFloor), p[0].End-end
-		if math.Abs(off) <= bound {
+		if endRight(off, start, end) {
 			continue
 		}
 		e, stage := math.NaN(), "?" // its end as each stage left it

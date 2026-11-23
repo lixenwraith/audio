@@ -1614,6 +1614,27 @@ func TestAnEndIsRightWithinAFifthOfItsNoteOrFiftyMilliseconds(t *testing.T) {
 	}
 }
 
+// TestAnEndGivenPastTheRecordingIsReadAtItsEnd: a note given ringing a second
+// past a recording ending at 2 s, whose rip's note ends with it, is right read
+// at the end and counted past, wrong as given; the stages then read no end of it
+// wrong, and without the recording's end both read it early, as before
+func TestAnEndGivenPastTheRecordingIsReadAtItsEnd(t *testing.T) {
+	a := []RipNote{{Start: 0.5, End: 1, MIDI: 60}, {Start: 1.5, End: 2, MIDI: 64}}
+	b := []RipNote{{Start: 0.5, End: 1, MIDI: 60}, {Start: 1.5, End: 3, MIDI: 64}}
+	r := &Rip{Notes: a}
+	for _, n := range a {
+		r.Stages = append(r.Stages, RipChange{Stage: StageStrikes, Kind: RipMade, Start: n.Start, End: n.End, MIDI: n.MIDI})
+	}
+	ag := MatchNotes(a, b, true)
+	if e, s := ag.Ends(), ReadStages(r, ag, nil, 0.1); e.Right != 1 || e.Past != 0 || s.Ends["strikes early"] != 1 {
+		t.Errorf("without the recording's end: %d of %d right, %d past, the stages' %v: want 1 of 2, none, one early", e.Right, e.Given, e.Past, s.Ends)
+	}
+	ag = ag.Until(2)
+	if e, s := ag.Ends(), ReadStages(r, ag, nil, 0.1); e.Given != 2 || e.Right != 2 || e.Past != 1 || e.PastWrong != 1 || len(s.Ends) != 0 {
+		t.Errorf("until 2 s: %d of %d right, %d past and %d of them wrong as given, the stages' %v: want 2 of 2, 1 and 1, none", e.Right, e.Given, e.Past, e.PastWrong, s.Ends)
+	}
+}
+
 // TestALevelIsReadWithItsGroupsLevelOut: a rip's velocities, the given's at a
 // level of their own, are right where they move as the given's do, a note 5 dB
 // over its own wrong, and a note the truth gives no velocity is not read; hits

@@ -27,6 +27,25 @@ type Agreement struct {
 	Stretch, Offset float64       // a's time of a matched note ≈ Stretch*b's + Offset
 	// paired are seconds of b and where each falls on a, in order, the map At follows
 	paired [][2]float64
+	until  float64 // where a's recording ends, on its clock (Until); zero for nowhere
+}
+
+// Until is the agreement read against a recording that ends at second end of
+// a's clock: a b note's end past it is read at it (given), as nothing heard in
+// the recording ends later
+func (ag Agreement) Until(end float64) Agreement {
+	ag.until = end
+	return ag
+}
+
+// given is b's note n on a's clock, its end the recording's where it lies past
+// it, and whether it does
+func (ag Agreement) given(n RipNote) (start, end float64, past bool) {
+	start, end = ag.At(n.Start), ag.At(n.End)
+	if ag.until > 0 && end > ag.until {
+		return start, ag.until, true
+	}
+	return start, end, false
 }
 
 // At places a second of b on a: between the map's points on the line through
@@ -757,10 +776,12 @@ const (
 
 // EndReading is how far a's notes end from where the b notes they matched end:
 // the matches whose b gives an end, those within the bounds, and each one's end
-// less b's on a's clock, in b's length there
+// less b's on a's clock, in b's length there; and of them those whose b ends
+// past the recording (Until), read at its end, with how many read wrong as given
 type EndReading struct {
-	Given, Right int
-	Off          []float64
+	Given, Right    int
+	Past, PastWrong int
+	Off             []float64
 }
 
 // Ends reads the ends of an agreement's notes matched by pitch and onset (All),
@@ -768,17 +789,28 @@ type EndReading struct {
 func (ag Agreement) Ends() EndReading {
 	var r EndReading
 	for _, p := range ag.All.Pairs {
-		start, end := ag.At(p[1].Start), ag.At(p[1].End)
+		start, end, past := ag.given(p[1])
 		if p[1].MIDI < 0 || end <= start {
 			continue
 		}
 		off := p[0].End - end
-		if r.Given++; math.Abs(off) <= max(EndShare*(end-start), EndFloor) {
+		if r.Given++; endRight(off, start, end) {
 			r.Right++
+		}
+		if past {
+			if r.Past++; !endRight(p[0].End-ag.At(p[1].End), start, ag.At(p[1].End)) {
+				r.PastWrong++
+			}
 		}
 		r.Off = append(r.Off, off/(end-start))
 	}
 	return r
+}
+
+// endRight is whether an end off seconds from a given note's, from start to end,
+// lies within the bounds
+func endRight(off, start, end float64) bool {
+	return math.Abs(off) <= max(EndShare*(end-start), EndFloor)
 }
 
 // LevelReading is how far a's loudness lies from b's over their matches: those
