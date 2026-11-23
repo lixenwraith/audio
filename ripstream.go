@@ -419,7 +419,7 @@ func (s *RipStream) hold(f *RipFrames, x []float64, ev ripEvents, end bool) erro
 	s.held, s.track, s.meter, s.tempo = true, tr, g.m, bpm
 	s.root, s.scale, s.start = ev.root, ev.scale, s.w0+t
 	s.rip = &Rip{BPM: int(math.Round(bpm)), Meter: g.m, Tuning: f.Tuning, Range: f.Pitches(), Root: ev.root, Scale: ev.scale, Downbeat: float64(s.w0+g.lines[0]) * f.Hop, Params: s.p}
-	shift := int(math.Round(g.lag(slices.Concat(ev.melody, ev.bass)) * g.stepFrames()))
+	shift := g.shift(slices.Concat(ev.melody, ev.bass))
 	return s.freeze(f, x, g, ev, 0, shift, end)
 }
 
@@ -449,8 +449,8 @@ func (s *RipStream) follow(f *RipFrames, x []float64, ev ripEvents, end bool) er
 	}
 	g := ripGrid{lines: slices.Concat([]int{s.prev - s.w0}, lines), m: s.meter}
 	ev = s.dedup(ev, g.stepFrames()/2)
-	if end {
-		g = g.closing(ev.heard(), f.markedBeats(tr.beats()), f.frames())
+	if end { // the notes as the frozen ones lie, their lag out
+		g = g.closing(ev.heard(int(math.Round(s.lag(&g, slices.Concat(ev.melody, ev.bass))*g.stepFrames()))), f.markedBeats(tr.beats()), f.frames())
 	}
 	shift := int(math.Round(s.lag(&g, slices.Concat(ev.melody, ev.bass)) * g.stepFrames()))
 	return s.freeze(f, x, g, ev, 1, shift, end)

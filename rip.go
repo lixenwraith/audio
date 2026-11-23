@@ -805,8 +805,7 @@ func (rp Ripper) Samples(x []float64, rate int) (*Rip, error) {
 	ev.root, ev.scale = f.key(g, true, p)
 	// the pitch paths start late against the onsets the beats were set by: the
 	// notes' median lag comes out before they are quantized
-	shift := int(math.Round(g.lag(slices.Concat(ev.melody, ev.bass)) * g.stepFrames()))
-	r := g.lay(f, x, ev, bpm, shift, [InstrClap]float64{}, p)
+	r := g.lay(f, x, ev, bpm, g.shift(slices.Concat(ev.melody, ev.bass)), [InstrClap]float64{}, p)
 	lead, under := ev.melody, ev.melody
 	if f.Voices != nil { // each line's own notes say what plays it
 		second := func(n ripNote) bool { return n.second }
@@ -1003,10 +1002,10 @@ func (rp Ripper) grid(f *RipFrames, ev ripEvents, p RipParams, whole bool) (ripG
 		if g.bars() < 1 {
 			return g, 0, tr, errors.New("rip: no full bar found")
 		}
-		heard, beats := ev.heard(), f.markedBeats(tr.beats())
-		g = g.pickup(slices.Concat(heard, beats))
-		if whole {
-			g = g.closing(heard, beats, f.frames())
+		beats := f.markedBeats(tr.beats())
+		g = g.pickup(slices.Concat(ev.heard(0), beats))
+		if whole { // the notes as lay places them, their median lag out
+			g = g.closing(ev.heard(g.shift(slices.Concat(ev.melody, ev.bass))), beats, f.frames())
 		}
 	}
 	if g.bars() < 1 {
@@ -2951,10 +2950,11 @@ func heardFrom(t int, hits [InstrClap][]ripHit, bass, melody []ripNote) ([InstrC
 	return hits, slices.DeleteFunc(bass, early), slices.DeleteFunc(melody, early)
 }
 
-// heard is the frames the notes the decoders heard start on and their hits lie on
-func (ev ripEvents) heard() (at []int) {
+// heard is the frames the notes the decoders heard start on, shift frames
+// earlier, and their hits lie on
+func (ev ripEvents) heard(shift int) (at []int) {
 	for _, n := range slices.Concat(ev.melody, ev.bass) {
-		at = append(at, n.start)
+		at = append(at, n.start-shift)
 	}
 	for _, hs := range ev.hits {
 		for _, h := range hs {
@@ -3022,6 +3022,11 @@ func (g *ripGrid) phase(frame int) (float64, bool) {
 	a, b := g.lines[bar], g.lines[bar+1]
 	pos := float64(frame-a) / float64(b-a) * float64(g.m.Steps())
 	return pos - math.Round(pos), true
+}
+
+// shift is the notes' lag in frames, which lay takes out of their starts
+func (g *ripGrid) shift(notes []ripNote) int {
+	return int(math.Round(g.lag(notes) * g.stepFrames()))
 }
 
 // lag is the median of the notes' phases, in steps: what the pitch paths start
