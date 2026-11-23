@@ -56,14 +56,16 @@ type RipStream struct {
 	levels  [ripRegisters]ripLevels
 	counted int
 	// held from the first bars frozen: the beat tracked and the reading the
-	// bars are decoded in, the meter and tempo they are named, the key and the
-	// frame the music starts
+	// bars are decoded in, the meter and tempo they are named, the key they
+	// name, the chroma's tonic the bar lines' cue reads and the frame the music
+	// starts
 	held  bool
 	track ripTrack
 	meter Meter
 	tempo float64
 	root  int
 	scale ScaleID
+	cue   int
 	start int
 	// the last frozen bar's line and its end, the line the next bar starts on
 	prev, line   int
@@ -389,7 +391,8 @@ func (s *RipStream) decode(upto int, end bool) error {
 }
 
 // hold decodes the first bars as the offline rip decodes its own, over the
-// frames heard, and holds their beat, reading, meter, tempo and key
+// frames heard, and holds their beat, reading, meter, tempo and key: the key
+// those bars name, their last no close unless the recording has ended
 func (s *RipStream) hold(f *RipFrames, x []float64, ev ripEvents, end bool) error {
 	t := musicStart(x)
 	if t > 0 {
@@ -402,6 +405,8 @@ func (s *RipStream) hold(f *RipFrames, x []float64, ev ripEvents, end bool) erro
 		}
 		return nil
 	}
+	s.cue = ev.root
+	ev.root, ev.scale = f.key(g, end, s.p)
 	s.held, s.track, s.meter, s.tempo = true, tr, g.m, bpm
 	s.root, s.scale, s.start = ev.root, ev.scale, s.w0+t
 	s.rip = &Rip{BPM: int(math.Round(bpm)), Meter: g.m, Tuning: f.Tuning, Range: f.Pitches(), Root: ev.root, Scale: ev.scale, Downbeat: float64(s.w0+g.lines[0]) * f.Hop, Params: s.p}
@@ -429,7 +434,7 @@ func (s *RipStream) follow(f *RipFrames, x []float64, ev ripEvents, end bool) er
 		if err != nil {
 			return err
 		}
-		lines, _, _, _ = f.barPath(rds[0], f.lineCues(ev.hits, s.root%12, ev.bass, s.p), true)
+		lines, _, _, _ = f.barPath(rds[0], f.lineCues(ev.hits, s.cue%12, ev.bass, s.p), true)
 	}
 	g := ripGrid{lines: slices.Concat([]int{s.prev - s.w0}, lines), m: s.meter}
 	ev = s.dedup(ev, g.stepFrames()/2)
