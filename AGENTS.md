@@ -56,6 +56,17 @@ agent would otherwise rediscover, add it there in the same PR.
 - The module is at v0: a change may break the API or a document's keys, and
   takes the next minor version; never hold or narrow a fix for backward
   compatibility.
+- A change to what a rip decodes is read with trained models on recordings
+  before it merges: by kind of sound (a guitar, singing, recorded drums,
+  generated mixes), each kind before and after and what fell among them. This
+  module holds no trained model, so such a PR opens as a draft and names the
+  reading in stapes it waits for.
+- A count on built heads, or with the labels in the models' place, is the
+  decoders' ceiling: it is given as that, never as a benefit, and nothing is
+  changed or merged on it alone.
+- Nothing lands unused: a parameter whose default leaves its path off, or a
+  frame field no decoder reads, has an item in `doc/todo.md` naming the reading
+  with trained models that decides it and the date it is deleted by.
 
 ## Tests
 
