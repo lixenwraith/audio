@@ -2286,6 +2286,140 @@ func TestRipOpensAPickupBar(t *testing.T) {
 	}
 }
 
+// startFrames is n frames of a recording whose bar lines fall every per beats of
+// beat frames from frame line, before the start where negative, the heads marking
+// the beats and lines that fall on its frames a frame either side; a kick and an
+// A4 sound at frame at, and a kick and a C5 on every line heard past it
+func startFrames(n, beat, per, line, at int) *RipFrames {
+	f := &RipFrames{Hop: RipFrameSec, Flux: make([]float64, n), Chroma: make([][12]float64, n), BassChroma: make([][12]float64, n),
+		Salience: make([]float32, n*RipPitches), Beat: slices.Repeat([]float64{0.01}, n), Downbeat: slices.Repeat([]float64{0.01}, n)}
+	for d := range f.Onset {
+		f.Onset[d] = make([]float64, n)
+	}
+	sound := func(t, midi int, kick bool) {
+		if kick {
+			f.Onset[InstrKick][t], f.Flux[t] = 1, 1
+		}
+		for k := t; k < min(t+15, n); k++ {
+			f.Salience[k*RipPitches+midi-RipMinMIDI], f.Chroma[k][midi%12] = 1, 1
+		}
+	}
+	sound(at, 69, true)
+	for i, c := 0, line; c < n; i, c = i+1, c+beat {
+		if c < 0 {
+			continue
+		}
+		for k := max(c-1, 0); k <= c+1 && k < n; k++ {
+			if f.Beat[k] = 0.98; i%per == 0 {
+				f.Downbeat[k] = 0.98
+			}
+		}
+		if f.Flux[c] = 1; c >= 20 && i%per == 0 {
+			sound(c, 72, true)
+		}
+	}
+	return f
+}
+
+// TestNothingARipStatesLiesBeforeItsRecording: a hit and a note heard at frame 0
+// or 1 lie on the first step at or after the start, of a pickup bar whose line
+// the joint path lays a frame or two before it or of one the recording begins
+// part way through, under either decoder, offline and streamed, their MIDI file
+// read back as written; where the first line is at or after 0, on that line.
+func TestNothingARipStatesLiesBeforeItsRecording(t *testing.T) {
+	const beat, per, n = 40, 4, 3*40*4 + 30
+	x := make([]float64, n*RipHop)
+	for i := range x {
+		x[i] = 0.3 * math.Sin(float64(i)*2*math.Pi*220/RipRate)
+	}
+	for _, c := range []struct{ line, at int }{{-1, 0}, {-1, 1}, {-2, 0}, {-2, 1}, {0, 2}, {-42, 0}, {-103, 0}} {
+		for _, joint := range []int{0, 1} {
+			for _, stream := range []bool{false, true} {
+				p := DefaultRipParams()
+				p.Joint = joint
+				r, err := framesRip(Ripper{Params: p}, startFrames(n, beat, per, c.line, c.at), x, stream)
+				if err != nil {
+					t.Fatal(err)
+				}
+				name := fmt.Sprintf("the first line at frame %d, the first hit at %d, joint %d, streamed %v", c.line, c.at, joint, stream)
+				sub, steps := r.Meter.Beat(), r.Meter.Steps()
+				at := func(k int) float64 { // the k-th step's time through the bars, as Hits sums it
+					i := k/steps*r.Meter.Beats() + k%steps/sub
+					return r.Beats[i] + (r.Beats[i+1]-r.Beats[i])/float64(sub)*float64(k%steps%sub)
+				}
+				for part, of := range map[string]func(*RipBar) []Step{"kick": func(b *RipBar) []Step { return b.Drums[InstrKick] }, "melody": func(b *RipBar) []Step { return b.Melody },
+					"snare": func(b *RipBar) []Step { return b.Drums[InstrSnare] }, "hihat": func(b *RipBar) []Step { return b.Drums[InstrHihat] },
+					"under": func(b *RipBar) []Step { return b.Under }, "bass": func(b *RipBar) []Step { return b.Bass }} {
+					first := -1
+					for b := range r.Bars {
+						for _, s := range of(&r.Bars[b]) {
+							if k := b*steps + s.Pos; at(k) < -1e-9 {
+								t.Errorf("%s: bar %d holds a %s on step %d at %.4fs, before the recording", name, b, part, s.Pos, at(k))
+							} else if first < 0 || k < first {
+								first = k
+							}
+						}
+					}
+					// what is heard at the start lies on the first step at or after it
+					if (part == "kick" || part == "melody") && (first < 0 || first > 0 && at(first-1) >= 0) {
+						t.Errorf("%s: the first %s on step %d of the bars, the downbeat at %.4fs: want the first at or after the start", name, part, first, r.Downbeat)
+					}
+				}
+				var file bytes.Buffer
+				hits := r.Hits()
+				if err := WriteMIDI(&file, r.Notes, hits, r.BPM, r.Meter); err != nil {
+					t.Errorf("%s: %v", name, err)
+					continue
+				}
+				m, err := ReadMIDI(&file)
+				if err != nil {
+					t.Fatal(err)
+				}
+				half := 0.5 / (float64(r.BPM) / 60 * midiDivision)
+				same := len(m.Hits) == len(hits) && len(m.Notes) == len(r.Notes)
+				for i := 0; same && i < len(hits); i++ {
+					same = m.Hits[i].Drum == hits[i].Drum && math.Abs(m.Hits[i].Start-hits[i].Start) <= half
+				}
+				for i := 0; same && i < len(r.Notes); i++ {
+					same = m.Notes[i].MIDI == r.Notes[i].MIDI && math.Abs(m.Notes[i].Start-r.Notes[i].Start) <= half
+				}
+				if !same || len(hits) == 0 || len(r.Notes) == 0 {
+					t.Errorf("%s: %d hits and %d notes written, %d and %d read back", name, len(hits), len(r.Notes), len(m.Hits), len(m.Notes))
+				}
+			}
+		}
+	}
+}
+
+// TestAStepOnTheStartIsStatedAtIt: a score whose pickup is a sixteenth at 100
+// bpm, a kick on its first tick and on its first line, has the first kick on the
+// pickup's last step, which its beats sum to a hair under 0; it is stated at 0,
+// and the score's rip is written as MIDI
+func TestAStepOnTheStartIsStatedAtIt(t *testing.T) {
+	file := smf(2)
+	file = append(file, track(
+		0x00, 0xFF, 0x51, 3, 0x09, 0x27, 0xC0, // 100 bpm
+		0x00, 0xFF, 0x58, 4, 1, 4, 24, 8, // a bar of a sixteenth
+		0x78, 0xFF, 0x58, 4, 4, 2, 24, 8, // 4/4 from 120 ticks on
+		0x00, 0xFF, 0x2F, 0)...)
+	file = append(file, track(
+		0x00, 0x99, 36, 100, 0x3C, 0x89, 36, 0,
+		0x3C, 0x99, 36, 100, 0x3C, 0x89, 36, 0,
+		0x00, 0xFF, 0x2F, 0)...)
+	m, err := ReadMIDI(bytes.NewReader(file))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, _ := m.Rip()
+	hits := r.Hits()
+	if len(hits) != 2 || hits[0].Start != 0 || len(r.Bars) != 2 || len(r.Bars[0].Drums[InstrKick]) != 1 || r.Bars[0].Drums[InstrKick][0].Pos != 15 {
+		t.Fatalf("hits %+v, the pickup's kicks %v: want the first at 0s on its last step", hits, r.Bars[0].Drums[InstrKick])
+	}
+	if err := WriteMIDI(&bytes.Buffer{}, r.Notes, hits, r.BPM, r.Meter); err != nil {
+		t.Error(err)
+	}
+}
+
 // TestRipHearsNothingBeforeTheMusic: what a front end hears in the silence before
 // the music goes, and the music starts at its soft opening, not at its loudest.
 func TestRipHearsNothingBeforeTheMusic(t *testing.T) {

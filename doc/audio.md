@@ -617,7 +617,11 @@ played take's ritardando stretches the pulses, not the count, and the line
 keeps its place through it; a note or a hit more than half a step before the first
 bar line opens a pickup bar before it, as long as the first, into the time
 before the recording when it begins inside that bar (`Rip.Downbeat` is
-negative then), so a phrase that leads into the first bar is kept. What the front end hears before the recording first comes within 80 dB of
+negative then), so a phrase that leads into the first bar is kept. Its steps
+before the recording hold nothing: what is heard on its first frames lies on the
+first step at or after the start (`ripGrid.at`), so of what a rip states only
+the pickup's line and beats lie before 0, and no hit or note `WriteMIDI` refuses
+for it. What the front end hears before the recording first comes within 80 dB of
 its loudest block, a model's hits in the silence, is dropped first. The key is the root and scale whose tones hold the most chroma and whose
 others the least, the bass register voting for the tonic.
 

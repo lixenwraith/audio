@@ -386,7 +386,9 @@ func (r *Rip) Hits() []RipHit {
 	return out
 }
 
-// stepAt is the second step pos of bar b falls on, between its beats
+// stepAt is the second step pos of bar b falls on, between its beats. A rip
+// lays nothing before its recording (ripGrid.at); a step on its start between
+// two beats sums to a hair either side of 0, and is stated at 0.
 func (r *Rip) stepAt(b, pos int) (float64, bool) {
 	per, sub := r.Meter.Beats(), r.Meter.Beat()
 	i := per*b + pos/sub
@@ -394,7 +396,7 @@ func (r *Rip) stepAt(b, pos int) (float64, bool) {
 		return 0, false
 	}
 	span := (r.Beats[i+1] - r.Beats[i]) / float64(sub)
-	return r.Beats[i] + span*float64(pos%sub), true
+	return max(r.Beats[i]+span*float64(pos%sub), 0), true
 }
 
 // RipBar is one bar: each drum's hits, kick, snare and hihat in instrument order,
@@ -2826,7 +2828,9 @@ func cosine(a, b [12]float64) float64 {
 }
 
 // at is the bar and sixteenth a frame falls in, the bar's span cut in the
-// meter's steps, false before the first bar or after the last.
+// meter's steps, false before the first bar or after the last. A pickup bar's
+// steps can lie before frame 0, where the recording starts, and nothing heard
+// lies on them: such a frame falls on the first step at or after it.
 func (g *ripGrid) at(frame int) (bar, step int, ok bool) {
 	if frame < g.lines[0] {
 		return 0, 0, false
@@ -2837,6 +2841,9 @@ func (g *ripGrid) at(frame int) (bar, step int, ok bool) {
 	}
 	a, b := g.lines[bar], g.lines[bar+1]
 	step = int(math.Round(float64(frame-a) / float64(b-a) * float64(g.m.Steps())))
+	for step < g.m.Steps() && g.before(bar, step) {
+		step++
+	}
 	if step >= g.m.Steps() {
 		bar, step = bar+1, 0
 		if bar >= g.bars() {
@@ -2844,6 +2851,15 @@ func (g *ripGrid) at(frame int) (bar, step int, ok bool) {
 		}
 	}
 	return bar, step, true
+}
+
+// before is whether a bar's step lies before frame 0 as a rip states it
+// (Rip.stepAt): on its beat, or between two at its share of their span
+func (g *ripGrid) before(bar, step int) bool {
+	sub := g.m.Beat()
+	i := bar*g.m.Beats() + step/sub
+	a, b := g.beat(i), g.beat(i+1)
+	return a*sub+(b-a)*(step%sub) < 0
 }
 
 // stepFrames is the mean length of a sixteenth over the bars
