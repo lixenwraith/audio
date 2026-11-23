@@ -477,9 +477,11 @@ func headRip(rp Ripper, f *RipFrames, stream bool) (*Rip, error) {
 }
 
 // framesRip rips x at RipRate through headFront on f, offline or streamed in
-// blocks of 50 ms
+// blocks of 50 ms, under the defaults where rp holds no parameters
 func framesRip(rp Ripper, f *RipFrames, x []float64, stream bool) (*Rip, error) {
-	rp.Params, rp.FrontEnd = DefaultRipParams(), headFront{f}
+	if rp.FrontEnd = (headFront{f}); rp.Params == (RipParams{}) {
+		rp.Params = DefaultRipParams()
+	}
 	if !stream {
 		return rp.Samples(x, RipRate)
 	}

@@ -494,6 +494,22 @@ that a document now states, and link the document instead.
   right under nearly any decoder that follows the head. `finest` cuts by the head between the tracked
   beats; its halves stop at 240 a minute because past it a guitar's eighths,
   marked at about half its quarters, are taken.
+- **A joint path's meters are told by the lines one has and another lacks, so
+  a miss and a half-bar mark tip them both ways.** On four-bar loops a missed
+  first line costs 4/4 more than a 12/8 at half its tempo, whose one line takes
+  the best mark, and a half bar marked over `joint_line` gains 2/4 a line a bar:
+  on heads spoiled to the trained F1s 24 of 239 4/4 loops read 2/4. A margin
+  over 4/4 (`joint_margin`) holds both; scaling the downbeat head's word against
+  it moved the margin's meaning instead (2/4 fell to 2 of 20 at half weight).
+- **Heads written as the trainer's targets are plateaus**, a frame either side
+  at one, so a decoder that keeps the first of equal frames puts each beat a
+  frame early, two where it reads the head's highest within a frame: the joint
+  path centres each beat on the frames the head holds its peak on (`centre`).
+- **A tempo counted against a loop's `bpm` counts its drift.** Seven loops in
+  ten of stapes' corpus drift, three in ten slowing or quickening to 3 to 8% by
+  their end, and a label's `bpm` is the first bar's: with the labels as heads
+  the two decoders read 478 and 511 of 574 loops within 3% of it, 538 and 574
+  of the bars' median tempo. Count both, and the bar, which drift leaves alone.
 - **A change that must not move the rip is held by a digest of rips.** A scratch
   program: every WAV of a rendered corpus (stapes' `corpus <dir> 48 8 aug gen
   meters`) ripped through the analysis and through random weights of `FrameSpec`

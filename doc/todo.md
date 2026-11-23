@@ -368,8 +368,9 @@ holds it.
 The rip reads 4/4, 3/4 and 6/8, heard beats 12/8 too, and names them ([Audio
 §9](audio.md#9-ripping-a-recording)): a 2-beat bar is 4/4 at double tempo, a
 6- or 8-beat bar 3/4 or 4/4 at half, a triple bar of tracked triplets 3/4, so
-a slow waltz, a slow 4/4 and a jazz waltz tracked on its swing read right. 5/4,
-7/8, 9/8 and the cues' 12/8 still read as whichever of those fits. Offered as readings
+a slow waltz, a slow 4/4 and a jazz waltz tracked on its swing read right. The
+joint path reads 2/4, 5/4 and 7/8 over heard beats; 9/8, and 5/4 and 7/8 by
+the cues, still read as whichever of those fits. Offered as readings
 beside the three, they cost the margin chain 4/4 labels, and a linear score over
 path score, repetition and a prior per meter held fewer than the chain. The
 smallest close: 5/4 and 7/4 as readings taken only by the full margin, graded on
@@ -417,12 +418,20 @@ What is left here, each to settle on trained weights:
 - **A bar that slips.** A bar holds its beats exactly, so a beat the tracker
   adds or loses in a ritardando moves every line after it; the cues' path
   absorbs one at `bar_move`. A cost in the head's own units is to be fitted on
-  played recordings, not set.
+  played recordings, not set. The joint path's tempo moves instead, its
+  beats a bar's exactly.
 - **The stream** holds the phase of its first bars, as before: the downbeat
   head is not read again once they freeze. Reading it at every bar is the
-  sections thread's.
+  sections thread's; the joint path reads it at every bar, in its first bars'
+  meter.
+- **The joint path against the readings.** On stapes' loops with the labels as
+  heads it reads every bar of seven meters where the readings miss 2/4, 5/4,
+  7/8 and a quarter of 6/8 and 12/8; on heads spoiled to the trained F1s its
+  errors are the heads' own, 4/4 read 2/4 where the half bar is marked, 6/8 and
+  12/8 read as each other. To settle on the trained heads (`truth` and `tune
+  ... truth` with and without stapes' `heads`) before `joint` is the default.
 - **Half and double bars** are not offered (2 and 8 heard beats), nor 5/4
-  and 7/8. 12/8 is, as two bars of 6/8 where the head stands at its lines
+  and 7/8, but on the joint path. 12/8 is, as two bars of 6/8 where the head stands at its lines
   over 6/8's along the same stretch: a 6/8 whose head marks every other line
   over the rest reads 12/8, and a 12/8 whose head marks its half bar as its
   line reads 6/8, the head's own reading either way. A 6/8 or 12/8 whose

@@ -420,7 +420,11 @@ func (s *RipStream) follow(f *RipFrames, x []float64, ev ripEvents, end bool) er
 	ev.root, ev.scale = s.root, s.scale
 	from := s.line - s.w0
 	lines := []int{from}
-	if pulses := f.pulses(s.track.period, s.track.k, s.p, from); len(pulses) > 1 {
+	if s.p.Joint == 1 && s.track.heard { // the joint path on from the line, at the last frozen bar's tempo
+		if g, _, _ := f.jointGrid(s.p, []Meter{s.meter}, s.rp.given(), from, float64(s.line-s.prev)); g.bars() > 0 {
+			lines = g.lines
+		}
+	} else if pulses := f.pulses(s.track.period, s.track.k, s.p, from); len(pulses) > 1 {
 		rds, err := f.readings(pulses, s.track.k, s.track.bpm, &s.track.rd.m, s.rp.Grid != nil)
 		if err != nil {
 			return err
