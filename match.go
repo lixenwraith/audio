@@ -49,12 +49,13 @@ func (ag Agreement) At(s float64) float64 {
 	return p[i-1][1] + (s-p[i-1][0])*(p[i][1]-p[i-1][1])/(p[i][0]-p[i-1][0])
 }
 
-// LineAgreement is one line's count: the notes each side has, how many align,
-// the notes only one side has, and for a line given as a rhythm alone, how many
-// of its notes a has cut in two or more (Split) and how many of a's notes span
-// two or more of them (Merged)
+// LineAgreement is one line's count: the notes each side has, how many align
+// and which (Pairs), the notes only one side has, and for a line given as a
+// rhythm alone, how many of its notes a has cut in two or more (Split) and how
+// many of a's notes span two or more of them (Merged)
 type LineAgreement struct {
 	A, B, Matched int
+	Pairs         [][2]RipNote // each match, a's note and b's on b's clock, a rhythm's as placed
 	OnlyA, OnlyB  []RipNote
 	Split, Merged int
 	Cut, Spanning []RipNote // the notes of b cut in two or more by a's, and the notes of a spanning two or more of b's
@@ -194,6 +195,7 @@ func align(a, b []RipNote, shift int, timed bool) Agreement {
 		inA, inB := make([]bool, len(la)), make([]bool, len(lb))
 		for _, p := range pairs {
 			inA[p[0]], inB[p[1]] = true, true
+			l.Pairs = append(l.Pairs, [2]RipNote{la[p[0]], lb[p[1]]})
 		}
 		for i, n := range la {
 			if !inA[i] {
@@ -555,10 +557,11 @@ type HitsAgreement struct {
 	Stretch, Offset float64
 }
 
-// HitLine is one drum's count: the hits each side has, how many align, and the
-// hits only one side has, b's at their place on a's time
+// HitLine is one drum's count: the hits each side has, how many align and
+// which, and the hits only one side has, b's at their place on a's time
 type HitLine struct {
 	A, B, Matched int
+	Pairs         [][2]RipHit // each match, a's hit and b's at its place
 	OnlyA, OnlyB  []RipHit
 }
 
@@ -628,9 +631,13 @@ func pairHits(a, b []RipHit, stretch, offset, tol float64, line *HitLine) int {
 				k = j
 			}
 		}
-		if k >= 0 {
+		switch {
+		case k >= 0:
 			used[k], n = true, n+1
-		} else if line != nil {
+			if line != nil {
+				line.Pairs = append(line.Pairs, [2]RipHit{a[k], h})
+			}
+		case line != nil:
 			line.OnlyB = append(line.OnlyB, h)
 		}
 	}
@@ -718,6 +725,183 @@ func MatchBars(r *Rip, beats, downbeats []float64) BarScore {
 		s.Beats = float64(on) / float64(len(beats))
 	}
 	return s
+}
+
+// The bounds a reading counts right within: a note's end within EndShare of
+// the given note's length or EndFloor seconds of it, whichever is more, as
+// MIREX's note tracking takes offsets, and a loudness within LevelBound dB,
+// half the step between two dynamics
+const (
+	EndShare   = 0.2
+	EndFloor   = 0.05
+	LevelBound = 3.0
+)
+
+// EndReading is how far a's notes end from where the b notes they matched end:
+// the matches whose b gives an end, those within the bounds, and each one's end
+// less b's on a's clock, in b's length there
+type EndReading struct {
+	Given, Right int
+	Off          []float64
+}
+
+// Ends reads the ends of an agreement's notes matched by pitch and onset (All),
+// b's placed on a's clock by At; a rhythm's note gives none, its length a unit
+func (ag Agreement) Ends() EndReading {
+	var r EndReading
+	for _, p := range ag.All.Pairs {
+		start, end := ag.At(p[1].Start), ag.At(p[1].End)
+		if p[1].MIDI < 0 || end <= start {
+			continue
+		}
+		off := p[0].End - end
+		if r.Given++; math.Abs(off) <= max(EndShare*(end-start), EndFloor) {
+			r.Right++
+		}
+		r.Off = append(r.Off, off/(end-start))
+	}
+	return r
+}
+
+// LevelReading is how far a's loudness lies from b's over their matches: those
+// whose b gives one, those within LevelBound, and each one's dB off, a's
+// velocity over b's less their group's median, the level the group shares,
+// which a rip's velocities are read against and do not say: a recording at its
+// peak, a drum at its loudest hit
+type LevelReading struct {
+	Given, Right int
+	Off          []float64
+}
+
+// Levels reads the loudness of an agreement's notes matched by pitch and onset
+// whose b gives a velocity, the recording's level out
+func (ag Agreement) Levels() LevelReading {
+	var db []float64
+	for _, p := range ag.All.Pairs {
+		if p[1].MIDI >= 0 && p[1].Vel > 0 && p[0].Vel > 0 {
+			db = append(db, 20*math.Log10(p[0].Vel/p[1].Vel))
+		}
+	}
+	return LevelReading{}.plus(db)
+}
+
+// Levels reads the loudness of each drum's matched hits whose b gives a
+// velocity, the drum's level out: a rip's hit is loud against its drum's loudest
+func (hg HitsAgreement) Levels() LevelReading {
+	var r LevelReading
+	for _, l := range hg.Drums {
+		var db []float64
+		for _, p := range l.Pairs {
+			if p[1].Vel > 0 && p[0].Vel > 0 {
+				db = append(db, 20*math.Log10(p[0].Vel/p[1].Vel))
+			}
+		}
+		r = r.plus(db)
+	}
+	return r
+}
+
+// plus adds a group's dB to r, their median out
+func (r LevelReading) plus(db []float64) LevelReading {
+	if len(db) == 0 {
+		return r
+	}
+	mid := median(db)
+	for _, d := range db {
+		if r.Given++; math.Abs(d-mid) <= LevelBound {
+			r.Right++
+		}
+		r.Off = append(r.Off, d-mid)
+	}
+	return r
+}
+
+// PartReading is how a's lines part the notes matched by pitch and onset whose
+// b names a part, as BCubed scores a clustering against classes: each note's
+// share of its line's notes that are of its part (InPart) and of its part's
+// notes that are on its line (OnLine), summed over the notes, so neither what a
+// line or a part is called nor how many either side has counts
+type PartReading struct {
+	Given          int
+	InPart, OnLine float64
+}
+
+// Parts reads how an agreement's lines (melody, under, bass) part its notes
+// matched by pitch and onset against the parts b names (RipNote.Part)
+func (ag Agreement) Parts() PartReading {
+	var r PartReading
+	var names []string
+	var cells [][3]int // a part's notes on each line, the parts in the order first named
+	for _, p := range ag.All.Pairs {
+		if p[1].Part == "" {
+			continue
+		}
+		k := slices.Index(names, p[1].Part)
+		if k < 0 {
+			k, names, cells = len(names), append(names, p[1].Part), append(cells, [3]int{})
+		}
+		cells[k][lineOf(p[0])]++
+		r.Given++
+	}
+	var lines [3]int
+	for _, c := range cells {
+		for l, n := range c {
+			lines[l] += n
+		}
+	}
+	for _, c := range cells {
+		for l, n := range c {
+			if n > 0 {
+				r.InPart += float64(n*n) / float64(lines[l])
+				r.OnLine += float64(n*n) / float64(c[0]+c[1]+c[2])
+			}
+		}
+	}
+	return r
+}
+
+// MatchKey is whether a rip names a truth's key: its tonic, root's pitch class,
+// and its scale
+func MatchKey(r *Rip, root int, scale ScaleID) (tonic, same bool) {
+	return (r.Root-root)%12 == 0, r.Scale == scale
+}
+
+// RipChord is a chord a truth gives over a span of the recording's seconds:
+// its pitch classes, its root's first
+type RipChord struct {
+	Start, End float64
+	Tones      []int
+}
+
+// ChordReading is the seconds a truth gives chords over and those whose root a
+// bar of the rip's names
+type ChordReading struct{ Given, Right float64 }
+
+// MatchChords reads a rip's chords against a truth's in the recording's
+// seconds: a bar's is the root of its Progression's degree in the rip's key,
+// which is all a rip says of a chord, so a second is right where that root is
+// the given chord's, and wrong where no bar of the rip's lies
+func MatchChords(r *Rip, given []RipChord) ChordReading {
+	var out ChordReading
+	per, iv := r.Meter.Beats(), ScaleIntervals(r.Scale)
+	for _, c := range given {
+		if c.End <= c.Start || len(c.Tones) == 0 {
+			continue
+		}
+		out.Given += c.End - c.Start
+		for b, d := range r.Progression {
+			if len(iv) == 0 || (b+1)*per >= len(r.Beats) {
+				break
+			}
+			if (r.Root+iv[d%len(iv)]-c.Tones[0])%12 != 0 {
+				continue
+			}
+			if lo, hi := max(c.Start, r.Beats[b*per]), min(c.End, r.Beats[(b+1)*per]); hi > lo {
+				out.Right += hi - lo
+			}
+		}
+	}
+	return out
 }
 
 // ReadJAMSBeats reads a JAMS file's beat_position annotation, as GuitarSet's

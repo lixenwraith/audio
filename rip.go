@@ -338,6 +338,9 @@ type RipNote struct {
 	// Further marks a score's note of a part past its three lines, of none: in
 	// the melody register's match as one line, or the bass's under E3
 	Further bool
+	// Part names the part a truth files a note under, as a corpus label's
+	// track; "" for a note heard, and where a truth names none
+	Part string
 	// Voice is what the front end heard playing it; nil where it tells no note's
 	// voice, for a note none of whose frames it told, and for one not heard
 	Voice *RipVoice

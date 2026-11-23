@@ -1481,6 +1481,140 @@ func TestMatchHitsTimedSearchesNoMap(t *testing.T) {
 	}
 }
 
+// TestAnEndIsRightWithinAFifthOfItsNoteOrFiftyMilliseconds: against a truth
+// stretched by a tenth and set off, each given end placed on the rip's clock by
+// the map, an end within a fifth of its note's length there, or 50 ms of a short
+// note's, is right, and each end is read off in its note's lengths; a rhythm's
+// note gives no end
+func TestAnEndIsRightWithinAFifthOfItsNoteOrFiftyMilliseconds(t *testing.T) {
+	var a, b []RipNote
+	offs := []float64{0, 0.04, 0.08, -0.06, -0.1, 0, 0.3, 0, 0, 0, 0, 0}
+	for i, off := range offs {
+		start, length := 0.5*float64(i), 0.4
+		if i%2 == 1 {
+			length = 0.1
+		}
+		m := 60 + i*5%12
+		b = append(b, RipNote{Start: start, End: start + length, MIDI: m})
+		a = append(a, RipNote{Start: 1.1*start + 0.2, End: 1.1*(start+length) + 0.2 + off, MIDI: m})
+	}
+	e := MatchNotes(a, b, false).Ends()
+	if e.Given != len(offs) || e.Right != 9 {
+		t.Errorf("%d of %d ends right, want 9 of %d: the offsets %v", e.Right, e.Given, len(offs), e.Off)
+	}
+	if want := 0.3 / 0.44; len(e.Off) != len(offs) || math.Abs(e.Off[6]-want) > 1e-9 {
+		t.Errorf("the seventh end read %v lengths off, want %.4f", e.Off, want)
+	}
+	tapped := MatchNotes([]RipNote{{Start: 1, End: 1.4, MIDI: 60}}, []RipNote{{Start: 1, End: 1.5, MIDI: -1}}, true)
+	if e := tapped.Ends(); tapped.All.Matched != 1 || e.Given != 0 {
+		t.Errorf("a tapped note matched %d, gave %d end(s)", tapped.All.Matched, e.Given)
+	}
+}
+
+// TestALevelIsReadWithItsGroupsLevelOut: a rip's velocities, the given's at a
+// level of their own, are right where they move as the given's do, a note 5 dB
+// over its own wrong, and a note the truth gives no velocity is not read; hits
+// are read drum by drum, so a hat at a third of the kick's level reads right
+func TestALevelIsReadWithItsGroupsLevelOut(t *testing.T) {
+	var a, b []RipNote
+	for i, v := range []float64{0.9, 0.5, 0.7, 0.3, 0.8, 0.6, -1, 0.4} {
+		start, g := 0.5*float64(i), 0.5
+		if i == 3 {
+			g *= math.Pow(10, 5.0/20)
+		}
+		b = append(b, RipNote{Start: start, End: start + 0.3, MIDI: 60 + i, Vel: v})
+		a = append(a, RipNote{Start: start, End: start + 0.3, MIDI: 60 + i, Vel: g * math.Abs(v)})
+	}
+	if l := MatchNotes(a, b, true).Levels(); l.Given != 7 || l.Right != 6 || math.Abs(slices.Max(l.Off)-5) > 1e-9 {
+		t.Errorf("%d of %d notes' levels right, off %v: want 6 of 7, one 5 dB over", l.Right, l.Given, l.Off)
+	}
+	var heard, given []RipHit
+	for i := range 8 {
+		at := 0.25 * float64(i)
+		for d, v := range map[InstrumentType][2]float64{InstrKick: {0.9, 1}, InstrHihat: {1, 0.3}, InstrSnare: {0.8, -1}} {
+			heard, given = append(heard, RipHit{Start: at, Drum: d, Vel: v[0]}), append(given, RipHit{Start: at, Drum: d, Vel: v[1]})
+		}
+	}
+	if l := MatchHits(heard, given, 0.05, true).Levels(); l.Given != 16 || l.Right != 16 {
+		t.Errorf("%d of %d hits' levels right, want 16 of 16: the snare gives none", l.Right, l.Given)
+	}
+}
+
+// TestPartsAreReadWhateverTheyAreCalledAndHowManyThereAre: the rip's lines are
+// read against the parts given note by note, as BCubed reads a clustering: lines
+// that hold the parts read whole under any names, a part cut across two lines
+// reads its notes' share on their line, two parts on one line their share of
+// the line, and a note given in no part is not read
+func TestPartsAreReadWhateverTheyAreCalledAndHowManyThereAre(t *testing.T) {
+	read := func(line func(i int) (bass, second bool), part func(i int) string) (int, float64, float64) {
+		var a, b []RipNote
+		for i := range 9 {
+			start := 0.3 * float64(i)
+			n := RipNote{Start: start, End: start + 0.2, MIDI: 64 + i}
+			b = append(b, RipNote{Start: start, End: start + 0.2, MIDI: 64 + i, Part: part(i)})
+			n.Bass, n.Second = line(i)
+			a = append(a, n)
+		}
+		p := MatchNotes(a, b, true).Parts()
+		return p.Given, p.InPart / float64(p.Given), p.OnLine / float64(p.Given)
+	}
+	two := func(x, y string) func(int) string {
+		return func(i int) string {
+			switch {
+			case i == 8:
+				return ""
+			case i%2 == 0:
+				return x
+			}
+			return y
+		}
+	}
+	apart := func(i int) (bool, bool) { return i%2 == 1, false }
+	cut := func(i int) (bool, bool) { return i%2 == 1, i%4 == 2 }
+	one := func(int) (bool, bool) { return false, false }
+	for _, c := range []struct {
+		line           func(int) (bool, bool)
+		part           func(int) string
+		inPart, onLine float64
+	}{
+		{apart, two("melody", "bass"), 1, 1},
+		{apart, two("bass", "melody"), 1, 1},
+		{apart, two("left", "chords"), 1, 1},
+		{cut, two("melody", "bass"), 1, 0.75},
+		{one, two("melody", "bass"), 0.5, 1},
+	} {
+		given, inPart, onLine := read(c.line, c.part)
+		if given != 8 || math.Abs(inPart-c.inPart) > 1e-9 || math.Abs(onLine-c.onLine) > 1e-9 {
+			t.Errorf("parts %s and %s: %d given, %.3f in their part and %.3f on their line, want 8, %.3f and %.3f", c.part(0), c.part(1), given, inPart, onLine, c.inPart, c.onLine)
+		}
+	}
+}
+
+// TestTheKeyAndTheChordsAreReadByTheirRoots: a rip in G minor names a truth's
+// key of G at any octave, and not its scale where the truth's is major; its
+// bars' chords, each its degree's root in the key, are right over the seconds
+// that root is the given chord's, whatever the chord's other tones, and wrong
+// where no bar of the rip's lies
+func TestTheKeyAndTheChordsAreReadByTheirRoots(t *testing.T) {
+	r := &Rip{Root: 43, Scale: ScaleMinor, Progression: []int{0, 5, 2, 6}}
+	for i := range 4*BeatsPerBar + 1 {
+		r.Beats = append(r.Beats, 1+0.5*float64(i))
+	}
+	for _, k := range []struct {
+		root          int
+		scale         ScaleID
+		tonic, scaled bool
+	}{{31, ScaleMinor, true, true}, {55, ScaleMajor, true, false}, {45, ScaleMinor, false, true}} {
+		if tonic, scaled := MatchKey(r, k.root, k.scale); tonic != k.tonic || scaled != k.scaled {
+			t.Errorf("a key of %d in scale %d: tonic %v, scale %v, want %v and %v", k.root, k.scale, tonic, scaled, k.tonic, k.scaled)
+		}
+	}
+	given := []RipChord{{0, 3, []int{7, 10, 2}}, {3, 5, []int{3, 7, 10}}, {5, 7, []int{0, 3, 7}}, {7, 10, []int{5, 9, 0, 3}}}
+	if c := MatchChords(r, given); c.Given != 10 || c.Right != 6 {
+		t.Errorf("%.2f of %.2f s right, want 6 of 10: G before the first bar and past the last, C where the rip says Bb, wrong", c.Right, c.Given)
+	}
+}
+
 // barGrid is a 4/4 rip of bars bars, beat seconds a beat from 0.3 s, and its
 // beats every step-th from the first
 func barGrid(bars int, beat float64, step int) (*Rip, []float64) {

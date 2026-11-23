@@ -662,6 +662,8 @@ that a document now states, and link the document instead.
 - A `Rip` carries its `RipParams`, so a digest of rips' JSON taken before and
   after a new parameter differs on every rip, a zeroed `Params` too, since it
   marshals the new keys: hash each rip's JSON with the `Params` key deleted.
+  Each of its notes marshals `Part` since v0.40.0, empty for a note heard:
+  across that version delete it from every note too.
 - A change that must leave the rips of files saved before it alone is held on
   such files: `NewRandom` of both specs saved by a scratch module on the last
   tag (the sure row zeroed), then on each build every exported field of the
