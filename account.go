@@ -900,9 +900,10 @@ type accAsk struct {
 const accStrike, accJudgeBar = 0.5, 0.5
 
 // account holds the registers' notes to the recording x: two notes of one pitch
-// at one start are one; the notes are fitted together and one whose sound the
-// others account for goes; then every strike over the bar the decoder dropped is
-// judged against the notes kept, and comes back where its sound is its own. A
+// at one start are one but a twin, which is its strike's first note's sound too
+// and stands or goes with it; the notes are fitted together and one whose sound
+// the others account for goes; then every strike over the bar the decoder dropped
+// is judged against the notes kept, and comes back where its sound is its own. A
 // judge rules both in the scores' place, over every strike surer than accStrike.
 func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody []ripNote) ([]ripNote, []ripNote, []RipStrike) {
 	if f.Strike == nil {
@@ -910,7 +911,13 @@ func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody [
 	}
 	judge, rows := ask.judge, ask.judge != nil || ask.strikes && ask.rows
 	refs := f.accRefs()
-	notes := accNotes(accDedup(slices.Concat(bass, melody)), false, f.Tuning, f.frames())
+	var twins []ripNote
+	notes := accNotes(accDedup(slices.DeleteFunc(slices.Concat(bass, melody), func(n ripNote) bool {
+		if n.twin {
+			twins = append(twins, n)
+		}
+		return n.twin
+	})), false, f.Tuning, f.frames())
 	lay := func(every bool) []*accNote {
 		return accNotes(f.accCandidates(p, notes, refs, every), true, f.Tuning, f.frames())
 	}
@@ -964,7 +971,7 @@ func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody [
 			strikes = append(strikes, st)
 		}
 	}
-	var kept, dropped []*accNote
+	var kept []*accNote
 	for i, n := range notes {
 		if n.of != nil {
 			continue
@@ -988,8 +995,6 @@ func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody [
 		}
 		if st.Kept {
 			kept = append(kept, n)
-		} else {
-			dropped = append(dropped, n)
 		}
 		if n.whole != nil {
 			st.MIDI = n.whole.midi
@@ -1002,7 +1007,14 @@ func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody [
 			kept = append(kept, n)
 		}
 	}
-	accRingOn(kept, dropped)
+	// a twin goes where the note its strike started does
+	gap := int(p.StrikeGap / f.Hop)
+	twins = slices.DeleteFunc(twins, func(t ripNote) bool {
+		first := slices.IndexFunc(notes, func(n *accNote) bool {
+			return n.of == nil && n.midi == t.midi && n.start <= t.start && t.start-n.start < gap
+		})
+		return first >= 0 && !slices.Contains(kept, notes[first])
+	})
 	reported, floor := kept, fit.b
 	if judge == nil && rows {
 		floor = slices.Clone(fit.b) // as it is before the candidates' fit moves it
@@ -1012,7 +1024,6 @@ func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody [
 	// itself, fitted from its activation before the candidates' fit
 	var alone []*accNote
 	var aloneG [][]float32
-	gap := int(p.StrikeGap / f.Hop)
 	for _, n := range cands {
 		under := float64(f.Strike[f.cell(n.start, n.midi)]) < accStrike
 		if ask.strikes && under && !slices.ContainsFunc(every, func(e *accNote) bool { return e.midi == n.midi && max(e.start-n.start, n.start-e.start) < gap }) {
@@ -1106,6 +1117,13 @@ func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody [
 			melody = append(melody, out)
 		}
 	}
+	for _, t := range twins {
+		if t.midi < RipBassTop {
+			bass = append(bass, t)
+		} else {
+			melody = append(melody, t)
+		}
+	}
 	byStart := func(a, b ripNote) int { return cmp.Or(a.start-b.start, a.midi-b.midi) }
 	slices.SortFunc(bass, byStart)
 	slices.SortFunc(melody, byStart)
@@ -1161,19 +1179,6 @@ func (f *RipFrames) accRefs() [2]float64 {
 		refs[1] = r.ref
 	}
 	return refs
-}
-
-// accRingOn lets a kept note sound on through a dropped note of its pitch that
-// started where it ended: the decoder cuts a note at every strike of its pitch,
-// and a strike its ring explains is no new note but the same one still sounding
-func accRingOn(kept, dropped []*accNote) {
-	for _, d := range dropped {
-		for _, k := range kept {
-			if k.midi == d.midi && k.start < d.start && k.end >= d.start-accDup && k.end < d.end {
-				k.end = d.end
-			}
-		}
-	}
 }
 
 // accDedup merges two notes of one pitch starting within accDup frames of each
