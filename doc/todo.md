@@ -98,19 +98,19 @@ What is theirs, largest first, each with the smallest close:
 
 - **The accounting** drops 4,816 true notes, 6,883 through the room: chord
   tones and octave doubles whose partials a lower note's fit explains, as the
-  installed scores weigh a strike and a salience of one at 4.6 of a logit
-  against the fit's share and span. It rings a kept note on through a dropped
-  one, 679 ends late. Close: a judge fitted on rows of perfect heads beside a
-  trained model's, or a note the heads are sure of kept, as one the fit cannot
-  see is (`Held`).
+  installed scores weigh a strike and a salience against the fit's share and
+  span. It rings a kept note on through a dropped one, 679 ends late. Close: a
+  judge fitted on rows of perfect heads beside a trained model's, or a note the
+  heads are sure of kept, as one the fit cannot see is (`Held`).
 - **One note a pitch at a time**: two parts on one pitch are one note, 1,249
-  lost to a twin, and its end is the first release or strike of either. Close:
-  a second note of a sounding pitch where a sure strike comes before the
-  release head lets the first go.
-- **The last bar**: a bar is laid between two lines heard, so a recording's
-  last bar holds no hit and no chord, 1,518 of 8,828 hits outside the bars on
-  four-bar loops. Close: the last bar laid to the end where its line falls
-  within a beat of it.
+  lost to a twin, and its end is the first release or strike of either, among
+  the strikes' 2,467 ends early. Close: a second note of a sounding pitch where
+  a sure strike comes before the release head lets the first go.
+- **The last bar**: the present path (`Joint` 0) lays a bar between two lines
+  heard, so a recording's last bar holds no hit and no chord, 1,518 of 8,828
+  hits outside the bars on four-bar loops, its chords 0.704 of their seconds;
+  the joint path loses 573 and reads 0.850. Close: the present path's last bar
+  laid to the end where its line falls within a beat of it.
 - **`dynamics`** moves a velocity the head already says: the loudness reads
   0.895, 0.769 through the room. Close: one of the two, the head taught the
   note's level over its passage or the move dropped.
@@ -120,9 +120,9 @@ What is theirs, largest first, each with the smallest close:
   the cents head over the sounding cells.
 - **The key** is a profile's: 201 of 411 right. Close: the tonic weighed where
   the bass and phrases rest.
-- **The bass's own-pitch rule** drops 432 piano and pluck notes whose
-  fundamental stands under its next partials. Close: the rule only where no
-  sure strike of the pitch stands.
+- **The bass's own-pitch rule** drops 432 low notes whose fundamental stands
+  more than 10 dB under its next partials. Close: the rule only where no sure
+  strike of the pitch stands.
 - **A plateau's peak** is read on its last frame (agent notes), so 51 notes
   (290 through the room) whose sound leaves its first cell start none. Close:
   read a peak at the middle of equal frames, as `centre` does a beat.
