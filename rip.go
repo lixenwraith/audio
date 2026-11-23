@@ -296,8 +296,9 @@ type Rip struct {
 	// (RipStream.Strikes)
 	Strikes []RipStrike
 	// Stages is what each stage of the decoders made, dropped or moved of its
-	// notes and hits, in the order they ran, when the Ripper asked for them; a
-	// stream's bars carry none
+	// notes and hits, in the order they ran, when the Ripper asked for them,
+	// empty where they did nothing and nil where it did not ask; a stream's bars
+	// carry none
 	Stages []RipChange
 }
 

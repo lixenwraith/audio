@@ -179,12 +179,13 @@ func (tr *ripTrace) hit(stage RipStage, kind RipChangeKind, why RipWhy, d Instru
 	}
 }
 
-// list is what the trace kept, nil for none kept
+// list is what the trace kept, empty where its stages did nothing and nil
+// where there is no trace
 func (tr *ripTrace) list() []RipChange {
 	if tr == nil {
 		return nil
 	}
-	return tr.changes
+	return append(make([]RipChange, 0, len(tr.changes)), tr.changes...)
 }
 
 // StageCount counts by the stage that owns each, by name: a stage's
@@ -211,10 +212,10 @@ const stageTwin = "a twin"
 // of its pitch starts within the matcher's window of it, among those from the
 // first that made a note; an added note's the last that made it; a wrong end's
 // the first after which it was wrong; a lost hit's what became of the picked
-// hit nearest it within tol. A rip that kept no stages reads none.
+// hit nearest it within tol. A rip whose Ripper asked for none reads none.
 func ReadStages(r *Rip, ag Agreement, hg *HitsAgreement, tol float64) StageReading {
 	var out StageReading
-	if len(r.Stages) == 0 {
+	if r.Stages == nil {
 		return out
 	}
 	out = StageReading{StageCount{}, StageCount{}, StageCount{}, StageCount{}, StageCount{}, StageCount{}}
