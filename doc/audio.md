@@ -935,7 +935,14 @@ shares over `RipFamilies`: piano, guitar, voice, bass, strings, winds, synth,
 drums or unknown), which no decoder reads yet, and the beat and the bar line
 (`ripmodels.HeadBeat`, `HeadDownbeat`, after the family in `FrameSpec`; a file
 whose heads do not start with `FrameSpec`'s is refused, and a head after them is
-read by nothing).
+read by nothing but what is struck at each place). A frame model may say, after
+them, what is struck in each of some even runs of the bands from the lowest
+(`RipFrames.Places` of them, the size of `HeadPlaces`): how surely something of
+no pitch is struck there (`Struck`), its genes over `StruckGeneNames`
+(`StruckGenes`) with the error the model states for each (`StruckGenesError`,
+`HeadGenes` holding the genes and then the log of each error) and how hard
+(`StruckLoudness`, a velocity); a file with some of the three heads and not all
+is refused, one with none gives none, and no decoder reads them yet.
 From strikes both registers' notes start where a pitch is struck, as hard
 as it was, and last while
 it sounds or until it is let go (`Release`, the pitch ringing on as far as a new

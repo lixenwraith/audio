@@ -905,7 +905,8 @@ that a document now states, and link the document instead.
 - **A per-frame field is one line in `RipFrames.fields`, and `extend`'s list
   is sized for them.** A seventeenth field grew that list past its capacity at
   every extend: 423 allocations and 247 KB more a 20 s stream that read
-  nothing. Run `BenchmarkRipStream/unread` before and after a new field.
+  nothing. Run `BenchmarkRipStream/unread` before and after a new field; the four
+  of what is struck at each place sized it 28, one allocation and 28 KB more.
 - **The layout is the dear part of a read that freezes.** `lay` is 28% of the
   stream's time through the analysis in `bright` alone, so `Open` hands on the
   bars the freezing read laid out and no read lays out for it.
