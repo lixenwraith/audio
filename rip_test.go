@@ -1590,24 +1590,39 @@ func TestPartsAreReadWhateverTheyAreCalledAndHowManyThereAre(t *testing.T) {
 	}
 }
 
-// TestTheKeyAndTheChordsAreReadByTheirRoots: a rip in G minor names a truth's
-// key of G at any octave, and not its scale where the truth's is major; its
-// bars' chords, each its degree's root in the key, are right over the seconds
-// that root is the given chord's, whatever the chord's other tones, and wrong
-// where no bar of the rip's lies
-func TestTheKeyAndTheChordsAreReadByTheirRoots(t *testing.T) {
-	r := &Rip{Root: 43, Scale: ScaleMinor, Progression: []int{0, 5, 2, 6}}
-	for i := range 4*BeatsPerBar + 1 {
-		r.Beats = append(r.Beats, 1+0.5*float64(i))
-	}
+// TestAKeyIsReadByItsTonicItsScaleAndItsMiss: a rip in G minor names a
+// truth's key of G at any octave, and not its scale where the truth's is
+// major; it misses G's minor pentatonic in a scale that holds it, B♭ major and
+// D phrygian by their tones under another tonic, and G major and A minor else
+func TestAKeyIsReadByItsTonicItsScaleAndItsMiss(t *testing.T) {
+	r := &Rip{Root: 43, Scale: ScaleMinor}
 	for _, k := range []struct {
 		root          int
 		scale         ScaleID
 		tonic, scaled bool
-	}{{31, ScaleMinor, true, true}, {55, ScaleMajor, true, false}, {45, ScaleMinor, false, true}} {
-		if tonic, scaled := MatchKey(r, k.root, k.scale); tonic != k.tonic || scaled != k.scaled {
-			t.Errorf("a key of %d in scale %d: tonic %v, scale %v, want %v and %v", k.root, k.scale, tonic, scaled, k.tonic, k.scaled)
+		miss          KeyMiss
+	}{
+		{31, ScaleMinor, true, true, KeyRight}, {55, ScaleMinorPent, true, false, KeyNested},
+		{46, ScaleMajor, false, false, KeyRelative}, {38, ScalePhrygian, false, false, KeyRelative},
+		{55, ScaleMajor, true, false, KeyOther}, {45, ScaleMinor, false, true, KeyOther},
+	} {
+		if tonic, scaled, miss := MatchKey(r, k.root, k.scale); tonic != k.tonic || scaled != k.scaled || miss != k.miss {
+			t.Errorf("a key of %d in scale %d: tonic %v, scale %v, miss %d, want %v, %v and %d", k.root, k.scale, tonic, scaled, miss, k.tonic, k.scaled, k.miss)
 		}
+	}
+	pent := &Rip{Root: 43, Scale: ScaleMinorPent}
+	if _, _, miss := MatchKey(pent, 31, ScaleDorian); miss != KeyNested {
+		t.Errorf("a minor pentatonic against its dorian: miss %d, want %d", miss, KeyNested)
+	}
+}
+
+// TestTheChordsAreReadByTheirRoots: a rip's bars' chords, each its degree's root
+// in its key, are right over the seconds that root is the given chord's,
+// whatever the chord's other tones, and wrong where no bar of the rip's lies
+func TestTheChordsAreReadByTheirRoots(t *testing.T) {
+	r := &Rip{Root: 43, Scale: ScaleMinor, Progression: []int{0, 5, 2, 6}}
+	for i := range 4*BeatsPerBar + 1 {
+		r.Beats = append(r.Beats, 1+0.5*float64(i))
 	}
 	given := []RipChord{{0, 3, []int{7, 10, 2}}, {3, 5, []int{3, 7, 10}}, {5, 7, []int{0, 3, 7}}, {7, 10, []int{5, 9, 0, 3}}}
 	if c := MatchChords(r, given); c.Given != 10 || c.Right != 6 {

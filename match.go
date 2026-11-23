@@ -860,10 +860,36 @@ func (ag Agreement) Parts() PartReading {
 	return r
 }
 
+// KeyMiss is how a rip's key misses a truth's (MatchKey)
+type KeyMiss int
+
+// The kinds of a miss, KeyRight none: the truth's tonic in a scale that holds
+// the truth's or is held by it, as a minor holds its pentatonic; the truth's
+// tones under another tonic, as a minor's are its relative major's; else
+const (
+	KeyRight KeyMiss = iota
+	KeyNested
+	KeyRelative
+	KeyOther
+	KeyMisses // how many kinds
+)
+
 // MatchKey is whether a rip names a truth's key: its tonic, root's pitch class,
-// and its scale
-func MatchKey(r *Rip, root int, scale ScaleID) (tonic, same bool) {
-	return (r.Root-root)%12 == 0, r.Scale == scale
+// and its scale, and the kind of its miss
+func MatchKey(r *Rip, root int, scale ScaleID) (tonic, same bool, miss KeyMiss) {
+	tonic, same = (r.Root-root)%12 == 0, r.Scale == scale
+	heard, given := scaleTones(r.Root, r.Scale), scaleTones(root, scale)
+	switch {
+	case tonic && same:
+		miss = KeyRight
+	case tonic && (heard&given == heard || heard&given == given):
+		miss = KeyNested
+	case heard == given:
+		miss = KeyRelative
+	default:
+		miss = KeyOther
+	}
+	return tonic, same, miss
 }
 
 // RipChord is a chord a truth gives over a span of the recording's seconds:

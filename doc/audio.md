@@ -875,9 +875,12 @@ bass, against the parts a truth names (`RipNote.Part`) as BCubed reads a
 clustering against classes, each note's share of its line's notes that are of
 its part and of its part's notes that are on its line, so neither side's names
 nor how many lines it has enter. `MatchKey` reads the tonic by its pitch class
-and the scale; `MatchChords` reads a second of the chords given (`RipChord`)
-right where a bar of the rip's names its root, its `Progression` degree's in
-the rip's key, which is all a rip says of a chord, and wrong where no bar lies.
+and the scale, and a miss by its kind (`KeyMiss`): the tonic in a scale that
+holds the truth's or is held by it, as a minor holds its pentatonic, the
+truth's tones under another tonic, as its relative major's, or else.
+`MatchChords` reads a second of the chords given (`RipChord`) right where a bar
+of the rip's names its root, its `Progression` degree's in the rip's key, which
+is all a rip says of a chord, and wrong where no bar lies.
 A rhythm's note gives no end and no velocity, nor does a given velocity of zero
 or under.
 A rip asked (`Ripper.Stages`) keeps what each stage of the decoders made,

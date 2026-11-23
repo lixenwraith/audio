@@ -99,6 +99,15 @@ func PitchStep(root int, scale ScaleID, midi int) (deg, oct, acc int) {
 	return deg, oct, midi - (root + 12*oct + sc[deg])
 }
 
+// scaleTones is a key's pitch classes, a bit each
+func scaleTones(root int, scale ScaleID) uint16 {
+	var bits uint16
+	for _, iv := range intervals(scale) {
+		bits |= 1 << ((root%12 + 12 + iv) % 12)
+	}
+	return bits
+}
+
 // intervals is a scale's table, the default's for one unknown
 func intervals(scale ScaleID) []int {
 	if scale < 0 || scale >= ScaleCount {
