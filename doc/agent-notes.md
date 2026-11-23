@@ -760,6 +760,18 @@ that a document now states, and link the document instead.
 
 ## Decoders
 
+- **A key is counted on loops cut part-way beside whole ones.** Stapes' generated
+  loops open on their tonic chord 78 times in 100 (8 bars, seed 11) and close on
+  it 48, where a loop cut a bar or two in from each side opens on it 18 and
+  closes 25, as a recording cut from a longer piece does: weighed beside the
+  bars, the opening and the close took the key from 0.682 to 0.721 on whole
+  loops and from 0.562 to 0.458 cut, and as a tie-break beside the lean still
+  cost the cut loops, so `key_open` and `key_close` stay at 0.
+- **A key rule is iterated on dumped features.** The bars do not move with the
+  key, so a scratch test that dumps each loop's chroma, its bars' chromas and its
+  lines after `grid` lets a script mirror `keyOver` and `MatchChords` over every
+  variant at once; check the mirror gives the rip's key on every loop first.
+
 - **The wide table never sees a bar line.** Its F1 matches notes through a
   fitted time map, so a bar path that moves every line by a beat scores the
   same; read the rip's bar lines against a truth that has them (GuitarSet's
