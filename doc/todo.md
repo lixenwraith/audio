@@ -89,23 +89,25 @@ fill at the eq's neighbouring value, once a recording shows it audible.
 - Affected files: `account.go`, `rip.go`, `ripmodels/ripmodels.go`
 
 With every head written off stapes' labels as the trainer's targets, no model
-loaded, the decoders' notes read 0.896 by F1 against 35,724 labelled on 580
-generated loops, 0.853 through a room, a mix and a tuning off A440, each loss
+loaded, the decoders' notes read 0.895 by F1 against 35,724 labelled on 580
+generated loops, 0.852 through a room, a mix and a tuning off A440, each loss
 put at its stage by the rip's own record (`Rip.Stages`, `ReadStages`, which
 stapes' `truth` and `tune ... truth` print: [Rip training
 §11](https://github.com/lixenwraith/stapes/blob/main/doc/rip-training.md#the-decoder-alone)).
 What is theirs, largest first, each with the smallest close:
 
-- **The accounting** drops 4,922 true notes, 6,965 through the room: chord
+- **The accounting** drops 4,816 true notes, 6,883 through the room: chord
   tones and octave doubles whose partials a lower note's fit explains, as the
   installed scores weigh a strike and a salience against the fit's share and
-  span. The scores were fitted on notes cut at their pitch's next strike: a note
-  sounding to its own end over a twin's reads less of its span its own, and a
-  strike dropped on a pitch still sounding stays dropped, 106 and 82 more than
-  `twins` 0. Close: a judge fitted on rows of perfect heads beside a trained
+  span. The scores were fitted on notes cut at their pitch's next strike: under
+  `twins` 1 a note sounding to its own end over a twin's reads less of its span
+  its own, and a strike dropped on a pitch still sounding stays dropped, 106
+  and 82 more. Close: a judge fitted on rows of perfect heads beside a trained
   model's, or a note the heads are sure of kept, as one the fit cannot see is
   (`Held`).
-- **Two notes on one pitch** (`twins`): 1,161 still lost to a twin. Left:
+- **Two notes on one pitch** are one note at `twins` 0, 1,249 lost to a twin
+  and 2,467 ends early; `twins` 1 holds both where the heads say so, 1,161
+  lost to a twin. Left under it:
   - Two struck together, or close enough that their strikes' marks merge, are
     one note, as one strike let go twice is also a restrike the head missed.
     What could tell them: the accounting's memory, which reads a restrike's new
@@ -121,28 +123,37 @@ What is theirs, largest first, each with the smallest close:
     Ruled out: the twins' own lines (0.633 with every twin taken out after the
     accounting) and the ring-on. Left: the other notes, whose ends the twins'
     walk moves and 106 of which the accounting drops, and which line each takes.
-- **The ring-on** (`ring_on`, 1): a kept note sounds on to the end of a dropped
+- **`twins` and `ring_on` wait for trained heads**, at 0 and 1, the decoders as
+  they were before either: perfect heads cannot show what either is worth.
+  `twins` 1 hears 46 more notes, adds 3 fewer, loses 106 more at the accounting
+  and 0.004 of the parts, the ends within 0.002 (47, 7, 82, 0.003 and 0.001
+  through the room); `ring_on`, a kept note sounding on to the end of a dropped
   one of its pitch, made for heads that strike falsely inside a ringing note,
-  which perfect heads cannot show. On, the ends read 0.889 under `twins` and
-  0.887 without; off, 0.912 and 0.908 (0.882, 0.883, 0.909 and 0.908 through
-  the room). Its default waits for a model's heads read both ways, with `twins`
-  1 and 0, on held-out loops and recordings: off where `ring_on` 0 reads more
-  ends right under both and the notes found and added hold.
+  reads the ends 0.887 where 0 reads 0.908, and 0.889 where 0 reads 0.912 under
+  `twins` (0.883, 0.908, 0.882, 0.909). Read a model's heads at all four on
+  held-out loops and recordings:
+  - `twins` on where the notes found rise by more than the notes added and the
+    ends read no fewer right than at 0. The design is wrong where the notes
+    added at the strikes rise by more than those found, as a head peaking twice
+    within `strike_gap` over one attack or letting go twice in one note makes,
+    or the ends fall under `twins` 0's.
+  - `ring_on` off where 0 reads more ends right with `twins` at 0 and at 1, the
+    notes found and added holding.
 - **The last bar**: the present path (`Joint` 0) lays a bar between two lines
-  heard, so a recording's last bar holds no hit and no chord, 1,525 of 8,828
+  heard, so a recording's last bar holds no hit and no chord, 1,518 of 8,828
   hits outside the bars on four-bar loops, its chords 0.707 of their seconds;
   the joint path loses 573 and reads 0.851. Close: the present path's last bar
   laid to the end where its line falls within a beat of it.
 - **`dynamics`** moves a velocity the head already says: the loudness reads
-  0.896, 0.769 through the room. Close: one of the two, the head taught the
+  0.895, 0.769 through the room. Close: one of the two, the head taught the
   note's level over its passage or the move dropped.
 - **The tuning**: a model's front end states none, so the accounting and
   `bright` measure at A440, which the room's loops, up to a quarter tone off,
-  pay for among the accounting's 2,043 more. Close: `RipFrames.Tuning` read off
+  pay for among the accounting's 2,067 more. Close: `RipFrames.Tuning` read off
   the cents head over the sounding cells.
 - **The key** is a profile's: 201 of 411 right. Close: the tonic weighed where
   the bass and phrases rest.
-- **The bass's own-pitch rule** drops 438 low notes whose fundamental stands
+- **The bass's own-pitch rule** drops 432 low notes whose fundamental stands
   more than 10 dB under its next partials. Close: the rule only where no sure
   strike of the pitch stands.
 - **A plateau's peak** is read on its last frame (agent notes), so 51 notes

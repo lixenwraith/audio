@@ -948,8 +948,8 @@ heads as it was, and the joint path's (`joint`, an integer as `harmonics` is,
 `joint_move`, `joint_beat`, `joint_line`, `joint_margin`), and the key's (`key_bars`, `key_open`,
 `key_close`, `key_bar`), and so are the starts' (`start`, `start_gap`, `start_wait`,
 `start_span`, `strike_alone`), which frames without a notes model's onset never
-read, and `twins` and `ring_on`, integers, which frames without strikes never
-read.
+read, and `twins` and `ring_on`, integers at 0 and 1 as the decoders read before
+either, which frames without strikes never read.
 `DefaultRipParams` is the hand-set start. The engine grades a set itself:
 `RenderMusic` plays registered patterns offline in a meter, `ExpectedRip` is the
 rip a perfect listener would make of them (`ExpectedRipBars` of a timeline under
@@ -992,7 +992,7 @@ attack rings a body's or a room's low mode (a guitar's at about 104 Hz, whatever
 the note); a strike starts none when its pitch never sounds, when it is a
 stronger strike's partial in the register, or within `StrikeGap` of the pitch's
 last, and one under `StrikeAgain`, or under a strike a tone either side, leaves
-the pitch's sounding notes ringing. Under `twins` (1) a pitch holds as many
+the pitch's sounding notes ringing. Under `twins` 1 a pitch holds as many
 notes as it is let go (`held`): a release ends the note of its pitch struck
 first, as a MIDI reader pairs them and as two parts on one pitch overlap most in
 stapes' corpus, and the pitch falling silent every one. A sure strike while
@@ -1006,9 +1006,9 @@ strikes take for one strike, let go, sounding on unstruck `MinNote` and let go
 again, held a second note from that second strike, a twin, which no repeat
 leaves. One strike let go twice is one note, as a restrike the head missed
 leaves the same, and so are two notes that start and end together; a pitch let
-go once and ringing on, as under a pedal, is one note. `twins` 0 reads one note
-a pitch at a time, a sure strike on a sounding pitch ending its note, for heads
-it suits better. The bass line's own
+go once and ringing on, as under a pedal, is one note. `twins` 0, the default
+until a model's heads are read both ways, reads one note a pitch at a time, a
+sure strike on a sounding pitch ending its note. The bass line's own
 notes stay only where no strike sounds, for 0.15 s at least and at 0.8 of the
 register's reference (`lines`), as a plain bass is struck softly. A note's velocity
 is the head's moved by the loudness of the second around it against the recording's
