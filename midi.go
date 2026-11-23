@@ -415,7 +415,7 @@ func (m *MIDIScore) Rip() (*Rip, int) {
 	for i := 0; i <= per*bars; i += per {
 		g.lines = append(g.lines, int(m.line)*fine+int(math.Round(float64(i)*beat)))
 	}
-	g = g.pickup(notes, hits)
+	g = g.pickup(ripEvents{melody: notes, hits: hits}.heard(0))
 	r.Bars = make([]RipBar, g.bars())
 	r.Beats = make([]float64, per*g.bars()+1)
 	for i := range r.Beats {

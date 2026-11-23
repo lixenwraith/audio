@@ -614,14 +614,19 @@ the recording began), how much its pulse stands out as a beat against the
 pulses around it, and how much more
 often a bass note starts on it than on the bar's other sixteenths. So a
 played take's ritardando stretches the pulses, not the count, and the line
-keeps its place through it; a note or a hit more than half a step before the first
-bar line opens a pickup bar before it, as long as the first, into the time
-before the recording when it begins inside that bar (`Rip.Downbeat` is
-negative then), so a phrase that leads into the first bar is kept. What is
-heard on its first frames keeps its nearest step, which can lie a frame or two
-before the start, and a step is stated at the start where it lies before it
-(`Rip.stepAt`, as `Hits` and `Stages` read it), so of what a rip states only the
-pickup's line and beats lie before 0. What the front end hears before the recording first comes within 80 dB of
+keeps its place through it. The bars reach what the recording holds: a note, a
+hit or a beat the beat head marks over a half more than half a step before the
+first bar line opens a pickup bar before it, as long as the first, as often as
+it takes, into the time before the recording when it begins inside that bar
+(`Rip.Downbeat` is negative then), and one within half a step of it lies on it;
+over a whole recording, a note or a hit past the last line, or a beat more than
+half a step past it, lays a bar after it, as long as the last (`closing`), but on
+the last half window of frames, which runs off the recording's end and clicks
+where it was cut. So what it begins and ends with is laid with its beats and its
+chords, a stream's last bars at its end. What is heard on its first frames keeps
+its nearest step, which can lie a frame or two before the start, and a step is
+stated at the start where it lies before it (`Rip.stepAt`, as `Hits` and `Stages`
+read it), so of what a rip states only the pickup's line and beats lie before 0. What the front end hears before the recording first comes within 80 dB of
 its loudest block, a model's hits in the silence, is dropped first.
 
 The key is named once the bars are (`keyOver`). Its scale is the one whose tones
@@ -870,7 +875,8 @@ downbeats in the recording's seconds (`BarScore`): its median bar over the
 truth's (`Ratio`, `Same` within a tenth), the share of downbeats with a line
 within an eighth of a bar when the bars are the same, the median offset of the
 nearest line in bars (`Phase`), and the share of beats with a rip beat within a
-quarter of a beat. A score gives its beats and bars under its time signatures
+quarter of a beat, with the beats before the first downbeat and after the last,
+the grid's edges, and those of them it lacks (`Before`, `After`). A score gives its beats and bars under its time signatures
 and tempo map, placed on the recording by the agreement's map (`MIDIScore.Beats`,
 downbeats from the first full bar), and a JAMS file its `beat_position`
 annotation in the recording's own clock (`ReadJAMSBeats`, as GuitarSet's,
@@ -880,7 +886,10 @@ An agreement keeps the pairs it matched (`LineAgreement.Pairs`,
 matched by pitch and onset, each a reading of its own. `Ends`: a note's end is
 right within a fifth of the given note's length or 50 ms, the more of the two,
 as MIREX's note tracking takes offsets, the given's placed by the map, and each
-end's offset is kept in the given's lengths. `Levels`: a velocity's dB over the
+end's offset is kept in the given's lengths; read against a recording that ends
+(`Agreement.Until`), a given end past it is read at it, as nothing heard there
+ends later, and counted with those of them wrong as given (`Past`, `PastWrong`),
+which the stages read alike. `Levels`: a velocity's dB over the
 given's, less the median of its group's, right within 3 dB, half the step
 between two dynamics; the group is the recording for notes, whose front end
 reads it at its peak, and each drum for hits (`HitsAgreement.Levels`), which a
@@ -1014,7 +1023,8 @@ register's reference (`lines`), as a plain bass is struck softly. A note's veloc
 is the head's moved by the loudness of the second around it against the recording's
 median, up to 12 dB (`dynamics`), as the heads hear each frame over its own level
 and so a soft passage's notes as hard as a loud one's. A low note whose
-own pitch sits over 10 dB under its next partials goes (`ownPitch`): a harmonic
+own pitch sits more than `own_pitch` (10 dB) under its next partials, read at the
+frames' tuning as the partials below are, goes (`ownPitch`): a harmonic
 stack hears a shadow a fifth or an octave under a real note, which shares its
 partials and not its fundamental. So does one that rises under 6 dB over its
 pitch's steady level at each of its first three partials, the level a fifth of
@@ -1127,7 +1137,13 @@ A notes model trained with one has a cents head too (`ripmodels.HeadCents`, two
 values a pitch): how far each pitch's sound sits from its cell's centre, and the
 error the head states for that reading, both in cents (`RipFrames.Cents`,
 `CentsError`; nil from a model without the head, a probe's, and nothing below
-runs then).
+runs then). Where the front end states no tuning, the frames take the share
+`cents_tuning` names of the tuning the head hears (`centsTuning`): each cell it
+reads within a quarter tone votes its cents with its salience around the circle
+of a semitone, as the analysis's peaks vote, and a stream carries the votes over
+every frame heard; so the accounting, `bright` and the bass's rules measure the
+partials where the recording sits, and the rip says its tuning. It is 0, A440,
+until a trained head shows what it states of a recording in tune.
 The decoder reads a glide from them (`glides`). The strikes' notes stand as
 above, and each note's sound is then followed frame by frame:
 

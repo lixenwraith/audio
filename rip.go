@@ -51,6 +51,8 @@ type RipParams struct {
 	StartGap      float64 `toml:"start_gap"`      // seconds within which a strike and a heard start answer each other
 	StartWait     float64 `toml:"start_wait"`     // seconds after a heard start the pitch it names is read from
 	StartSpan     float64 `toml:"start_span"`     // seconds that pitch is read over, and the span before the start it must rise over
+	OwnPitch      float64 `toml:"own_pitch"`      // the least dB a bass note's own pitch stands over its next partials, under which it is a higher note's shadow
+	CentsTuning   float64 `toml:"cents_tuning"`   // the share of the tuning a front end's cents head hears that its frames state where it states none; 0 leaves A440
 
 	TempoComb float64 `toml:"tempo_comb"`  // what the onsets' repetition at twice a lag adds to the lag's own, where the tempo is read from them
 	BeatComb2 float64 `toml:"beat_comb_2"` // what the beat head's repetition at twice a lag adds to the lag's own, where the tempo is read from it
@@ -88,14 +90,12 @@ type RipParams struct {
 
 // ripDrumsPerMinute is the least a drum strikes to be part of the music, ripLineNote
 // and ripLineStrength how long and strong a bass note stands without a strike,
-// ripOwnPitch the least dB a low note's own pitch stands over its next partials,
-// under which it is a higher note's shadow, ripSteadyRise the least dB it rises over
-// its pitch's steady level, ripDynamics the most dB a passage's level moves a velocity
+// ripSteadyRise the least dB it rises over its pitch's steady level, ripDynamics
+// the most dB a passage's level moves a velocity
 const (
 	ripDrumsPerMinute = 4
 	ripLineNote       = 0.15
 	ripLineStrength   = 0.8
-	ripOwnPitch       = -10
 	ripSteadyRise     = 6
 	ripDynamics       = 12
 )
@@ -106,7 +106,7 @@ func DefaultRipParams() RipParams {
 		OnsetFloor: 2.0, OnsetMin: 0.1, OnsetGap: 0.06, KickShare: 0.06, SnareShare: 0.45, SnareNoise: 0.1, HatShare: 0.3,
 		Harmonics: 6, HarmonicDecay: 0.8, Voicing: 0.3, Jump: 0.06, Switch: 0.35, Retrigger: 0.4, MinNote: 0.06,
 		SecondVoice: 0.5, Compress: 1, Cross: 0.003, Strike: 0.8, StrikeLow: 0.9, StrikeHold: 0.9, StrikeGap: 0.12, StrikeAgain: 0.95, StrikeAlone: 0.95, Release: 0.8,
-		Start: 0.5, StartGap: 0.12, StartWait: 0, StartSpan: 0.12,
+		Start: 0.5, StartGap: 0.12, StartWait: 0, StartSpan: 0.12, OwnPitch: -10,
 		TempoComb: 0.5, BeatComb2: 0.8, BeatComb3: 0.5, BeatComb4: 0.6, BeatCut2: 0.7, BeatCut3: 0.33,
 		BarLine: 1, BarBeat: 1, BarAccent: 0.5, BarHead: 1, BarMove: 2,
 		MeterMargin: 0.35, MeterHead: 1, RepeatMargin: 0.03, NearMargin: 0.07, NearRepeat: 0.015,
@@ -183,6 +183,8 @@ var ripGenes = []ripGene{
 	{"key_bar", 0.1, 1, func(p *RipParams) *float64 { return &p.KeyBar }},
 	{"twins", 0, 1, nil},
 	{"ring_on", 0, 1, nil},
+	{"own_pitch", -40, 0, func(p *RipParams) *float64 { return &p.OwnPitch }},
+	{"cents_tuning", 0, 1, func(p *RipParams) *float64 { return &p.CentsTuning }},
 }
 
 // ripCounts are the integer parameters' fields by their genes' names
@@ -796,15 +798,14 @@ func (rp Ripper) Samples(x []float64, rate int) (*Rip, error) {
 	if t := musicStart(x); t > 0 {
 		ev.from(t)
 	}
-	g, bpm, _, err := rp.grid(f, ev, p)
+	g, bpm, _, err := rp.grid(f, ev, p, true)
 	if err != nil {
 		return nil, err
 	}
 	ev.root, ev.scale = f.key(g, true, p)
 	// the pitch paths start late against the onsets the beats were set by: the
 	// notes' median lag comes out before they are quantized
-	shift := int(math.Round(g.lag(slices.Concat(ev.melody, ev.bass)) * g.stepFrames()))
-	r := g.lay(f, x, ev, bpm, shift, [InstrClap]float64{}, p)
+	r := g.lay(f, x, ev, bpm, g.shift(slices.Concat(ev.melody, ev.bass)), [InstrClap]float64{}, p)
 	lead, under := ev.melody, ev.melody
 	if f.Voices != nil { // each line's own notes say what plays it
 		second := func(n ripNote) bool { return n.second }
@@ -963,8 +964,8 @@ type ripTrack struct {
 }
 
 // grid is the bars the Ripper pins, or decodes from the frames and events, and
-// their tempo
-func (rp Ripper) grid(f *RipFrames, ev ripEvents, p RipParams) (ripGrid, float64, ripTrack, error) {
+// their tempo; decoded over the whole recording, they reach what it ends on
+func (rp Ripper) grid(f *RipFrames, ev ripEvents, p RipParams, whole bool) (ripGrid, float64, ripTrack, error) {
 	var bpm float64
 	var g ripGrid
 	var tr ripTrack
@@ -996,12 +997,16 @@ func (rp Ripper) grid(f *RipFrames, ev ripEvents, p RipParams) (ripGrid, float64
 			}
 		}
 		if g.bars() < 1 && f.heard() { // the heads give no reading: the cues', as before them
-			return rp.grid(f.plain(), ev, p)
+			return rp.grid(f.plain(), ev, p, whole)
 		}
 		if g.bars() < 1 {
 			return g, 0, tr, errors.New("rip: no full bar found")
 		}
-		g = g.pickup(slices.Concat(ev.melody, ev.bass), ev.hits)
+		beats := f.markedBeats(tr.beats())
+		g = g.pickup(slices.Concat(ev.heard(0), beats))
+		if whole { // the notes as lay places them, their median lag out
+			g = g.closing(ev.heard(g.shift(slices.Concat(ev.melody, ev.bass))), beats, f.frames())
+		}
 	}
 	if g.bars() < 1 {
 		return g, 0, tr, errors.New("rip: no full bar found")
@@ -1936,10 +1941,46 @@ func tuning(x []float64) float64 {
 			re, im, sum = re+mag[k]*math.Cos(angle), im+mag[k]*math.Sin(angle), sum+mag[k]
 		}
 	})
+	return semitoneMean(re, im, sum)
+}
+
+// semitoneMean is the cents of votes summed around the circle of a semitone,
+// each its weight times its angle's cosine and sine over a weight of sum: their
+// mean's angle, zero where they agree on no offset
+func semitoneMean(re, im, sum float64) float64 {
 	if sum == 0 || math.Hypot(re, im)/sum < 0.3 {
 		return 0
 	}
 	return math.Atan2(im, re) / (2 * math.Pi) * 100
+}
+
+// centsVotes are frame t's votes for the tuning (semitoneMean), each cell the
+// cents head reads within a quarter tone voting its cents with its salience
+func (f *RipFrames) centsVotes(t int) (re, im, sum float64) {
+	k := f.Pitches().Len()
+	for i := t * k; i < (t+1)*k && i < len(f.Cents); i++ {
+		if w := float64(f.Salience[i]); w > 0 && (f.CentsError == nil || f.CentsError[i] < 50) {
+			a := 2 * math.Pi * float64(f.Cents[i]) / 100
+			re, im, sum = re+w*math.Cos(a), im+w*math.Sin(a), sum+w
+		}
+	}
+	return re, im, sum
+}
+
+// statesTuning is whether the frames take the tuning their cents head hears:
+// where p shares it and the front end states none
+func (f *RipFrames) statesTuning(p RipParams) bool {
+	return p.CentsTuning != 0 && f.Tuning == 0 && f.Cents != nil
+}
+
+// centsTuning is the tuning the frames' cents head hears over every frame
+func (f *RipFrames) centsTuning() float64 {
+	var re, im, sum float64
+	for t := range f.frames() {
+		a, b, c := f.centsVotes(t)
+		re, im, sum = re+a, im+b, sum+c
+	}
+	return semitoneMean(re, im, sum)
 }
 
 // tempo is the lag the onset strength repeats at, the beat head's where one is
@@ -2848,10 +2889,11 @@ func cosine(a, b [12]float64) float64 {
 }
 
 // at is the bar and sixteenth a frame falls in, the bar's span cut in the
-// meter's steps, false before the first bar or after the last.
+// meter's steps, false before the first bar or after the last; one within half
+// a step before the first line lies on it, as one before any other line does.
 func (g *ripGrid) at(frame int) (bar, step int, ok bool) {
 	if frame < g.lines[0] {
-		return 0, 0, false
+		return 0, 0, float64(g.lines[0]-frame) <= g.stepFrames()/2
 	}
 	bar = sort.SearchInts(g.lines, frame+1) - 1
 	if bar >= g.bars() {
@@ -2908,21 +2950,64 @@ func heardFrom(t int, hits [InstrClap][]ripHit, bass, melody []ripNote) ([InstrC
 	return hits, slices.DeleteFunc(bass, early), slices.DeleteFunc(melody, early)
 }
 
-// pickup opens a bar before the first full one when a note or a hit sounds more
-// than half a step before its line, so a phrase that leads into the first bar
-// is kept, as long as the first, into the time before the recording when it
-// begins inside that bar.
-func (g ripGrid) pickup(notes []ripNote, hits [InstrClap][]ripHit) ripGrid {
-	line := float64(g.lines[0]) - g.stepFrames()/2
-	early := slices.ContainsFunc(notes, func(n ripNote) bool { return float64(n.start) < line })
-	for _, hs := range hits {
-		early = early || slices.ContainsFunc(hs, func(h ripHit) bool { return float64(h.frame) < line })
+// heard is the frames the notes the decoders heard start on, shift frames
+// earlier, and their hits lie on
+func (ev ripEvents) heard(shift int) (at []int) {
+	for _, n := range slices.Concat(ev.melody, ev.bass) {
+		at = append(at, n.start-shift)
 	}
-	if !early {
-		return g
+	for _, hs := range ev.hits {
+		for _, h := range hs {
+			at = append(at, h.frame)
+		}
 	}
-	g.lines = slices.Concat([]int{2*g.lines[0] - g.lines[1]}, g.lines)
+	return at
+}
+
+// markedBeats are the beats the beat head marks over a half, none where it is
+// unheard
+func (f *RipFrames) markedBeats(beats []int) []int {
+	if !f.heard() {
+		return nil
+	}
+	return slices.DeleteFunc(slices.Clone(beats), func(b int) bool { return peak(f.Beat, float64(b)) <= 0.5 })
+}
+
+// pickup opens a bar before the first, as long as the first, while something
+// heard lies more than half a step before its line, so a phrase that leads into
+// the first full bar is kept with its beats, into the time before the recording
+// when it begins inside that bar.
+func (g ripGrid) pickup(heard []int) ripGrid {
+	for len(heard) > 0 && float64(slices.Min(heard)) < float64(g.lines[0])-g.stepFrames()/2 {
+		g.lines = slices.Concat([]int{2*g.lines[0] - g.lines[1]}, g.lines)
+	}
 	return g
+}
+
+// closing lays a bar after the last, as long as the last, while a note or a hit
+// heard lies past it, or a beat more than half a step past its line, which ends
+// the last bar on a beat: what a recording ends on is laid, the last bar reaching
+// the end, but on the last of its frames, whose window runs off it
+func (g ripGrid) closing(heard, beats []int, frames int) ripGrid {
+	edge := frames - RipN/2/RipHop
+	past := func(t int) bool {
+		_, _, ok := g.at(t)
+		return !ok && t >= g.lines[0] && t < edge
+	}
+	beyond := func(b int) bool { return float64(b) > float64(g.lines[len(g.lines)-1])+g.stepFrames()/2 && b < edge }
+	for slices.ContainsFunc(heard, past) || slices.ContainsFunc(beats, beyond) {
+		k := len(g.lines)
+		g.lines = append(g.lines, 2*g.lines[k-1]-g.lines[k-2])
+	}
+	return g
+}
+
+// beats are the tracked beats among a track's pulses
+func (tr ripTrack) beats() (beats []int) {
+	for i := 0; i < len(tr.pulses); i += max(tr.k, 1) {
+		beats = append(beats, tr.pulses[i])
+	}
+	return beats
 }
 
 // phase is how far a frame sits from its nearest step, in steps, in [-0.5, 0.5)
@@ -2937,6 +3022,11 @@ func (g *ripGrid) phase(frame int) (float64, bool) {
 	a, b := g.lines[bar], g.lines[bar+1]
 	pos := float64(frame-a) / float64(b-a) * float64(g.m.Steps())
 	return pos - math.Round(pos), true
+}
+
+// shift is the notes' lag in frames, which lay takes out of their starts
+func (g *ripGrid) shift(notes []ripNote) int {
+	return int(math.Round(g.lag(notes) * g.stepFrames()))
 }
 
 // lag is the median of the notes' phases, in steps: what the pitch paths start
@@ -3958,10 +4048,10 @@ func (f *RipFrames) lines(x []float64, p RipParams, tr *ripTrace) (bass, melody 
 	steady := map[[2]int]ripSteady{}
 	bass = slices.DeleteFunc(bass, func(n ripNote) bool {
 		switch {
-		case ownPitch(x, n, f.Hop) < ripOwnPitch:
+		case ownPitch(x, n, f.Hop, f.Tuning) < p.OwnPitch:
 			tr.note(StageOwnPitch, RipDropped, WhyNone, n)
 			return true
-		case steadyRise(x, n, f.Hop, steady) < ripSteadyRise:
+		case steadyRise(x, n, f.Hop, f.Tuning, steady) < ripSteadyRise:
 			tr.note(StageSteadyRise, RipDropped, WhyNone, n)
 			return true
 		}
@@ -3971,14 +4061,15 @@ func (f *RipFrames) lines(x []float64, p RipParams, tr *ripTrace) (bass, melody 
 	return bass, melody
 }
 
-// ownPitch is how far a note's level at its own pitch stands over the stronger of
-// its next two partials, in dB, over the 160 ms after its attack; x at RipRate.
-func ownPitch(x []float64, n ripNote, hop float64) float64 {
+// ownPitch is how far a note's level at its own pitch, tuning cents off A440,
+// stands over the stronger of its next two partials, in dB, over the 160 ms
+// after its attack; x at RipRate.
+func ownPitch(x []float64, n ripNote, hop, tuning float64) float64 {
 	at := int((float64(n.start)*hop + 0.03) * RipRate)
 	if at+ripToneWin > len(x) {
 		return 0
 	}
-	f0 := 440 * math.Pow(2, float64(n.midi-69)/12)
+	f0 := 440 * math.Pow(2, (float64(n.midi-69)+tuning/100)/12)
 	return newRipTone(f0).level(x, at) - max(newRipTone(2*f0).level(x, at), newRipTone(3*f0).level(x, at))
 }
 
@@ -4023,12 +4114,12 @@ type ripSteady struct {
 // under, at the strongest of its first three partials, in dB: a tone that never
 // stops, as a mains hum, rises at none, while a bass note a phone thins still
 // rises at its second or third
-func steadyRise(x []float64, n ripNote, hop float64, steady map[[2]int]ripSteady) float64 {
+func steadyRise(x []float64, n ripNote, hop, tuning float64, steady map[[2]int]ripSteady) float64 {
 	at := int((float64(n.start)*hop + 0.03) * RipRate)
 	if at+ripToneWin > len(x) {
 		return math.Inf(1)
 	}
-	f0 := 440 * math.Pow(2, float64(n.midi-69)/12)
+	f0 := 440 * math.Pow(2, (float64(n.midi-69)+tuning/100)/12)
 	rise := math.Inf(-1)
 	for h := 1; h <= 3; h++ {
 		p, ok := steady[[2]int{n.midi, h}]

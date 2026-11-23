@@ -28,7 +28,14 @@ func (rp Ripper) Hear(x []float64, rate int) (*RipFrames, error) {
 	if fe == nil {
 		fe = analysis{}
 	}
-	return fe.Hear(x, rate, rp.params())
+	p := rp.params()
+	f, err := fe.Hear(x, rate, p)
+	if err != nil || !f.statesTuning(p) {
+		return f, err
+	}
+	g := *f // the front end's own frames stay as it heard them
+	g.Tuning = p.CentsTuning * f.centsTuning()
+	return &g, nil
 }
 
 // params is the Ripper's, or the defaults for the zero value, which would hear

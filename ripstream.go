@@ -49,11 +49,13 @@ type RipStream struct {
 	late         *RipFrames
 	late0, wrote int
 	flux         []float64 // the decoders' onset strength, the window's left as heard
-	// the loudest of each drum's onset strength and each onset band, and each
-	// register's loudest row a frame, over the frames up to counted
+	// the loudest of each drum's onset strength and each onset band, each
+	// register's loudest row a frame and the cents head's votes for the tuning
+	// (semitoneMean), over the frames up to counted
 	loud    [InstrClap]float64
 	peak    [3]float64
 	levels  [ripRegisters]ripLevels
+	tune    [3]float64
 	counted int
 	// held from the first bars frozen: the beat tracked and the reading the
 	// bars are decoded in, the meter and tempo they are named, the key they
@@ -338,6 +340,10 @@ func (s *RipStream) count(upto int) {
 			r := register{f: f, lo: lh[0], reach: registerReach(lh[0], lh[1])}
 			s.levels[i].add(r.peak(t))
 		}
+		if f.statesTuning(s.p) {
+			re, im, sum := f.centsVotes(t)
+			s.tune = [3]float64{s.tune[0] + re, s.tune[1] + im, s.tune[2] + sum}
+		}
 		if s.rp.Judge != nil || s.rp.Strikes && s.rp.Rows { // what reads a row
 			s.fluxes.add(f.Flux[t])
 		}
@@ -365,6 +371,9 @@ func (s *RipStream) decode(upto int, end bool) error {
 	x := s.x
 	if !end {
 		x = x[:min(len(x), (upto-s.w0)*RipHop+RipN/2)]
+	}
+	if f.statesTuning(s.p) {
+		f.Tuning = s.p.CentsTuning * semitoneMean(s.tune[0], s.tune[1], s.tune[2])
 	}
 	f.loud, f.refs = s.loud, map[[2]int]float64{}
 	if s.fluxes.n > 0 {
@@ -398,7 +407,7 @@ func (s *RipStream) hold(f *RipFrames, x []float64, ev ripEvents, end bool) erro
 	if t > 0 {
 		ev.from(t)
 	}
-	g, bpm, tr, err := s.rp.grid(f, ev, s.p)
+	g, bpm, tr, err := s.rp.grid(f, ev, s.p, end)
 	if err != nil {
 		if end {
 			return err
@@ -410,7 +419,7 @@ func (s *RipStream) hold(f *RipFrames, x []float64, ev ripEvents, end bool) erro
 	s.held, s.track, s.meter, s.tempo = true, tr, g.m, bpm
 	s.root, s.scale, s.start = ev.root, ev.scale, s.w0+t
 	s.rip = &Rip{BPM: int(math.Round(bpm)), Meter: g.m, Tuning: f.Tuning, Range: f.Pitches(), Root: ev.root, Scale: ev.scale, Downbeat: float64(s.w0+g.lines[0]) * f.Hop, Params: s.p}
-	shift := int(math.Round(g.lag(slices.Concat(ev.melody, ev.bass)) * g.stepFrames()))
+	shift := g.shift(slices.Concat(ev.melody, ev.bass))
 	return s.freeze(f, x, g, ev, 0, shift, end)
 }
 
@@ -425,11 +434,13 @@ func (s *RipStream) follow(f *RipFrames, x []float64, ev ripEvents, end bool) er
 	ev.root, ev.scale = s.root, s.scale
 	from := s.line - s.w0
 	lines := []int{from}
+	var tr ripTrack
 	if s.p.Joint == 1 && s.track.heard { // the joint path on from the line, at the last frozen bar's tempo
-		if g, _, _ := f.jointGrid(s.p, []Meter{s.meter}, s.rp.given(), from, float64(s.line-s.prev)); g.bars() > 0 {
-			lines = g.lines
+		if g, _, t := f.jointGrid(s.p, []Meter{s.meter}, s.rp.given(), from, float64(s.line-s.prev)); g.bars() > 0 {
+			lines, tr = g.lines, t
 		}
 	} else if pulses := f.pulses(s.track.period, s.track.k, s.p, from); len(pulses) > 1 {
+		tr = ripTrack{pulses: pulses, k: s.track.k}
 		rds, err := f.readings(pulses, s.track.k, s.track.bpm, &s.track.rd.m, s.rp.Grid != nil)
 		if err != nil {
 			return err
@@ -438,6 +449,9 @@ func (s *RipStream) follow(f *RipFrames, x []float64, ev ripEvents, end bool) er
 	}
 	g := ripGrid{lines: slices.Concat([]int{s.prev - s.w0}, lines), m: s.meter}
 	ev = s.dedup(ev, g.stepFrames()/2)
+	if end { // the notes as the frozen ones lie, their lag out
+		g = g.closing(ev.heard(int(math.Round(s.lag(&g, slices.Concat(ev.melody, ev.bass))*g.stepFrames()))), f.markedBeats(tr.beats()), f.frames())
+	}
 	shift := int(math.Round(s.lag(&g, slices.Concat(ev.melody, ev.bass)) * g.stepFrames()))
 	return s.freeze(f, x, g, ev, 1, shift, end)
 }
