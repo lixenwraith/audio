@@ -751,6 +751,31 @@ heard: offline the rip is that of the frames without them.
   on beats tracked on the head, or by the cues where its first bars' heads gave
   no reading: it consults the downbeat head for its first bars alone.
 
+**The joint path** (`joint` 1; `jointGrid`) decides the tempo, the bar line and
+the meter as one path over the heads, in place of the readings above, where the
+frames carry them and the beat head ranks its beats over chance; `joint` 0, the
+default, reads them as above, and frames without the heads are the cues' under
+either. A state is a beat's place in its bar and its tempo, a quarter among 55
+from 40 to 200 a minute 3% apart, the beat any whole frames within half that
+of its tempo's, so the tempo moves within a recording. A beat on a frame scores
+the beat head's log-odds there, at its highest within a frame, less those of
+`joint_beat` (0.3), a line the downbeat head's within three frames (`lineHead`)
+less `joint_line`'s (0.3), a frame the heads have not heard nothing, and a beat
+in another tempo than the one before pays `joint_move` (100) for the log of
+their ratio (`jointRun`: a byte a state a frame, the cells two sweeps a frame).
+A path starts and ends on any frame, in one of the seven meters stapes' corpus
+states, 4/4, 3/4, 2/4, 5/4, 6/8, 12/8 and 7/8, each beat its meter's own; the
+best path's meter is read, one other than 4/4 only by `joint_margin` (3) over
+4/4's, as a downbeat head that marks the half bar reads 4/4 as 2/4 and one that
+misses a line a longer bar by chance. Its lines are the beats on a bar's first
+place, each at the middle of the frames the beat head holds its peak on, the
+last bar's end on at the last bar's beat where it falls within half a beat past
+the frames; its tempo is the bars' median in quarters. A pinned meter is read
+alone, a tempo given holds the path within 6% of it. A stream holds its first
+bars' meter as above and goes on from each frozen line on the path in that
+meter, its tempo starting at the last frozen bar's, the downbeat head read at
+every bar. Three minutes of 4/4 decode in 0.45 s and 7.6 MB.
+
 Pitch salience sums a candidate's partials, the bass register's from its first
 three, read from a window four times longer as well as the rip's own, the two
 combined by their geometric mean so the long window tells the semitones apart at
@@ -861,7 +886,8 @@ margins are among them (`tempo_comb`, `beat_comb_2` to `4`, `beat_cut_2`, `beat_
 `bar_beat`, `bar_accent`, `bar_head`, `bar_move`, `meter_margin`, `meter_head`,
 `repeat_margin`, `near_margin`, `near_repeat`), each at the value the decoders
 were written with, so a document that names none leaves a rip without the
-heads as it was, and so are the starts' (`start`, `start_gap`, `start_wait`,
+heads as it was, and the joint path's (`joint`, an integer as `harmonics` is,
+`joint_move`, `joint_beat`, `joint_line`, `joint_margin`), and so are the starts' (`start`, `start_gap`, `start_wait`,
 `start_span`, `strike_alone`), which frames without a notes model's onset never
 read.
 `DefaultRipParams` is the hand-set start. The engine grades a set itself:

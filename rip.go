@@ -70,6 +70,12 @@ type RipParams struct {
 	RepeatMargin float64 `toml:"repeat_margin"` // how much less unlike itself the recording must sound a bar of a reading on for it to be read within the margin
 	NearMargin   float64 `toml:"near_margin"`   // or the share its bars must lie nearer their nearest other bar by
 	NearRepeat   float64 `toml:"near_repeat"`   // while sounding this much less unlike itself
+
+	Joint       int     `toml:"joint"`        // 1 decodes the tempo, the bar line and the meter as one path over the heads where they are heard; 0 reads them apart, beside the cues
+	JointMove   float64 `toml:"joint_move"`   // what the joint path pays a beat for its tempo moving, per unit of the log of the tempos' ratio
+	JointBeat   float64 `toml:"joint_beat"`   // the beat head's posterior over which a beat of the joint path counts for it, under which against it
+	JointLine   float64 `toml:"joint_line"`   // the downbeat head's, at a bar line of the path
+	JointMargin float64 `toml:"joint_margin"` // how far another meter's path must score over 4/4's, in the heads' log-odds, for its meter to be read
 }
 
 // ripDrumsPerMinute is the least a drum strikes to be part of the music, ripLineNote
@@ -96,6 +102,7 @@ func DefaultRipParams() RipParams {
 		TempoComb: 0.5, BeatComb2: 0.8, BeatComb3: 0.5, BeatComb4: 0.6, BeatCut2: 0.7, BeatCut3: 0.33,
 		BarLine: 1, BarBeat: 1, BarAccent: 0.5, BarHead: 1, BarMove: 2,
 		MeterMargin: 0.35, MeterHead: 1, RepeatMargin: 0.03, NearMargin: 0.07, NearRepeat: 0.015,
+		JointMove: 100, JointBeat: 0.3, JointLine: 0.3, JointMargin: 3,
 	}
 }
 
@@ -106,8 +113,8 @@ type ripGene struct {
 	at       func(*RipParams) *float64
 }
 
-// ripGenes is the parameters in gene order with the range each is sane in; the
-// partial count is the one integer, rounded when read back.
+// ripGenes is the parameters in gene order with the range each is sane in; an
+// integer's has no at, its field in ripCounts, and is rounded when read back.
 var ripGenes = []ripGene{
 	{"tempo_prior", 90, 150, func(p *RipParams) *float64 { return &p.TempoPrior }},
 	{"tempo_width", 0.5, 2, func(p *RipParams) *float64 { return &p.TempoWidth }},
@@ -156,18 +163,29 @@ var ripGenes = []ripGene{
 	{"repeat_margin", 0, 0.2, func(p *RipParams) *float64 { return &p.RepeatMargin }},
 	{"near_margin", 0, 0.3, func(p *RipParams) *float64 { return &p.NearMargin }},
 	{"near_repeat", 0, 0.1, func(p *RipParams) *float64 { return &p.NearRepeat }},
+	{"joint", 0, 1, nil},
+	{"joint_move", 0, 400, func(p *RipParams) *float64 { return &p.JointMove }},
+	{"joint_beat", 0.02, 0.9, func(p *RipParams) *float64 { return &p.JointBeat }},
+	{"joint_line", 0.02, 0.9, func(p *RipParams) *float64 { return &p.JointLine }},
+	{"joint_margin", 0, 10, func(p *RipParams) *float64 { return &p.JointMargin }},
+}
+
+// ripCounts are the integer parameters' fields by their genes' names
+var ripCounts = map[string]func(*RipParams) *int{
+	"harmonics": func(p *RipParams) *int { return &p.Harmonics },
+	"joint":     func(p *RipParams) *int { return &p.Joint },
 }
 
 func (g *ripGene) get(p *RipParams) float64 {
 	if g.at == nil {
-		return float64(p.Harmonics)
+		return float64(*ripCounts[g.name](p))
 	}
 	return *g.at(p)
 }
 
 func (g *ripGene) set(p *RipParams, v float64) {
 	if g.at == nil {
-		p.Harmonics = int(math.Round(v))
+		*ripCounts[g.name](p) = int(math.Round(v))
 		return
 	}
 	*g.at(p) = v
@@ -873,7 +891,16 @@ func (rp Ripper) grid(f *RipFrames, ev ripEvents, p RipParams) (ripGrid, float64
 		if tr.heard { // heard beats' spans cut in k: the last beat starts none
 			need = BeatsPerBar*tr.k + 1
 		}
-		if tr.heard == f.heard() && len(tr.pulses) >= need {
+		if tr.heard && p.Joint == 1 {
+			meters := ripJointMeters[:]
+			if rp.Meter != nil {
+				if err := rp.Meter.check(); err != nil {
+					return g, 0, tr, fmt.Errorf("rip: %w", err)
+				}
+				meters = []Meter{*rp.Meter}
+			}
+			g, bpm, tr = f.jointGrid(p, meters, rp.given(), -1, 0)
+		} else if tr.heard == f.heard() && len(tr.pulses) >= need {
 			var err error
 			if g, bpm, tr.rd, err = f.meter(tr.pulses, tr.k, bpm, ev.hits, ev.root%12, ev.bass, ev.melody, rp.Meter, rp.Grid != nil, p); err != nil {
 				return g, 0, tr, err
@@ -893,12 +920,21 @@ func (rp Ripper) grid(f *RipFrames, ev ripEvents, p RipParams) (ripGrid, float64
 	return g, bpm, tr, nil
 }
 
+// given is the quarter the Ripper's Grid gives the tempo at, in the sequencer's
+// range, 0 for none
+func (rp Ripper) given() float64 {
+	if rp.Grid == nil {
+		return 0
+	}
+	return float64(min(max(rp.Grid.BPM, MinBPM), MaxBPM))
+}
+
 // track is the beat over the frames, at the tempo the Ripper's Grid gives or
 // the frames' own, the beat head's where one is heard, or the onsets' where the
 // head marks none: its tempo, period, pulses a beat and the pulses tracked
 func (rp Ripper) track(f *RipFrames, p RipParams) (bpm float64, tr ripTrack) {
 	if rp.Grid != nil { // the tempo given, the beats tracked at it and the bar line decoded
-		bpm = float64(min(max(rp.Grid.BPM, MinBPM), MaxBPM))
+		bpm = rp.given()
 		tr.period = 60 / bpm / f.Hop
 	} else {
 		bpm, tr.period = f.tempo(p)
