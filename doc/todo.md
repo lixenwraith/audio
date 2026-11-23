@@ -484,6 +484,22 @@ What is left here, each to settle on trained weights:
   tracked on two eighths, which no meter holds, reads them as eighths at half
   its tempo, or halved where its eighths pass 240 a minute.
 
+### Begin the first bar with the recording
+
+- Priority: P2
+- Affected files: `rip.go`
+
+What is heard at a recording's start keeps its nearest step, stated at the start
+where that lies before it ([Audio §9](audio.md#9-ripping-a-recording)). The
+pickup's own line can still lie a frame or two before a recording that begins on
+it, as the joint path extrapolates it a bar back (`Rip.Downbeat` and its first
+beat at -0.012 to -0.023 s); and a note or a hit within half a step before the
+first line, which opens no pickup bar, lies in no bar: a kick on frame 0 under a
+line on frame 1 is lost from `Rip.Hits` and the MIDI file. The smallest close:
+such a line laid at the start, its bar a frame or two shorter, and such a frame
+on the first line; the second moves recordings whose first line lies at or after
+the start, so both are read on recordings first.
+
 ## The live rip
 
 ### Follow a recording on the phone

@@ -386,7 +386,10 @@ func (r *Rip) Hits() []RipHit {
 	return out
 }
 
-// stepAt is the second step pos of bar b falls on, between its beats
+// stepAt is the second step pos of bar b falls on, between its beats, and the
+// recording's start where that lies before it: what is heard at the start keeps
+// its nearest step (ripGrid.at), which a pickup bar can lay a frame or two
+// before it, and a step on the start between two beats sums a hair either side
 func (r *Rip) stepAt(b, pos int) (float64, bool) {
 	per, sub := r.Meter.Beats(), r.Meter.Beat()
 	i := per*b + pos/sub
@@ -394,7 +397,7 @@ func (r *Rip) stepAt(b, pos int) (float64, bool) {
 		return 0, false
 	}
 	span := (r.Beats[i+1] - r.Beats[i]) / float64(sub)
-	return r.Beats[i] + span*float64(pos%sub), true
+	return max(r.Beats[i]+span*float64(pos%sub), 0), true
 }
 
 // RipBar is one bar: each drum's hits, kick, snare and hihat in instrument order,
