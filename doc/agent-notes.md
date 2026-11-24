@@ -925,6 +925,24 @@ that a document now states, and link the document instead.
   1.8 GB over 12,000. A change to it is held by the old function kept beside it
   in a scratch test, over random notes of quantized lengths and strengths, whose
   costs tie.
+- **The joint path at its defaults loses a lone guitar.** With trained heads it
+  read every line and beat right on 29 of 298 GuitarSet recordings where the
+  present path reads 118, and on 132 of 264 generated loops where 94, the
+  meters the present path never offers among them; with the labels as the
+  heads it reads all 298. Its four costs were set on labels and built heads,
+  never on a trained beat head where no drum plays, and `joint` is one switch
+  for every recording (`grid`).
+- **A rip does not say which grid it took.** Where the beat head ranks its
+  beats no better than chance the bars are the cues' (`track`, and `grid` where
+  the heads' readings hold no bar), and `Samples` drops `ripTrack.heard`: a
+  reading by recording cannot tell the heads' grid from the cues'.
+- **A note's end has six rules and no fit.** `until`, the glides, the ring-on,
+  a brought-back strike's cut, a candidate's own end and the bass path's cut
+  each move it, up to three in turn on one note. With trained heads an end
+  read right on a quarter to a half of the matched notes, and worse under
+  thresholds searched for pitch and start than under the built-in ones
+  (stapes' agent notes hold the figures). A change to any of them is read by
+  the ends' reading, not by the notes'.
 
 ## A live rip
 
