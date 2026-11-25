@@ -1,8 +1,8 @@
 // Package ripmodels is the rip's learned front end: a frame model, a transformer
-// over the band frames whose heads say, per frame, what drum struck and what at
-// each place of the bands, which pitches sound, are struck or let go and how hard,
-// the note's wave, genes and family, whether a beat or a bar line falls there, and
-// a notes model giving the notes and what plays each. stapes' rip-train trains both.
+// over the band frames whose heads say, per frame, whether anything and which drum
+// struck, which pitches sound, are struck or let go and how hard, the note's wave,
+// genes and family, and whether a beat or a bar line falls there, and a notes
+// model that may give the notes and what plays each. stapes' rip-train trains both.
 package ripmodels
 
 import (
@@ -41,12 +41,6 @@ const (
 	// HeadSure is the share a family must pass over a note to name it, a notes
 	// model's: a head of no weights, the same at every frame, its trainer's measure
 	HeadSure = "sure"
-	// A frame model's after FrameSpec's, what is struck at each of some places of
-	// the bands (RipFrames.Places): something struck there, its genes then the
-	// log of the error stated for each, and how hard
-	HeadPlaces   = "places"
-	HeadGenes    = "genes"
-	HeadLoudness = "loudness"
 )
 
 // Layout names the constant a weight file states the layout of the frames it was
@@ -57,10 +51,9 @@ const Layout = "layout"
 const layoutName = "315 bands three a semitone from G#0, a fine plane and a sharp one"
 
 // FrameSpec is the frame model the trainer builds, which a weight file must match
-// in its inputs, heads and layout, a head after these read by nothing but those of
-// what is struck at each place: the piano's pitches, each plane's bands in dB in
-// two channels, fine then sharp, or the PCEN planes after them in four (features).
-// Its width, depth and window may differ.
+// in its inputs, heads and layout, any head after these read by nothing: the
+// piano's pitches, each plane's bands in dB in two channels, fine then sharp, or
+// the PCEN planes after them in four (features). Its width, depth and window may differ.
 func FrameSpec() transformer.Config {
 	n := audio.RipPiano.Len()
 	return transformer.Config{
@@ -191,9 +184,6 @@ func New(m, notes *transformer.Model) (*FrontEnd, error) {
 	if len(got.Outputs) < len(want.Outputs) || !slices.Equal(got.Outputs[:len(want.Outputs)], want.Outputs) {
 		return nil, fmt.Errorf("ripmodels: frame model's heads are %v, want %v first", got.Outputs, want.Outputs)
 	}
-	if err := checkPlaces(m); err != nil {
-		return nil, err
-	}
 	if notes == nil {
 		return &FrontEnd{Frame: m}, nil
 	}
@@ -218,30 +208,6 @@ func New(m, notes *transformer.Model) (*FrontEnd, error) {
 		return nil, fmt.Errorf("ripmodels: notes model's %q head says %g to %g as what it hears changes; the trainer's export writes its row zero, the measure its bias", HeadSure, lo, hi)
 	}
 	return &FrontEnd{Frame: m, Notes: notes}, nil
-}
-
-// places is how many places a frame model hears what is struck in, the size
-// of its places head, zero for none
-func places(m *transformer.Model) int {
-	for _, h := range m.Config().Outputs {
-		if h.Name == HeadPlaces {
-			return h.Size
-		}
-	}
-	return 0
-}
-
-// checkPlaces refuses a frame model whose heads of what is struck are some and
-// not all of them, or not of the sizes its places give them
-func checkPlaces(m *transformer.Model) error {
-	n := places(m)
-	for _, h := range []transformer.Head{{Name: HeadGenes, Size: 2 * audio.StruckGeneCount * n}, {Name: HeadLoudness, Size: n}} {
-		i := slices.IndexFunc(m.Config().Outputs, func(o transformer.Head) bool { return o.Name == h.Name })
-		if n == 0 && i >= 0 || n > 0 && (i < 0 || m.Config().Outputs[i] != h) {
-			return fmt.Errorf("ripmodels: frame model's heads are %v: at %d places, want %q of %d", m.Config().Outputs, n, h.Name, h.Size)
-		}
-	}
-	return nil
 }
 
 // sureSpread is the least and the most a notes model's sure head says over a
@@ -269,8 +235,7 @@ func sureSpread(notes *transformer.Model) (lo, hi float32) {
 // model when there is one, and reads their heads into frames: the onset and drum
 // scores as strengths, the pitch scores as salience and chroma, the wave scores
 // and voice genes, and where a model has them the strikes, releases, velocities,
-// family shares, beat, downbeat, cents, what plays each pitch, note starts and
-// what is struck at each place.
+// family shares, beat, downbeat, cents and what plays each pitch.
 func (fe *FrontEnd) Hear(x []float64, rate int, _ audio.RipParams) (*audio.RipFrames, error) {
 	in := features(audio.BandFrames(x, rate), fe.pcen())
 	out := fe.Frame.Forward(fe.planes(in))
@@ -323,17 +288,9 @@ func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 		head string
 		into *[]float32
 	}{{HeadStrike, &f.Strike}, {HeadRelease, &f.Release}, {HeadVelocity, &f.Velocity}}
-	if f.Places = places(fe.Frame); f.Places > 0 {
-		k := f.Places * audio.StruckGeneCount
-		f.Struck, f.StruckLoudness = make([]float32, 0, n*f.Places), make([]float32, 0, n*f.Places)
-		f.StruckGenes, f.StruckGenesError = make([]float32, 0, n*k), make([]float32, 0, n*k)
-	}
 	if n > 0 && fe.Notes != nil {
 		if head(HeadCents, 0) != nil {
 			f.Cents, f.CentsError = make([]float32, 0, n*rg.Len()), make([]float32, 0, n*rg.Len())
-		}
-		if len(fe.Notes.Slice(notes[0], HeadOnset)) == 1 { // the notes model's own, beside the frame model's flux
-			f.Start = make([]float64, n)
 		}
 		f.VoiceAt, f.Voices = make([]uint8, 0, n*audio.RipVoiceCells), make([]uint8, 0, n*audio.RipVoiceCells*audio.RipVoiceSize)
 		f.Sure = float64(head(HeadSure, 0)[0])
@@ -365,9 +322,6 @@ func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 		}
 		f.Family = appendSoftmax(f.Family, head(HeadFamily, t))
 		f.Beat[t], f.Downbeat[t] = sigmoid(head(HeadBeat, t)[0]), sigmoid(head(HeadDownbeat, t)[0])
-		if f.Start != nil {
-			f.Start[t] = sigmoid(fe.Notes.Slice(notes[t], HeadOnset)[0])
-		}
 		if f.Cents != nil {
 			c := head(HeadCents, t)
 			for i, v := range c[:rg.Len()] {
@@ -377,18 +331,6 @@ func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 		}
 		if f.Voices != nil {
 			f.VoiceAt, f.Voices = appendVoices(f.VoiceAt, f.Voices, head(HeadPitch, t), head(HeadPitchFamily, t), head(HeadPitchWave, t), head(HeadPitchVoice, t))
-		}
-		if f.Places > 0 {
-			genes := head(HeadGenes, t)
-			k := f.Places * audio.StruckGeneCount
-			for i := range f.Places {
-				f.Struck = append(f.Struck, float32(sigmoid(head(HeadPlaces, t)[i])))
-				f.StruckLoudness = append(f.StruckLoudness, float32(sigmoid(head(HeadLoudness, t)[i])))
-			}
-			for i, v := range genes[:k] {
-				f.StruckGenes = append(f.StruckGenes, float32(sigmoid(v)))
-				f.StruckGenesError = append(f.StruckGenesError, float32(math.Exp(float64(genes[k+i]))))
-			}
 		}
 	}
 	return f

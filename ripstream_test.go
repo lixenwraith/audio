@@ -534,55 +534,6 @@ func TestRipStreamReadsTheHeads(t *testing.T) {
 	}
 }
 
-// TestRipStreamFreezesTheTwinsTheOfflineRipReads: heads that strike a pitch
-// again while it sounds, past StrikeGap or within it, and let it go once a note,
-// freeze in a stream as the offline rip reads them, every note to its own end,
-// on bar lines and between them
-func TestRipStreamFreezesTheTwinsTheOfflineRipReads(t *testing.T) {
-	const n, beat = 1600, 40
-	f := headFrames(n, 1000, beat, 0, 4, 0)
-	k := RipPiano.Len()
-	f.Range = RipPiano
-	for _, h := range []*[]float32{&f.Salience, &f.Strike, &f.Release, &f.Velocity} {
-		*h = make([]float32, n*k)
-	}
-	x := make([]float64, n*RipHop)
-	at := func(t, midi int) int { return t*k + midi - RipPiano.Min }
-	var given [][3]int
-	for b := 100; b+300 < n; b += 2 * 4 * beat {
-		given = append(given, [3]int{60, b, b + 80}, [3]int{60, b + 40, b + 160},
-			[3]int{67, b + 20, b + 90}, [3]int{67, b + 26, b + 200}, [3]int{72, b, b + 60}, [3]int{72, b + 60, b + 120})
-	}
-	for _, g := range given {
-		for u := g[1]; u < g[2]; u++ {
-			f.Salience[at(u, g[0])] = 1
-		}
-		for u := g[1] - 1; u <= g[1]+1; u++ { // marks a frame either side, as a label's
-			f.Strike[at(u, g[0])], f.Velocity[at(u, g[0])] = 1, 0.6
-		}
-		for u := g[2] - 1; u <= g[2]+1; u++ {
-			f.Release[at(u, g[0])] = 1
-		}
-		accTone(x, g[0], g[1], g[2], 0.2, 8)
-	}
-	var rips [2][][3]int
-	p := DefaultRipParams()
-	p.Twins = 1
-	for i, stream := range []bool{false, true} {
-		r, err := framesRip(Ripper{Params: p}, f, x, stream)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, n := range r.Notes {
-			rips[i] = append(rips[i], [3]int{n.MIDI, int(math.Round(n.Start / RipFrameSec)), int(math.Round(n.End / RipFrameSec))})
-		}
-		slices.SortFunc(rips[i], func(a, b [3]int) int { return cmp.Or(a[1]-b[1], a[0]-b[0], a[2]-b[2]) })
-	}
-	if !slices.Equal(rips[0], rips[1]) || len(rips[0]) != len(given) {
-		t.Errorf("of %d notes given, the offline rip's (midi, start, end) %v, the stream's %v", len(given), rips[0], rips[1])
-	}
-}
-
 // TestAPinnedMeterKeepsItsTempoInTheSequencersRange: beats heard at 215 a minute
 // with a line every sixth pinned 3/4, and at 73.8 with one every third pinned
 // 6/8, take the beat an eighth and a quarter, offline and streamed: 3/4 at 108

@@ -102,7 +102,7 @@ func TestAStageReadingPutsEachLossWhereItWasMade(t *testing.T) {
 			note(StageStrikes, RipMade, sec(150), sec(170), 62),
 			note(StageStrikes, RipMade, sec(200), sec(220), 64),
 			{Stage: StageStrikes, Kind: RipRefused, Why: WhyAgain, Start: sec(301), End: sec(301), MIDI: 65},
-			note(StageBegun, RipMade, sec(500), sec(520), 72),
+			note(StagePath, RipMade, sec(500), sec(520), 72),
 			note(StageGlides, RipMoved, sec(200), sec(225), 64),
 			note(StageAccounting, RipDropped, sec(150), sec(170), 62),
 			hit(StagePicks, RipMade, WhyNone, sec(100), 0, InstrKick),
@@ -125,7 +125,7 @@ func TestAStageReadingPutsEachLossWhereItWasMade(t *testing.T) {
 	want := StageReading{
 		Lost:      StageCount{"a twin": 1, "accounting": 1, "strikes": 2},
 		Refused:   StageCount{"within strike_gap": 1, "no strike near": 1},
-		Added:     StageCount{"begun": 1},
+		Added:     StageCount{"path": 1},
 		Ends:      StageCount{"strikes early": 1},
 		HitsLost:  StageCount{"bars, outside the bars": 1, "bars, a step off": 1, "picks": 1},
 		HitsAdded: StageCount{"picks": 2},
