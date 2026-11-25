@@ -139,9 +139,7 @@ recording, by installed scores or by a trained judge loaded beside its notes
 model (`LoadRipJudge`, `Ripper.Judge`), and the strikes judged can be read with
 their verdicts and rows (`Ripper.Strikes`, `Rip.Strikes`), and what each stage of
 the decoders made, dropped or moved (`Ripper.Stages`, `Rip.Stages`), which
-`ReadStages` reads against a truth; where a notes model
-also hears where notes start (`RipFrames.Start`), a start no strike answers
-begins a note of the pitch that rises under it. `ReadWAV` reads any
+`ReadStages` reads against a truth. `ReadWAV` reads any
 PCM or float width to mono. The primitives a search fits a rip with are here and
 the searches are not: `RenderNote` plays a voice at a note offline and
 `MelDistance` compares mel frames, `StruckFromGenes` makes a drum of genes,

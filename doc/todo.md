@@ -99,59 +99,26 @@ What is left, largest first, each with the smallest close:
 - **The accounting** drops 4,816 true notes, 6,883 through the room: chord
   tones and octave doubles whose partials a lower note's fit explains, as the
   installed scores weigh a strike and a salience against the fit's share and
-  span. The scores were fitted on notes cut at their pitch's next strike: under
-  `twins` 1 a note sounding to its own end over a twin's reads less of its span
-  its own, and a strike dropped on a pitch still sounding stays dropped, 106
-  and 82 more. Close: a judge fitted on rows of perfect heads beside a trained
-  model's, or a note the heads are sure of kept, as one the fit cannot see is
-  (`Held`).
-- **Two notes on one pitch** are one note at `twins` 0, 1,249 lost to a twin
-  and 2,467 ends early; `twins` 1 holds both where the heads say so, 1,161
-  lost to a twin. Left under it:
-  - Two struck together, or close enough that their strikes' marks merge, are
-    one note, as one strike let go twice is also a restrike the head missed.
-    What could tell them: the accounting's memory, which reads a restrike's new
-    sound at the first release where a twin's ring steps down; or an onset head
-    that names the pitch starting.
-  - A short note over a held one of its pitch takes the held one's end and gives
-    it its own, the first release going to the earliest struck as most of the
-    corpus's overlaps cross (strikes late 681). What could: what plays each, where
-    the two voices differ, over the frames each sounds alone.
-  - A stream reads a twin where the read freezing its bar hears both releases;
-    a strike a judge brings back on a pitch still sounding ends the note before.
-  - The parts read 0.633 where `twins` 0 reads 0.637, the ring-on on or off.
-    Ruled out: the twins' own lines (0.633 with every twin taken out after the
-    accounting) and the ring-on. Left: the other notes, whose ends the twins'
-    walk moves and 106 of which the accounting drops, and which line each takes.
-- **`twins` and `ring_on` wait for trained heads**, at 0 and 1, the decoders as
-  they were before either: perfect heads cannot show what either is worth.
-  `twins` 1 hears 46 more notes, adds 3 fewer, loses 106 more at the accounting
-  and 0.004 of the parts, the ends within 0.002 (47, 7, 82, 0.003 and 0.001
-  through the room); `ring_on`, a kept note sounding on to the end of a dropped
-  one of its pitch, made for heads that strike falsely inside a ringing note,
-  reads the ends 0.887 where 0 reads 0.908, and 0.889 where 0 reads 0.912 under
-  `twins` (0.883, 0.908, 0.882, 0.909). Read a model's heads at all four on
-  held-out loops and recordings:
-  - `twins` on where the notes found rise by more than the notes added and the
-    ends read no fewer right than at 0. The design is wrong where the notes
-    added at the strikes rise by more than those found, as a head peaking twice
-    within `strike_gap` over one attack or letting go twice in one note makes,
-    or the ends fall under `twins` 0's.
-  - `ring_on` off where 0 reads more ends right with `twins` at 0 and at 1, the
-    notes found and added holding.
+  span. It rings a kept note on through a dropped one, 679 ends late. Close: a
+  judge fitted on rows of perfect heads beside a trained model's, or a note the
+  heads are sure of kept, as one the fit cannot see is (`Held`).
+- **One note a pitch at a time**: two parts on one pitch are one note, 1,249
+  lost to a twin on perfect heads, and its end is the first release or strike
+  of either. A second note held by the releases moved no reading with trained
+  models on recordings and is not in the decoders. Close: such notes lost on
+  recordings, counted by kind, before any rule for them.
 - **`dynamics`** moves a velocity the head already says: the loudness reads
   0.895, 0.769 through the room. Close: one of the two, the head taught the
   note's level over its passage or the move dropped.
-- **The tuning**: `cents_tuning` 1 gives the room's loops 0.874 for 0.852, the
-  accounting dropping 5,452 for 6,883 and the own-pitch rule 509 for 372, and
-  is 0 until a trained cents head is read on recordings in tune. Close: its
-  share set where trained heads hold those, and the 46 notes a quarter tone off
-  that the strikes hear in the cell beside read by their cents.
+- **The tuning** of a model's frames is A440: the tuning its cents head hears
+  gained 0.005 of the notes on generated loops alone with trained models and
+  is not in the decoders. Close: recordings off A440 read by kind, before any
+  rule for them.
 - **The key** is a profile's: 201 of 411 right. Close: the tonic weighed where
   the bass and phrases rest.
 - **The bass's own-pitch rule** drops 432 low notes whose fundamental stands
-  more than `own_pitch` (10 dB) under its next partials. Close: the rule only
-  where no sure strike of the pitch stands, and its bar searched on trained heads.
+  more than 10 dB (`ripOwnPitch`) under its next partials. Close: the rule only
+  where no sure strike of the pitch stands.
 - **A plateau's peak** is read on its last frame (agent notes), so 51 notes
   (290 through the room) whose sound leaves its first cell start none. Close:
   read a peak at the middle of equal frames, as `centre` does a beat.
@@ -267,8 +234,7 @@ step's bend cannot hold is heard and dropped:
   the note, as a voice has them, read from the cents along it.
 - A note struck again in its own cell: the cents say nothing there, so
   `StrikeAgain` judges it as before. Repeats inside a sung note, where the voice
-  never leaves the cell, are of this kind, and a start heard there names no
-  pitch, as one still sounding never rises (below).
+  never leaves the cell, are of this kind.
 - A sound is followed within the register its note was struck in: a glide
   across E3 reads the cells past it, but takes in no note the other register
   made there.
@@ -276,26 +242,6 @@ step's bend cannot hold is heard and dropped:
   length, as stapes' `notes` reads its support: while a bent note moves, and
   through a scoop's rise, the sound is not there. The cells a followed sound
   passed are in `ripNote.cells`, where the accounting already reads them.
-
-### Read more of what a start says
-
-- Priority: P2
-- Affected files: `rip.go`, `account.go`, `judge.go`
-
-A note begins where a notes model's onset head hears a start that no strike of
-its pitch answers ([Audio §9](audio.md#9-ripping-a-recording)). What is left:
-
-- **No judge rules such a note.** It stays on the heads' word, listed held, and
-  stapes' `judge.py` fits on no held row. The smallest close: a stage of their
-  own once `rows` has written enough of them, or a row that reads the onset.
-- **One note a start.** A start names the pitch that rises most under it, so a
-  chord no strike answers is read by one of its notes, and a second line's start
-  under the first's is none of its own.
-- **A note sung again inside itself** begins none, as a pitch still sounding
-  never rises. The smallest close: the dip between two syllables read as a rise.
-- **A stream's first frames.** A start heard there reads the frames before the
-  window as silence, so a sound that began before it can rise; such a start lies
-  in the context bars, which never freeze again.
 
 ### Account for a note written beside the cell it sounds in
 
