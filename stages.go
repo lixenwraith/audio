@@ -12,7 +12,6 @@ type RipStage int
 
 const (
 	StageStrikes    RipStage = iota // a note a strike starts, to its end
-	StageBegun                      // a note begun at a heard start no strike answers
 	StageGlides                     // a sound followed across its cells and parted into the notes it rests on
 	StagePath                       // a pitch track's note: the analysis's, or a bass note no strike answers
 	StageOwnPitch                   // a low note whose own pitch stands under its next partials
@@ -25,7 +24,7 @@ const (
 	ripStages
 )
 
-var ripStageNames = [ripStages]string{"strikes", "begun", "glides", "path", "own pitch", "steady rise", "settle", "accounting", "music start", "picks", "bars"}
+var ripStageNames = [ripStages]string{"strikes", "glides", "path", "own pitch", "steady rise", "settle", "accounting", "music start", "picks", "bars"}
 
 func (s RipStage) String() string {
 	if s < 0 || s >= ripStages {
@@ -50,7 +49,6 @@ type RipWhy int
 const (
 	WhyNone     RipWhy = iota
 	WhyUnderBar        // under Strike, StrikeLow under the melody's register
-	WhyAlone           // no start heard within StartGap of it, and under StrikeAlone
 	WhyAgain           // within StrikeGap of its pitch's last strike
 	WhyPartial         // a stronger strike's partial, an octave, a twelfth or two octaves down
 	WhySilent          // its pitch sounds not within MinNote of it
@@ -63,7 +61,7 @@ const (
 	ripWhys
 )
 
-var ripWhyNames = [ripWhys]string{"", "under its bar", "no start near", "within strike_gap", "a stronger strike's partial",
+var ripWhyNames = [ripWhys]string{"", "under its bar", "within strike_gap", "a stronger strike's partial",
 	"its pitch silent within min_note", "its note under min_note", "inside its pitch's note", "while its pitch rings",
 	"its register unheard", "outside the bars", "on a step another holds"}
 
@@ -148,15 +146,11 @@ func (tr *ripTrace) between(stage RipStage, before, after []ripNote) {
 }
 
 // refuse keeps a strike of state s at frame t the strikes started no note at,
-// why, where it peaks surer than a half; under its bar or alone where it is not
-// struck
+// why, where it peaks surer than a half
 func (tr *ripTrace) refuse(r register, t, s int, why RipWhy, p RipParams) {
 	f, midi := r.f, r.lo+s
 	if tr == nil || !f.peaks(f.Strike, t, midi, accStrike) {
 		return
-	}
-	if why == WhyUnderBar && f.peaks(f.Strike, t, midi, r.bar(p)) {
-		why = WhyAlone
 	}
 	tr.note(StageStrikes, RipRefused, why, ripNote{start: t, end: t, midi: midi})
 }

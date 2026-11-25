@@ -127,11 +127,8 @@ func TestAnUntrainedModelHearsFramesTheRipReads(t *testing.T) {
 			t.Fatalf("pitch %d struck at %g, the notes model says %g", i, nf.Strike[n/2*pitches+i], s)
 		}
 	}
-	if !slices.Equal(nf.Voice, f.Voice) || !slices.Equal(nf.Onset[0], f.Onset[0]) || !slices.Equal(nf.Family, f.Family) || !slices.Equal(nf.Flux, f.Flux) {
-		t.Error("the notes model moved the voice, the kicks, the family or the onsets")
-	}
-	if f.Start != nil || len(nf.Start) != n || nf.Start[n/2] != sigmoid(nm.Slice(heard[n/2], HeadOnset)[0]) {
-		t.Errorf("%d starts of %d frames, the frame model alone %d: the notes model's onset head is not where a note starts", len(nf.Start), n, len(f.Start))
+	if !slices.Equal(nf.Voice, f.Voice) || !slices.Equal(nf.Onset[0], f.Onset[0]) || !slices.Equal(nf.Family, f.Family) {
+		t.Error("the notes model moved the voice, the kicks or the family")
 	}
 	at, c := n/2*pitches+7, nm.Slice(heard[n/2], HeadCents)
 	if f.Cents != nil || len(nf.Cents) != per || len(nf.CentsError) != per || nf.Cents[at] != 100*c[7] ||
@@ -609,9 +606,6 @@ var modelHeads = []string{HeadOnset, HeadDrums, HeadWave, HeadVoice, HeadFamily,
 // byHead appends frames' values to to, by the head each is read from, a frame's
 // after another's, and the spectrum under its own name
 func byHead(to map[string][]float32, f *audio.RipFrames) {
-	for _, v := range f.Start { // the notes model's onset
-		to["start"] = append(to["start"], float32(v))
-	}
 	for t, v := range f.Flux {
 		to[HeadOnset] = append(to[HeadOnset], float32(v))
 		if f.Beat != nil {

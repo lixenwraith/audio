@@ -45,12 +45,7 @@ type RipParams struct {
 	StrikeGap     float64 `toml:"strike_gap"`     // seconds within which a pitch struck again is the same strike
 	StrikeLow     float64 `toml:"strike_low"`     // how sure a strike under the melody's register must be, as every attack rings a body's or a room's low mode
 	StrikeAgain   float64 `toml:"strike_again"`   // how sure a strike of a pitch still sounding must be to end its note and start another
-	StrikeAlone   float64 `toml:"strike_alone"`   // how sure a strike must be with no start heard within StartGap of it, where a front end hears note starts
 	Release       float64 `toml:"release"`        // how sure a front end that hears each pitch let go must be before the release ends its note
-	Start         float64 `toml:"start"`          // how sure a front end that hears each note start must be at a peak for a start to be heard there
-	StartGap      float64 `toml:"start_gap"`      // seconds within which a strike and a heard start answer each other
-	StartWait     float64 `toml:"start_wait"`     // seconds after a heard start the pitch it names is read from
-	StartSpan     float64 `toml:"start_span"`     // seconds that pitch is read over, and the span before the start it must rise over
 	OwnPitch      float64 `toml:"own_pitch"`      // the least dB a bass note's own pitch stands over its next partials, under which it is a higher note's shadow
 	CentsTuning   float64 `toml:"cents_tuning"`   // the share of the tuning a front end's cents head hears that its frames state where it states none; 0 leaves A440
 
@@ -105,8 +100,8 @@ func DefaultRipParams() RipParams {
 		TempoPrior: 120, TempoWidth: 1, Tightness: 50,
 		OnsetFloor: 2.0, OnsetMin: 0.1, OnsetGap: 0.06, KickShare: 0.06, SnareShare: 0.45, SnareNoise: 0.1, HatShare: 0.3,
 		Harmonics: 6, HarmonicDecay: 0.8, Voicing: 0.3, Jump: 0.06, Switch: 0.35, Retrigger: 0.4, MinNote: 0.06,
-		SecondVoice: 0.5, Compress: 1, Cross: 0.003, Strike: 0.8, StrikeLow: 0.9, StrikeHold: 0.9, StrikeGap: 0.12, StrikeAgain: 0.95, StrikeAlone: 0.95, Release: 0.8,
-		Start: 0.5, StartGap: 0.12, StartWait: 0, StartSpan: 0.12, OwnPitch: -10,
+		SecondVoice: 0.5, Compress: 1, Cross: 0.003, Strike: 0.8, StrikeLow: 0.9, StrikeHold: 0.9, StrikeGap: 0.12, StrikeAgain: 0.95, Release: 0.8,
+		OwnPitch:  -10,
 		TempoComb: 0.5, BeatComb2: 0.8, BeatComb3: 0.5, BeatComb4: 0.6, BeatCut2: 0.7, BeatCut3: 0.33,
 		BarLine: 1, BarBeat: 1, BarAccent: 0.5, BarHead: 1, BarMove: 2,
 		MeterMargin: 0.35, MeterHead: 1, RepeatMargin: 0.03, NearMargin: 0.07, NearRepeat: 0.015,
@@ -150,12 +145,7 @@ var ripGenes = []ripGene{
 	{"strike_gap", 0.03, 0.3, func(p *RipParams) *float64 { return &p.StrikeGap }},
 	{"strike_low", 0.2, 0.99, func(p *RipParams) *float64 { return &p.StrikeLow }},
 	{"strike_again", 0.5, 0.99, func(p *RipParams) *float64 { return &p.StrikeAgain }},
-	{"strike_alone", 0.2, 0.99, func(p *RipParams) *float64 { return &p.StrikeAlone }},
 	{"release", 0.2, 0.99, func(p *RipParams) *float64 { return &p.Release }},
-	{"start", 0.1, 0.99, func(p *RipParams) *float64 { return &p.Start }},
-	{"start_gap", 0.025, 0.3, func(p *RipParams) *float64 { return &p.StartGap }},
-	{"start_wait", 0, 0.1, func(p *RipParams) *float64 { return &p.StartWait }},
-	{"start_span", 0.03, 0.3, func(p *RipParams) *float64 { return &p.StartSpan }},
 	{"tempo_comb", 0, 1, func(p *RipParams) *float64 { return &p.TempoComb }},
 	{"beat_comb_2", 0, 1, func(p *RipParams) *float64 { return &p.BeatComb2 }},
 	{"beat_comb_3", 0, 1, func(p *RipParams) *float64 { return &p.BeatComb3 }},
@@ -329,9 +319,8 @@ type RipStrike struct {
 	Frame    int  // where it starts, in frames of RipFrameSec, as RipStream.Frames counts them
 	MIDI     int  // its pitch, a followed note's the one it is reported at
 	Reported bool // the decoder reported it as a note
-	// Held marks a reported note that stays on the heads' word, whatever its
-	// odds: one the fit cannot see as its own that lasts a second, or one begun at
-	// a heard start that no strike answers, which no score or judge was fitted on
+	// Held marks a reported note the fit cannot see as its own that lasts a
+	// second: it stays on the heads' word, whatever its odds
 	Held bool
 	Kept bool    // it is a note of the rip
 	Odds float64 // that it is a note; 0 where the installed scores never weighed it
@@ -518,10 +507,6 @@ type RipFrames struct {
 	// line fall on each frame, a posterior a front end that hears them states; nil
 	// from the analysis and from a model without the heads
 	Beat, Downbeat []float64
-	// Start is how surely a note of any pitch starts on each frame, as a notes
-	// model's onset head hears it: nil from the analysis and from a front end
-	// without one, whose notes are read from the strikes alone
-	Start []float64
 	// Spectrum is the recording's mel bands at each frame, frames × RipMelBands,
 	// each band's energy as MelStream gives it: a stream's whose Ripper asks, else nil
 	Spectrum []float32
@@ -584,7 +569,6 @@ func (f *RipFrames) fields(visit func(field any, per int)) {
 	visit(&f.Voices, RipVoiceCells*RipVoiceSize)
 	visit(&f.Beat, 1)
 	visit(&f.Downbeat, 1)
-	visit(&f.Start, 1)
 	visit(&f.Spectrum, RipMelBands)
 	visit(&f.Struck, f.Places)
 	visit(&f.StruckGenes, f.Places*StruckGeneCount)
@@ -3340,7 +3324,6 @@ type ripNote struct {
 	vel              float64
 	strength         float64 // mean salience over the note, against the register's reference loudness
 	second           bool    // heard under another note of the register
-	heard            bool    // begun at a start heard where no strike answers it (begun)
 	twin             bool    // held from a second strike within StrikeGap of its pitch's last, judged as that one's note (held)
 	bright           float64 // RipNote.Bright
 	bend, bendAt     float64 // RipNote.Bend and BendAt
@@ -3395,11 +3378,9 @@ func (f *RipFrames) peaks(h []float32, t, midi int, over float64) bool {
 }
 
 // struck reports whether state s's strike peaks at t over the register's bar,
-// StrikeLow under the melody's register, and over StrikeAlone where the front
-// end hears note starts and none is heard within StartGap of it
+// StrikeLow under the melody's register
 func (r register) struck(t, s int, p RipParams) bool {
-	f := r.f
-	return f.peaks(f.Strike, t, r.lo+s, r.bar(p)) && (f.Start == nil || float64(f.head(f.Strike, t, r.lo+s)) >= p.StrikeAlone || f.started(t, p))
+	return r.f.peaks(r.f.Strike, t, r.lo+s, r.bar(p))
 }
 
 // bar is how sure a strike of the register must be: StrikeLow under the
@@ -3436,103 +3417,6 @@ func (r register) sounds(t, s int, p RipParams) bool {
 		}
 	}
 	return false
-}
-
-// heardAt reports whether a start is heard at frame t: the start plane peaks
-// there, at Start or over
-func (f *RipFrames) heardAt(t int, p RipParams) bool {
-	at := func(t int) float64 {
-		if t < 0 || t >= len(f.Start) {
-			return 0
-		}
-		return f.Start[t]
-	}
-	v := at(t)
-	return f.Start != nil && v >= p.Start && v >= at(t-1) && v > at(t+1)
-}
-
-// started reports whether a start is heard within StartGap of frame t
-func (f *RipFrames) started(t int, p RipParams) bool {
-	gap := int(p.StartGap / f.Hop)
-	for u := t - gap; u <= t+gap; u++ {
-		if f.heardAt(u, p) {
-			return true
-		}
-	}
-	return false
-}
-
-// begun is the notes the register begins where a start is heard and no strike
-// answers it, at the pitch of the frames' range that rises most there and sounds
-// (rises); none where a strike of that pitch peaks within StartGap or a note of
-// it sounds already. Each lasts to its end (until), MinNote at least from where
-// its pitch first sounds, and stays on the heads' word (ripNote.heard).
-func (r register) begun(notes []ripNote, p RipParams) []ripNote {
-	f, rg := r.f, r.f.Pitches()
-	if f.Start == nil {
-		return nil
-	}
-	low, _ := f.register(rg.Min, RipBassTop)
-	high, _ := f.register(RipBassTop, rg.Max)
-	ref, gap := max(low.ref, high.ref), int(p.StartGap/f.Hop)
-	var out []ripNote
-	for t := range f.frames() {
-		if ref <= 0 || !f.heardAt(t, p) {
-			continue
-		}
-		midi, from, ok := f.rises(t, ref, p)
-		if !ok || midi < r.lo || midi >= r.lo+r.reach {
-			continue
-		}
-		reg := high
-		if midi < RipBassTop {
-			reg = low
-		}
-		answered := false
-		for u := t - gap; u <= t+gap && !answered; u++ {
-			answered = reg.struck(u, midi-reg.lo, p)
-		}
-		sounding := func(n ripNote) bool { return n.midi == midi && n.start <= t && t < n.end }
-		if answered || slices.ContainsFunc(notes, sounding) || slices.ContainsFunc(out, sounding) {
-			continue
-		}
-		n := r.note(t, r.until(from, midi-r.lo, p), midi-r.lo)
-		n.heard = true
-		out = append(out, n)
-	}
-	return out
-}
-
-// rises is the pitch a start heard at frame t names and the first frame it
-// sounds from: of the pitches whose mean salience over StartSpan from StartWait
-// after t stands over their mean over the StartSpan ending StartGap before t by
-// Voicing of ref, the one whose mean after is highest, where it reaches
-// StrikeHold of ref within that span; ok false where none does
-func (f *RipFrames) rises(t int, ref float64, p RipParams) (midi, from int, ok bool) {
-	gap, wait, span := int(p.StartGap/f.Hop), int(p.StartWait/f.Hop), max(int(p.StartSpan/f.Hop), 1)
-	mean := func(a, midi int) float64 {
-		var sum float64
-		for u := a; u < a+span; u++ {
-			sum += float64(f.head(f.Salience, u, midi))
-		}
-		return sum / float64(span)
-	}
-	rg, best := f.Pitches(), 0.0
-	midi = -1
-	for m := rg.Min; m < rg.Max; m++ {
-		if after := mean(t+wait, m); after-mean(t-gap-span, m) >= p.Voicing*ref && after > best {
-			midi, best = m, after
-		}
-	}
-	if midi < 0 {
-		return 0, 0, false
-	}
-	for u := t + wait; u < min(t+wait+span, f.frames()); u++ {
-		if float64(f.head(f.Salience, u, midi)) >= p.StrikeHold*ref {
-			return midi, u, true
-		}
-	}
-	return 0, 0, false
 }
 
 // stronger reports a stronger strike within two frames of t at one of the
@@ -3680,8 +3564,7 @@ func (r register) held(t, s int, p RipParams, tr *ripTrace) (notes []ripNote, en
 // strikes reads a register's notes from a front end that hears each pitch struck:
 // a note starts where a strike peaks over Strike, as hard as the front end heard,
 // and lasts, any number at once, to its end (held). None starts where the pitch
-// never sounds, at a stronger strike's partial, or within StrikeGap. A front end
-// that hears note starts also begins one where no strike answers a start (begun).
+// never sounds, at a stronger strike's partial, or within StrikeGap.
 func (f *RipFrames) strikes(lo, hi int, p RipParams, tr *ripTrace) []ripNote {
 	r, ok := f.register(lo, hi)
 	if !ok {
@@ -3738,9 +3621,6 @@ func (f *RipFrames) strikes(lo, hi int, p RipParams, tr *ripTrace) []ripNote {
 		}
 	}
 	tr.made(StageStrikes, notes...)
-	begun := r.begun(notes, p)
-	tr.made(StageBegun, begun...)
-	notes = append(notes, begun...)
 	slices.SortFunc(notes, func(a, b ripNote) int { return cmp.Or(a.start-b.start, a.midi-b.midi) })
 	if f.Cents != nil {
 		var before []ripNote
@@ -3970,7 +3850,7 @@ func (r register) parted(struck ripNote, sound []ripVisit, short int) []ripNote 
 // stood there
 func (r register) glided(struck ripNote, g []ripVisit, short int) ripNote {
 	f, start, end := r.f, g[0].start, g[len(g)-1].end
-	n := ripNote{start: start, end: end, midi: g[0].midi, vel: struck.vel, heard: struck.heard, twin: struck.twin, voice: f.voiceOver(start, end)}
+	n := ripNote{start: start, end: end, midi: g[0].midi, vel: struck.vel, twin: struck.twin, voice: f.voiceOver(start, end)}
 	// edge is where the sound sits at frame at of a visit: where it stands over
 	// the MinNote of frames a to b around it, or else that frame's own reading
 	edge := func(a, b, midi, at int) (float64, float64) {

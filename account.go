@@ -977,9 +977,8 @@ func (f *RipFrames) account(x []float64, p RipParams, ask accAsk, bass, melody [
 			continue
 		}
 		// a held note whose harmonics all sit under louder pitches' is one the fit
-		// cannot see, a soft line under a chord, and a note begun at a heard start is
-		// no strike the scores were fitted on: each stays on the heads' word
-		st := RipStrike{Frame: n.start, MIDI: n.midi, Reported: true, Held: ev[i].covered > accCovered && n.end-n.start >= accHeld || n.heard}
+		// cannot see, a soft line under a chord: it stays on the heads' word
+		st := RipStrike{Frame: n.start, MIDI: n.midi, Reported: true, Held: ev[i].covered > accCovered && n.end-n.start >= accHeld}
 		if st.Kept = st.Held; !st.Held || ask.strikes {
 			in := f.accInput(n, ev[i], notes, refs)
 			if rows {

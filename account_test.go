@@ -245,28 +245,6 @@ func TestANoteTheOthersAccountForGoes(t *testing.T) {
 	}
 }
 
-// TestANoteBegunAtAHeardStartStaysOnTheHeadsWord: the A4 the ringing note's
-// sound accounts for stays where it was begun at a start no strike answered,
-// under the installed scores and under a judge that drops every strike, and is
-// listed reported and held, as a held note is
-func TestANoteBegunAtAHeardStartStaysOnTheHeadsWord(t *testing.T) {
-	const frames = 1000
-	x := make([]float64, frames*RipHop)
-	reported := []ripNote{{start: 50, end: 300, midi: 57, vel: 0.5}, {start: 350, end: 600, midi: 57, vel: 0.5}, {start: 650, end: 950, midi: 57, vel: 0.5}, {start: 700, end: 950, midi: 64, vel: 0.5}, {start: 700, end: 760, midi: 69, vel: 0.5, heard: true}}
-	for _, n := range reported[:4] {
-		accTone(x, n.midi, n.start, n.end, 0.3, 8)
-	}
-	f := accFrames(frames, reported, nil)
-	f.Strike[700*RipPitches+69-RipMinMIDI] = 0.1
-	for _, judge := range []*RipJudge{nil, judgeSaying([judgeStages]float64{0.1, 0.1})} {
-		_, melody, strikes := f.account(x, DefaultRipParams(), accAsk{judge: judge, strikes: true, rows: true}, nil, slices.Clone(reported))
-		i := slices.IndexFunc(strikes, func(s RipStrike) bool { return s.MIDI == 69 })
-		if !slices.Contains(accPitches(melody), 69) || i < 0 || !strikes[i].Reported || !strikes[i].Held || !strikes[i].Kept || strikes[i].Row == nil {
-			t.Errorf("judged by %v: notes kept %v, the A4 listed %+v, want it kept, reported, held and with its row", judge, accPitches(melody), strikes[max(i, 0)])
-		}
-	}
-}
-
 // TestAStrikeWhoseSoundIsItsOwnComesBack: a pitch the recording plays whose
 // strike the decoder dropped is a candidate, and comes back when the kept
 // notes leave its sound unexplained, while a strike on a silent pitch does not,
