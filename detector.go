@@ -17,17 +17,19 @@ const (
 	wavForcePrefix  = "wav:"
 )
 
-// backendSpecs returns the priority-ordered candidate table
-// pacat retained first: empirically the reliable route on desktop PipeWire
-// via pulse-compat; probe verification makes a missing or instantly-dying
-// entry fall through to the next candidate
+// backendSpecs returns the priority-ordered candidate table: pacat first, the
+// route desktop PipeWire answers through its pulse server. pw-cat 1.4 on reads
+// "-" through libsndfile unless --raw, which 1.2 and older reject, so it has a
+// row for each and the probe keeps the one that starts. play takes no -d: there
+// it names a second input, the capture device.
 func backendSpecs() []*BackendConfig {
 	return []*BackendConfig{
 		{Type: BackendPulse, Name: "pacat", Args: []string{"--raw", "--format=s16le", "--rate=44100", "--channels=2", "--latency-msec=50", "--playback"}},
+		{Type: BackendPipeWire, Name: "pw-cat", Args: []string{"--playback", "--raw", "--format=s16", "--rate=44100", "--channels=2", "--latency=50ms", "-"}},
 		{Type: BackendPipeWire, Name: "pw-cat", Args: []string{"--playback", "--format=s16", "--rate=44100", "--channels=2", "--latency=50ms", "-"}},
 		{Type: BackendALSA, Name: "aplay", Args: []string{"-t", "raw", "-f", "S16_LE", "-r", "44100", "-c", "2", "-q"}},
-		{Type: BackendSoX, Name: "sox", Args: []string{"-t", "raw", "-e", "signed", "-b", "16", "-c", "2", "-r", "44100", "-", "-d", "-q"}},
-		{Type: BackendFFplay, Name: "ffplay", Args: []string{"-nodisp", "-autoexit", "-f", "s16le", "-ac", "2", "-ar", "44100", "-probesize", "32", "-analyzeduration", "0", "-i", "pipe:0", "-loglevel", "quiet"}},
+		{Type: BackendSoX, Name: "sox", Args: []string{"-t", "raw", "-e", "signed", "-b", "16", "-c", "2", "-r", "44100", "-", "-q"}},
+		{Type: BackendFFplay, Name: "ffplay", Args: []string{"-nodisp", "-autoexit", "-f", "s16le", "-ch_layout", "stereo", "-sample_rate", "44100", "-probesize", "32", "-analyzeduration", "0", "-i", "pipe:0", "-loglevel", "quiet"}},
 		{Type: BackendOSS, Name: "oss", Path: "/dev/dsp"},
 	}
 }
