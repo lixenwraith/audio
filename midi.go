@@ -429,7 +429,7 @@ func (m *MIDIScore) Rip() (*Rip, int) {
 			chroma[bar][n.MIDI%12] += max(min(n.End, hi)-max(n.Start, lo), 0)
 		}
 	}
-	r.Root, r.Scale = keyOver(c, b, chroma, true, DefaultRipParams())
+	r.Root, r.Scale = keyOver(c, b, chroma, DefaultRipParams())
 	for d, hs := range hits {
 		for _, h := range hs {
 			g.hit(r, InstrumentType(d), h.frame, h.strength)

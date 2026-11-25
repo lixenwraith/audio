@@ -609,7 +609,7 @@ func TestAReleaseEndsANoteStillSounding(t *testing.T) {
 	}
 	f.Strike[at(10, 72)], f.Velocity[at(10, 72)], f.Release[at(120, 72)] = 0.99, 0.4, 0.95
 	f.Strike[at(150, 72)], f.Strike[at(170, 72)] = 0.9, 0.99
-	got := f.notes(RipMelodyLow, RipMaxMIDI, DefaultRipParams())
+	got := f.strikes(RipMelodyLow, RipMaxMIDI, DefaultRipParams(), nil)
 	if len(got) != 2 || got[0].start != 10 || got[0].end != 120 || got[0].vel != float64(float32(0.4)) || got[1].start != 170 {
 		t.Errorf("notes %+v, want one from 10 to 120 at velocity 0.4 and one from 170", got)
 	}
@@ -654,7 +654,7 @@ func played(notes []ripNote) (got [][3]int) {
 // none; a bass strike two octaves under hides no melody note.
 func TestStrikesStartNotesWhileOthersRing(t *testing.T) {
 	f, _, want := pedalFrames()
-	if got := played(f.notes(RipMelodyLow, RipMaxMIDI, DefaultRipParams())); !slices.Equal(got, want) {
+	if got := played(f.strikes(RipMelodyLow, RipMaxMIDI, DefaultRipParams(), nil)); !slices.Equal(got, want) {
 		t.Errorf("notes (midi, start, end) %v, want %v", got, want)
 	}
 }

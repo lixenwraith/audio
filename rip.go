@@ -72,10 +72,8 @@ type RipParams struct {
 	JointLine   float64 `toml:"joint_line"`   // the downbeat head's, at a bar line of the path
 	JointMargin float64 `toml:"joint_margin"` // how far another meter's path must score over 4/4's, in the heads' log-odds, for its meter to be read
 
-	KeyBars  float64 `toml:"key_bars"`  // what a key whose scale's tones fit best gains for the share of the music's bars whose chord is its tonic chord
-	KeyOpen  float64 `toml:"key_open"`  // and where the first of them is
-	KeyClose float64 `toml:"key_close"` // and the last, where the recording was heard to its end
-	KeyBar   float64 `toml:"key_bar"`   // the share of a bar's music a bar must hold to be one of the music's bars
+	KeyBars float64 `toml:"key_bars"` // what a key whose scale's tones fit best gains for the share of the music's bars whose chord is its tonic chord
+	KeyBar  float64 `toml:"key_bar"`  // the share of a bar's music a bar must hold to be one of the music's bars
 }
 
 // ripDrumsPerMinute is the least a drum strikes to be part of the music, ripLineNote
@@ -102,7 +100,7 @@ func DefaultRipParams() RipParams {
 		BarLine: 1, BarBeat: 1, BarAccent: 0.5, BarHead: 1, BarMove: 2,
 		MeterMargin: 0.35, MeterHead: 1, RepeatMargin: 0.03, NearMargin: 0.07, NearRepeat: 0.015,
 		JointMove: 100, JointBeat: 0.3, JointLine: 0.3, JointMargin: 3,
-		KeyBars: 1, KeyOpen: 0, KeyClose: 0, KeyBar: 0.5,
+		KeyBars: 1, KeyBar: 0.5,
 	}
 }
 
@@ -164,8 +162,6 @@ var ripGenes = []ripGene{
 	{"joint_line", 0.02, 0.9, func(p *RipParams) *float64 { return &p.JointLine }},
 	{"joint_margin", 0, 10, func(p *RipParams) *float64 { return &p.JointMargin }},
 	{"key_bars", 0, 3, func(p *RipParams) *float64 { return &p.KeyBars }},
-	{"key_open", 0, 3, func(p *RipParams) *float64 { return &p.KeyOpen }},
-	{"key_close", 0, 3, func(p *RipParams) *float64 { return &p.KeyClose }},
 	{"key_bar", 0.1, 1, func(p *RipParams) *float64 { return &p.KeyBar }},
 }
 
@@ -776,7 +772,7 @@ func (rp Ripper) Samples(x []float64, rate int) (*Rip, error) {
 	if err != nil {
 		return nil, err
 	}
-	ev.root, ev.scale = f.key(g, true, p)
+	ev.root, ev.scale = f.key(g, p)
 	// the pitch paths start late against the onsets the beats were set by: the
 	// notes' median lag comes out before they are quantized
 	r := g.lay(f, x, ev, bpm, g.shift(slices.Concat(ev.melody, ev.bass)), [InstrClap]float64{}, p)
@@ -2214,9 +2210,6 @@ func (rd ripReading) bar(o ripReading) (a, b int) {
 // read any meter but 4/4 over them, or a reading is told by its repetition
 const ripMeterBars = 6
 
-// ripAllReadings offers every bar the harness grades
-var ripAllReadings = false
-
 // ripRepeatBars are the lags, in a reading's bars, its repetition is heard at
 var ripRepeatBars = [...]int{1, 2, 4}
 
@@ -2451,19 +2444,8 @@ func (f *RipFrames) readings(pulses []int, k int, bpm float64, pin *Meter, given
 			return nil, fmt.Errorf("rip: %w", err)
 		}
 		readings = []ripReading{read(*pin)}
-	case k == 3:
-		readings = []ripReading{read(Meter{}), read(Meter{3, 4}), read(Meter{6, 8})}
-		if ripAllReadings {
-			readings = append(readings, read(Meter{9, 8}), read(Meter{2, 4}), read(Meter{5, 4}), read(Meter{7, 4}), read(Meter{4, 2}))
-		}
 	default:
 		readings = []ripReading{read(Meter{}), read(Meter{3, 4}), read(Meter{6, 8})}
-		if ripAllReadings {
-			readings = append(readings, read(Meter{2, 4}), read(Meter{5, 4}), read(Meter{3, 2}), read(Meter{7, 4}), read(Meter{4, 2}))
-			if k%2 == 0 {
-				readings = append(readings, read(Meter{3, 8}))
-			}
-		}
 	}
 	for i, rd := range readings {
 		if b := rd.m.Beat(); b < rd.unit { // a pulse a beat at least
@@ -3005,11 +2987,10 @@ func (f *RipFrames) tonality() (int, ScaleID) {
 	return keyOf(f.chroma())
 }
 
-// key is the key a rip names over its bars g (keyOver), closed where the
-// recording was heard to its end
-func (f *RipFrames) key(g ripGrid, closed bool, p RipParams) (int, ScaleID) {
+// key is the key a rip names over its bars g (keyOver)
+func (f *RipFrames) key(g ripGrid, p RipParams) (int, ScaleID) {
 	c, b := f.chroma()
-	return keyOver(c, b, f.barChroma(g), closed, p)
+	return keyOver(c, b, f.barChroma(g), p)
 }
 
 // keyScales are the scales a key is read in, in the order a tie keeps
@@ -3034,10 +3015,10 @@ func keyOf(c, b [12]float64) (int, ScaleID) {
 
 // keyOver names a key over a recording's bars as well: of the keys whose scale
 // fits c best, the one whose tonic chord, as chordOf names a bar's chord in it,
-// the most of the music's bars rest on (KeyBars), the first (KeyOpen) and, where
-// closed, the last (KeyClose); then keyOf's lean, then its order. The bars are
-// those holding KeyBar of a bar's music, the upper median of the bars that hold any.
-func keyOver(c, b [12]float64, bars [][12]float64, closed bool, p RipParams) (int, ScaleID) {
+// the most of the music's bars rest on (KeyBars); then keyOf's lean, then its
+// order. The bars are those holding KeyBar of a bar's music, the upper median of
+// the bars that hold any.
+func keyOver(c, b [12]float64, bars [][12]float64, p RipParams) (int, ScaleID) {
 	normalize(&c)
 	normalize(&b)
 	var mass []float64
@@ -3070,10 +3051,7 @@ func keyOver(c, b [12]float64, bars [][12]float64, closed bool, p RipParams) (in
 				for _, bar := range heard {
 					rests += rest(bar)
 				}
-				rests = p.KeyBars*rests/float64(n) + p.KeyOpen*rest(heard[0])
-				if closed {
-					rests += p.KeyClose * rest(heard[n-1])
-				}
+				rests = p.KeyBars * rests / float64(n)
 			}
 			if k := [3]float64{scaleFit(c, r, s), rests, tonicLean(c, b, r)}; slices.Compare(k[:], best[:]) > 0 {
 				root, scale, best = r, s, k
@@ -3290,9 +3268,6 @@ type ripNote struct {
 // drops a decaying partial's. The melody comes back as one list, which streams
 // parts into its lines once settle has given the bass what both registers heard.
 func (f *RipFrames) notes(lo, hi int, p RipParams) []ripNote {
-	if f.Strike != nil && lo >= RipMelodyLow {
-		return f.strikes(lo, hi, p, nil)
-	}
 	if p.SecondVoice <= 0 || lo < RipMelodyLow {
 		return f.path(lo, hi, p)
 	}

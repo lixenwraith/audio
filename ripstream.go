@@ -406,7 +406,7 @@ func (s *RipStream) hold(f *RipFrames, x []float64, ev ripEvents, end bool) erro
 		return nil
 	}
 	s.cue = ev.root
-	ev.root, ev.scale = f.key(g, end, s.p)
+	ev.root, ev.scale = f.key(g, s.p)
 	s.held, s.track, s.meter, s.tempo = true, tr, g.m, bpm
 	s.root, s.scale, s.start = ev.root, ev.scale, s.w0+t
 	s.rip = &Rip{BPM: int(math.Round(bpm)), Meter: g.m, Tuning: f.Tuning, Range: f.Pitches(), Root: ev.root, Scale: ev.scale, Downbeat: float64(s.w0+g.lines[0]) * f.Hop, Params: s.p}

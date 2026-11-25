@@ -624,7 +624,7 @@ func TestARowHoldsTheScoresTermsAndTheHeadsAroundTheStrike(t *testing.T) {
 			f.Strike[i], f.Salience[i], f.Release[i], f.Velocity[i] = code(t, midi), 2*code(t, midi), -code(t, midi), code(t, midi)+0.5
 		}
 	}
-	in := accInput{accEvidence: accEvidence{share: 0.5, unF0: 0.25, unOdd: 0.75, rise: 20, loo: 3, level: -30, span: 0.5, step: 0.2}, strike: 0.9, support: 2, low: true, ringing: true}
+	in := accInput{accEvidence: accEvidence{share: 0.5, unF0: 0.25, unOdd: 0.75, rise: 20, level: -30, span: 0.5, step: 0.2}, strike: 0.9, support: 2, low: true, ringing: true}
 	const ref, flux = -20.0, 2.0
 	refs := [2]float64{2, 4}
 	low, high := RipMinMIDI+3, RipMaxMIDI-1
