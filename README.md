@@ -63,6 +63,7 @@ if err := eng.Start(); errors.Is(err, audio.ErrNoAudioBackend) {
 }
 coin := eng.SoundID("coin") // resolve once, after Start
 eng.Play(coin)
+eng.PlayAt(coin, audio.Placement{Pan: -0.5, Pitch: 2, Cutoff: 1200, Gain: -6}) // left, higher, muffled, quieter
 eng.SetHarmony(40, audio.ScalePhrygian, nil)
 eng.SetIntensity(audio.IntensityNormal, 0, true, true)
 eng.StartMusic()
@@ -116,10 +117,11 @@ the registry, `PlayBuffer` auditions it, `RenderVariants` renders the set,
 report what plays. `ResetRegistries` clears everything between a Stop and the
 next Start.
 
-`SetBinaural` lays a binaural bed under the music, the one thing the two
-channels differ by: a tone in each ear, a beat apart around a carrier, at a
-level of its own, which headphones give as a beat. It is off until set, and
-then the stream is what it was without one.
+`PlayAt` and `SetBinaural` are what the two channels differ by. A placed sfx
+sounds where its `Placement` puts it, panned, pitched, muffled and quieter. The
+binaural bed is a tone under the music in each ear, a beat apart around a
+carrier, at a level of its own, which headphones give as a beat. It is off
+until set, and then the stream is what it was without one.
 
 ## Ripping a recording
 

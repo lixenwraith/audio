@@ -459,7 +459,18 @@ func (ae *AudioEngine) resolveLevels() {
 
 // Play queues a sound effect; volume computed here, dampening at the mixer.
 // Every rejection path is counted — see Rejections.
-func (ae *AudioEngine) Play(id SoundID) bool {
+func (ae *AudioEngine) Play(id SoundID) bool { return ae.PlayAt(id, Placement{}) }
+
+// Placement is where and how a sound effect sounds: Pan from -1, the left ear
+// alone, to 1, the right, at equal power; Pitch in semitones, the sound played
+// faster or slower; Cutoff in hertz, a two-pole low-pass, 0 for none; Gain in
+// dB, which only attenuates. The zero value is the sound as Play plays it.
+type Placement struct {
+	Pan, Pitch, Cutoff, Gain float64
+}
+
+// PlayAt plays a sound effect as Play does, placed
+func (ae *AudioEngine) PlayAt(id SoundID, at Placement) bool {
 	switch {
 	case !ae.running.Load():
 		ae.rejected[RejNotRunning].Add(1)
@@ -489,8 +500,11 @@ func (ae *AudioEngine) Play(id SoundID) bool {
 		ae.rejected[RejBadID].Add(1)
 		return false
 	}
+	if g := bounded(at.Gain, MaxPlacedAttenuation); g < 0 {
+		vol *= math.Pow(10, g/20)
+	}
 
-	if !ae.mixer.Send(audioCmd{op: cmdPlay, sound: id, f1: vol}) {
+	if !ae.mixer.Send(audioCmd{op: cmdPlay, sound: id, f1: vol, place: at.placing()}) {
 		ae.rejected[RejQueueFull].Add(1) // Send also bumps dropped for cmdPlay
 		return false
 	}

@@ -45,6 +45,7 @@ type audioCmd struct {
 	tier    Intensity // arrangement tier
 	slot    int8      // sequencer slot
 	f1      float64   // play volume | swing | music volume | note velocity
+	place   placing   // cmdPlay: where the sound sounds
 	i1      int       // bpm | crossfade | midi note | harmony root | meter's beats
 	i2      int       // duration samples | scale | mask value | meter's note
 	ints    []int     // harmony progression

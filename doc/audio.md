@@ -182,6 +182,14 @@ and steals according to its admission policy when needed. Rapid repeats within
 the music bus to 70%, with fast attack and slower release; the sfx volume
 (`SfxVolume`) scales every sfx and leaves the music alone.
 
+`PlayAt` plays an sfx placed, under the same caps and dampening, for an embedder
+that sounds where something is (`Placement`): `Pan` from -1, the left ear
+alone, to 1, the right, by the square roots of 1 ∓ pan, so the two ears hold
+the middle's power wherever it stands; `Pitch` in semitones, up to 24 either
+way, the variant read that much faster or slower between its samples; `Cutoff`,
+two one-pole low-passes at that frequency, nothing at 0; and `Gain` in dB, which
+only attenuates. The zero `Placement` is `Play`, to the bit.
+
 Sound IDs are process-local registration values: configuration and persistent
 documents name sounds, and `SoundID` resolves a name once `Start` has frozen the
 registry. A name an embedder resolves only as it plays skips the resolution of
@@ -275,10 +283,11 @@ half the beat in the left ear and at the carrier plus half in the right, each
 at the level, which headphones give as one tone beating at the beat. Through
 speakers both ears hear both tones, a fainter beat in the air. A level of zero,
 where an engine starts, is no bed, and both ears are then the one mix to the
-bit. It joins the mix after the duck:
+bit while no sfx is placed off the middle (§5). It joins the mix after the
+duck:
 
-    left  = music·duck + bed left  + sfx
-    right = music·duck + bed right + sfx      each × pause, then the limiter
+    left  = music·duck + bed left  + sfx left
+    right = music·duck + bed right + sfx right      each × pause, then the limiter
 
 - It sounds while the music does: under the music's mute, its stop and its
   pause, with no mute of its own, and a sounding sfx does not duck it. A mute
