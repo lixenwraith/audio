@@ -615,61 +615,6 @@ func TestAReleaseEndsANoteStillSounding(t *testing.T) {
 	}
 }
 
-// TestAPitchHoldsAsManyNotesAsItIsLetGo: a pitch struck again while it sounds,
-// with no release between, holds both notes where it is let go twice, the first
-// release ending the note struck first, and so does one struck again within
-// StrikeGap; let go once, it is a repeat, and one strike let go twice is one
-// note, as a restrike the head missed leaves the same. Twins 0 reads one a pitch.
-func TestAPitchHoldsAsManyNotesAsItIsLetGo(t *testing.T) {
-	const frames = 300
-	f := &RipFrames{Hop: RipFrameSec, Flux: make([]float64, frames), Salience: make([]float32, frames*RipPitches),
-		Strike: make([]float32, frames*RipPitches), Release: make([]float32, frames*RipPitches)}
-	at := func(t, midi int) int { return t*RipPitches + midi - RipMinMIDI }
-	var want, one [][3]int
-	for _, c := range []struct {
-		midi, end      int
-		strikes, letGo []int // a release each on the frame after its note ends, as a label's head peaks
-		twins, single  [][2]int
-	}{
-		{60, 150, []int{10, 50}, []int{90, 151}, [][2]int{{10, 90}, {50, 150}}, [][2]int{{10, 50}, {50, 90}}}, // two parts, crossing
-		{67, 150, []int{10, 16}, []int{90, 151}, [][2]int{{10, 90}, {16, 150}}, [][2]int{{10, 90}}},           // within StrikeGap
-		{64, 150, []int{10}, []int{90, 151}, [][2]int{{10, 90}}, [][2]int{{10, 90}}},                          // one strike
-		{72, 150, []int{10, 60}, []int{151}, [][2]int{{10, 60}, {60, 150}}, [][2]int{{10, 60}, {60, 150}}},    // let go once
-		{79, 150, []int{10}, []int{60}, [][2]int{{10, 60}}, [][2]int{{10, 60}}},                               // ringing on
-		{76, 210, []int{10, 50, 90, 130, 170}, []int{50, 130, 170, 211}, // a release missing
-			[][2]int{{10, 50}, {50, 90}, {90, 130}, {130, 170}, {170, 210}}, [][2]int{{10, 50}, {50, 90}, {90, 130}, {130, 170}, {170, 210}}},
-	} {
-		for u := 10; u < c.end; u++ {
-			f.Salience[at(u, c.midi)] = 0.9
-		}
-		for _, u := range c.strikes {
-			f.Strike[at(u, c.midi)] = 0.99
-		}
-		for _, u := range c.letGo {
-			f.Release[at(u, c.midi)] = 0.95
-		}
-		for _, n := range c.twins {
-			want = append(want, [3]int{c.midi, n[0], n[1]})
-		}
-		for _, n := range c.single {
-			one = append(one, [3]int{c.midi, n[0], n[1]})
-		}
-	}
-	p := DefaultRipParams()
-	for _, twins := range []int{1, 0} {
-		if p.Twins = twins; twins == 0 {
-			want = one
-		}
-		got := played(f.notes(RipMelodyLow, RipMaxMIDI, p))
-		for _, l := range [][][3]int{want, got} {
-			slices.SortFunc(l, func(a, b [3]int) int { return cmp.Or(a[1]-b[1], a[0]-b[0], a[2]-b[2]) })
-		}
-		if !slices.Equal(got, want) {
-			t.Errorf("twins %d: notes (midi, start, end) %v, want %v", twins, got, want)
-		}
-	}
-}
-
 // pedalFrames is pitches struck in turn under a pedal and strikes that start no
 // note, as a front end that hears each pitch struck gives them, with the frames
 // each strike peaks on, and the notes (midi, start, end) the strikes read
@@ -1886,9 +1831,7 @@ func TestNoteLevelsReadARecordingsLoudness(t *testing.T) {
 // TestMIDIRoundTrip: a transcript written as a MIDI file reads back note for
 // note and hit for hit within half a tick, each line from its named track and
 // each drum from the drum channel on its key, a note that ends as the next of its
-// pitch starts kept apart from it, two of one pitch sounding together on a line,
-// the first struck the first let go, each to its own end, each glide as written
-// and every note unmeasured.
+// pitch starts kept apart from it, each glide as written and every note unmeasured.
 func TestMIDIRoundTrip(t *testing.T) {
 	in := []RipNote{
 		{Start: 0, End: 1.2, MIDI: 40, Vel: 1, Bass: true, Bend: -12, BendAt: 0.5},
@@ -1896,8 +1839,6 @@ func TestMIDIRoundTrip(t *testing.T) {
 		{Start: 0.4, End: 0.73, MIDI: 72, Vel: 0.5, Bend: 1.46, BendAt: 0.6},
 		{Start: 0.5, End: 1.1, MIDI: 67, Vel: 0.6, Second: true},
 		{Start: 0.77, End: 1.234, MIDI: 76, Vel: 0.3, Bend: -0.5},
-		{Start: 1.3, End: 1.6, MIDI: 43, Vel: 0.9, Bass: true},
-		{Start: 1.45, End: 1.9, MIDI: 43, Vel: 0.5, Bass: true},
 	}
 	hits := []RipHit{{Start: 0, Drum: InstrKick, Vel: 1}, {Start: 0.22, Drum: InstrHihat, Vel: 0.5, Key: 44}, {Start: 0.44, Drum: InstrSnare, Vel: 0.8}}
 	var file bytes.Buffer

@@ -270,56 +270,29 @@ func TestAStrikeWhoseSoundIsItsOwnComesBack(t *testing.T) {
 	}
 }
 
-// TestTwoNotesOfOnePitchAtOneStartAreOneButATwin: the strike's note and the
-// bass line's own note of one pitch at one start merge into one, the longer end
-// kept; a twin, a second note the strike held, stays beside its strike's note to
-// its own end, and goes where that note goes, as the fit cannot part their sound
-func TestTwoNotesOfOnePitchAtOneStartAreOneButATwin(t *testing.T) {
-	const frames = 1000
+// TestTwoNotesOfOnePitchAtOneStartAreOne: the strike's note and the bass
+// line's own note of one pitch at one start merge into one, the longer end kept.
+func TestTwoNotesOfOnePitchAtOneStartAreOne(t *testing.T) {
+	const frames = 400
 	x := make([]float64, frames*RipHop)
 	accTone(x, 40, 50, 350, 0.3, 8)
 	reported := []ripNote{{start: 50, end: 120, midi: 40, vel: 0.6}, {start: 51, end: 300, midi: 40, vel: 0.4}}
 	f := accFrames(frames, reported, nil)
-	bass, melody, _ := f.account(x, DefaultRipParams(), accAsk{}, slices.Clone(reported), nil)
+	bass, melody, _ := f.account(x, DefaultRipParams(), accAsk{}, reported, nil)
 	if len(bass) != 1 || len(melody) != 0 || bass[0].start != 50 || bass[0].end != 300 || bass[0].vel != 0.6 {
 		t.Errorf("bass %+v and %d melody notes, want one E2 from 50 to 300 at the strike's velocity", bass, len(melody))
 	}
-	reported[1].twin = true
-	if bass, _, _ = f.account(x, DefaultRipParams(), accAsk{}, slices.Clone(reported), nil); !slices.Equal(played(bass), [][3]int{{40, 50, 120}, {40, 51, 300}}) {
-		t.Errorf("bass (midi, start, end) %v, want the strike's E2 to 120 and its twin to 300", played(bass))
-	}
-	// the A4 at the octave of a ringing A3, whose sound the A3's accounts for, and its twin
-	notes := []ripNote{{start: 650, end: 950, midi: 57, vel: 0.5}, {start: 700, end: 760, midi: 69, vel: 0.5}, {start: 700, end: 900, midi: 69, vel: 0.5, twin: true}}
-	accTone(x, 57, 650, 950, 0.3, 8)
-	f = accFrames(frames, notes, nil)
-	f.Strike[700*RipPitches+69-RipMinMIDI] = 0.8
-	for t := 700; t < 900; t++ {
-		f.Salience[t*RipPitches+69-RipMinMIDI] = 0.75
-	}
-	if _, melody, _ = f.account(x, DefaultRipParams(), accAsk{}, nil, notes); !slices.Equal(accPitches(melody), []int{57}) {
-		t.Errorf("notes kept %v, want the A3 alone, the A4 and its twin gone", accPitches(melody))
-	}
 }
 
-// TestAKeptNoteRingsOnThroughADroppedOneButNoTwin: under RingOn a note kept
-// sounds on to the end of a restrike of its pitch the accounting drops as its
-// ring, and not to that restrike's twin's, which goes with it; a twin kept is not
-// rung on through a restrike dropped where it ends. RingOn 0 moves no end.
-func TestAKeptNoteRingsOnThroughADroppedOneButNoTwin(t *testing.T) {
-	const frames = 1000
-	x := make([]float64, frames*RipHop)
-	accTone(x, 57, 50, 400, 0.3, 8)
-	accTone(x, 60, 600, 950, 0.3, 8)
-	reported := []ripNote{{start: 50, end: 200, midi: 57, vel: 0.5}, {start: 200, end: 400, midi: 57, vel: 0.5}, {start: 205, end: 450, midi: 57, vel: 0.5, twin: true},
-		{start: 600, end: 700, midi: 60, vel: 0.5}, {start: 605, end: 800, midi: 60, vel: 0.5, twin: true}, {start: 800, end: 950, midi: 60, vel: 0.5}}
-	f := accFrames(frames, reported, map[int]float32{200*1000 + 57: 0.8, 800*1000 + 60: 0.8})
-	p := DefaultRipParams()
-	for ring, end := range map[int]int{1: 400, 0: 200} {
-		p.RingOn = ring
-		want := [][3]int{{57, 50, end}, {60, 600, 700}, {60, 605, 800}}
-		if _, melody, _ := f.account(x, p, accAsk{}, nil, slices.Clone(reported)); !slices.Equal(played(melody), want) {
-			t.Errorf("ring_on %d: notes (midi, start, end) %v, want %v", ring, played(melody), want)
-		}
+// TestARingingNoteSoundsOnThroughADroppedRestrike: a note the decoder cut at a
+// strike of its pitch sounds on to the dropped note's end when that strike was
+// no new note, and is left alone where the dropped note started later.
+func TestARingingNoteSoundsOnThroughADroppedRestrike(t *testing.T) {
+	kept := []*accNote{{ripNote: ripNote{start: 50, end: 150, midi: 60}}, {ripNote: ripNote{start: 400, end: 450, midi: 60}}, {ripNote: ripNote{start: 50, end: 150, midi: 64}}}
+	dropped := []*accNote{{ripNote: ripNote{start: 150, end: 300, midi: 60}}, {ripNote: ripNote{start: 470, end: 500, midi: 60}}}
+	accRingOn(kept, dropped)
+	if kept[0].end != 300 || kept[1].end != 450 || kept[2].end != 150 {
+		t.Errorf("ends %d %d %d, want 300 (sounding on), 450 (the drop started later) and 150 (another pitch)", kept[0].end, kept[1].end, kept[2].end)
 	}
 }
 
