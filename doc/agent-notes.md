@@ -353,16 +353,15 @@ that a document now states, and link the document instead.
   0 opens none, so the corpus reads the same. `Downbeat` is negative then,
   `progression` reads no frame before zero, and `CompareRips` skips the pickup
   bar against a truth without one.
-- **What is heard at the start keeps its nearest step, stated at 0.** On 120
-  cuts of the test loop a pickup step before frame 0 held a melody note in 61
-  rips (to 64 ms early), the bass in 34 and the hihat in 8, the hits alone
-  meeting `WriteMIDI`'s refusal. Moved to the first step after the start, 99
-  events sat past half a step and 4 of the 24 hits on the recordings' first step
-  went unmatched; stated at 0 (`stepAt`), every rip stays byte for byte.
+- **What is heard at the start keeps its nearest step, stated at 0.** A pickup
+  step before frame 0 can hold a note as well as a hit, the hit alone meeting
+  `WriteMIDI`'s refusal. Moved to the first step after the start, an event can
+  sit past half a step from where it was heard and a hit on the recording's
+  first step go unmatched; stated at 0 (`stepAt`), the rip's bars do not change.
 - **A step is stated up to half a frame off where `at` rounds onto it.** `at`
-  cuts a bar's span evenly and `stepAt` reads its rounded beats, so of some
-  14,000 events on those cuts 42 lie past half a step from their frame, none by
-  more than half a frame: count a quantized event's distance with that slack.
+  cuts a bar's span evenly and `stepAt` reads its rounded beats, so an event can
+  lie past half a step from its frame by up to half a frame: count a quantized
+  event's distance with that slack.
 - **The present decoder lays no pickup line a frame or two before the start.**
   Its tracker reaches back to within half a beat of frame 0 and the first line
   falls on that pulse; the joint path starts on the first beat heard, so heads
@@ -384,8 +383,8 @@ that a document now states, and link the document instead.
   the offline one's, opened a bar for it, so `closing` leaves the last half
   window out. A beat on the last line is the last bar's end and opens none.
 - **The grid's edges move the bars and nothing else**: a digest of each rip's
-  `Notes`, `Tuning` and `Strikes` alone held through them on 24 loops of `aug gen
-  glide meters overlaps` where the whole rips moved, 14 of 24 through the analysis.
+  `Notes`, `Tuning` and `Strikes` alone holds through a change to them, where one
+  of the whole rip moves.
 - The pitch paths start late against the onsets the beats sit on: the median
   phase of the notes is taken out before quantizing. Under that sharper grid the
   second pass's fragments cost the pad test's melody two hundredths against the
@@ -695,8 +694,7 @@ that a document now states, and link the document instead.
   padding. The accounting's templates are a MIDI key's (`accKeys`), so no
   range reaches them.
 - **The own-pitch and steady-rise rules read the frames' tuning** as the
-  accounting and `bright` do; on the 24-loop digest that moved no rip through
-  the analysis, which measures it.
+  accounting and `bright` do.
 - **A rip reads no frame head of a notes model but the measure.** `notesHeads`
   names `voicing`, which `New` therefore asks of the file, and `read` never
   reads it; the onset, drums, wave and voice are the frame model's. So what a
