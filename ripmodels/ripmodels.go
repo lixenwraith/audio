@@ -1,8 +1,8 @@
 // Package ripmodels is the rip's learned front end: a frame model, a transformer
-// over the band frames whose heads say, per frame, whether anything and which drum
-// struck, which pitches sound, are struck or let go and how hard, the note's wave,
-// genes and family, and whether a beat or a bar line falls there, and a notes
-// model that may give the notes and what plays each. stapes' rip-train trains both.
+// over the band frames whose heads say, per frame, whether anything, which drum and
+// what of no pitch struck, which pitches sound, are struck or let go and how hard,
+// the note's wave, genes and family, a beat or a bar line there, and a notes model
+// that may give the notes and what plays each. stapes' rip-train trains both.
 package ripmodels
 
 import (
@@ -41,6 +41,10 @@ const (
 	// HeadSure is the share a family must pass over a note to name it, a notes
 	// model's: a head of no weights, the same at every frame, its trainer's measure
 	HeadSure = "sure"
+	// A frame model's after FrameSpec's, what is struck of no pitch, a drum's or
+	// no drum's: something at this frame, and how hard; a file has both or neither
+	HeadStruck    = "struck"
+	HeadStruckVel = "struckvel"
 )
 
 // Layout names the constant a weight file states the layout of the frames it was
@@ -51,9 +55,10 @@ const Layout = "layout"
 const layoutName = "315 bands three a semitone from G#0, a fine plane and a sharp one"
 
 // FrameSpec is the frame model the trainer builds, which a weight file must match
-// in its inputs, heads and layout, any head after these read by nothing: the
-// piano's pitches, each plane's bands in dB in two channels, fine then sharp, or
-// the PCEN planes after them in four (features). Its width, depth and window may differ.
+// in its inputs, heads and layout, any head after these but what is struck read by
+// nothing: the piano's pitches, each plane's bands in dB in two channels, fine then
+// sharp, or the PCEN planes after them in four (features). Its width, depth and
+// window may differ.
 func FrameSpec() transformer.Config {
 	n := audio.RipPiano.Len()
 	return transformer.Config{
@@ -159,9 +164,10 @@ func (t *tail) Read(p []byte) (int, error) {
 }
 
 // New wraps a frame model and a notes model, nil for none, refusing a model whose
-// file states no layout or another, a frame model whose inputs are not FrameSpec's
-// or whose heads do not start with its, and a notes model that does not read the
-// harmonic stack or lacks one of notesHeads.
+// file states no layout or another, a frame model whose inputs are not FrameSpec's,
+// whose heads do not start with its or that has one of the heads of what is struck
+// and not the other, and a notes model that does not read the harmonic stack or
+// lacks one of notesHeads.
 func New(m, notes *transformer.Model) (*FrontEnd, error) {
 	for _, model := range []struct {
 		name string
@@ -183,6 +189,14 @@ func New(m, notes *transformer.Model) (*FrontEnd, error) {
 	}
 	if len(got.Outputs) < len(want.Outputs) || !slices.Equal(got.Outputs[:len(want.Outputs)], want.Outputs) {
 		return nil, fmt.Errorf("ripmodels: frame model's heads are %v, want %v first", got.Outputs, want.Outputs)
+	}
+	named := func(h transformer.Head) bool { return h.Name == HeadStruck || h.Name == HeadStruckVel }
+	if slices.ContainsFunc(got.Outputs, named) {
+		for _, name := range [...]string{HeadStruck, HeadStruckVel} {
+			if !slices.Contains(got.Outputs, transformer.Head{Name: name, Size: 1}) {
+				return nil, fmt.Errorf("ripmodels: frame model has no head %q of 1: what is struck is read from %q and %q or from neither", name, HeadStruck, HeadStruckVel)
+			}
+		}
 	}
 	if notes == nil {
 		return &FrontEnd{Frame: m}, nil
@@ -235,7 +249,7 @@ func sureSpread(notes *transformer.Model) (lo, hi float32) {
 // model when there is one, and reads their heads into frames: the onset and drum
 // scores as strengths, the pitch scores as salience and chroma, the wave scores
 // and voice genes, and where a model has them the strikes, releases, velocities,
-// family shares, beat, downbeat, cents and what plays each pitch.
+// family shares, beat, downbeat, what is struck, cents and what plays each pitch.
 func (fe *FrontEnd) Hear(x []float64, rate int, _ audio.RipParams) (*audio.RipFrames, error) {
 	in := features(audio.BandFrames(x, rate), fe.pcen())
 	out := fe.Frame.Forward(fe.planes(in))
@@ -288,6 +302,9 @@ func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 		head string
 		into *[]float32
 	}{{HeadStrike, &f.Strike}, {HeadRelease, &f.Release}, {HeadVelocity, &f.Velocity}}
+	if n > 0 && head(HeadStruck, 0) != nil {
+		f.Struck, f.StruckVel = make([]float64, n), make([]float64, n)
+	}
 	if n > 0 && fe.Notes != nil {
 		if head(HeadCents, 0) != nil {
 			f.Cents, f.CentsError = make([]float32, 0, n*rg.Len()), make([]float32, 0, n*rg.Len())
@@ -322,6 +339,9 @@ func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 		}
 		f.Family = appendSoftmax(f.Family, head(HeadFamily, t))
 		f.Beat[t], f.Downbeat[t] = sigmoid(head(HeadBeat, t)[0]), sigmoid(head(HeadDownbeat, t)[0])
+		if f.Struck != nil {
+			f.Struck[t], f.StruckVel[t] = sigmoid(head(HeadStruck, t)[0]), sigmoid(head(HeadStruckVel, t)[0])
+		}
 		if f.Cents != nil {
 			c := head(HeadCents, t)
 			for i, v := range c[:rg.Len()] {

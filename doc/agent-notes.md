@@ -645,6 +645,13 @@ that a document now states, and link the document instead.
   `train.py`) scores a posterior p as wp/(wp + 1 - p): the strike head's
   (w 20) half-sure is 0.95 and the pitch head's (w 12) 0.92. Sweep a
   decoder's threshold on that scale against the truths; 0.5 floods.
+- **The struck head peaks on the strike's own frame.** Of 1,607 strikes that stand
+  alone in E-GMD train takes its highest frame is the label's at 1,016 and one after
+  at 389, three frames over 8/9 at 1,006 and four at 454, its score 0.9995 in the
+  median: `pickHits` needs no floor on it, and the picks' F1 by instant moves by
+  0.006 from a bar of 0.5 to one of 0.96. One pick an instant tops out at 0.775 each
+  strike to its own, as 39% of the labels' strikes lie within `OnsetGap` of the one
+  before: a ceiling on the labels, no result.
 - Under a pedal the pitch head's output sits at its ceiling for every ringing
   note, and it rises a few frames before a strike: a "was it sounding" test on
   the frames before a strike reads nearly every note as ringing. Ask the

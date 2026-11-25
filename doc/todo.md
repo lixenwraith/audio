@@ -175,6 +175,30 @@ installed scores stay until one is. What the stage leaves open:
   and a tenth more of its stream's. A judge's network is scalar float32, 0.16 M
   multiply-adds a strike: 5% more of the loop's rip, 8% of its stream's.
 
+### Play what is struck
+
+- Priority: P1
+- Affected files: `rip.go` (`struck`, `RipBar`), `ripstream.go`, `kit.go`, `sequencer.go`
+
+A rip keeps every strike of no pitch its front end hears (`Rip.Struck`, [Audio
+§9](audio.md#9-ripping-a-recording)) and plays none of them: the bars' drums are the
+three lines' hits. stapes' reading on recordings no fit saw decides whether it stays:
+where it finds no more of E-GMD's instants than the lines' hits do, it goes with the
+heads' loader, and it goes by 31 January 2027 where nothing below has come to read
+it. What it leaves, in order:
+
+- **Strikes into pieces**: a recording's strikes grouped into a kit's pieces by
+  what they sound like, and one instant's strikes told apart, as one hit stands for
+  all of them now; read on E-GMD's takes by the pairs of strikes told alike or apart
+  as their keys are.
+- **A kit of pieces in the engine**: the sequencer plays four percussion instruments
+  and a hit names one of three, so more than three pieces cannot be played; read by a
+  take's song rendered and scored against its recording beside the three lines' song.
+- **The bars**: a strike of no line lies on no step, so it is in no pattern and no
+  song, and a stream's bars carry none (`Final`'s rip does).
+- **Its loudness against a recording**: the head is taught on rendered loops alone, and
+  no truth in use states a recorded hit's velocity.
+
 ### Walk the notes that start together in an order of their own
 
 - Priority: P2
