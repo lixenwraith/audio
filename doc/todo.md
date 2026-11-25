@@ -83,45 +83,30 @@ fill at the eq's neighbouring value, once a recording shows it audible.
 
 ## The rip's notes
 
-### Keep what perfect heads say
+### Keep what the heads say
 
 - Priority: P1
 - Affected files: `account.go`, `rip.go`
 
-With every head written off stapes' labels as the trainer's targets, no model
-loaded, the decoders' notes read 0.895 by F1 against 35,724 labelled on 580
-generated loops, 0.852 through a room, a mix and a tuning off A440, each loss
-put at its stage by the rip's own record (`Rip.Stages`, `ReadStages`, which
-stapes' `truth` and `tune ... truth` print: [Rip training
-§11](https://github.com/lixenwraith/stapes/blob/main/doc/rip-training.md#the-decoder-alone)).
-What is left, largest first, each with the smallest close:
+What the decoders drop or move of what the heads say, found with the labels in
+the models' place, a ceiling that says nothing of how much a trained model
+loses there: each is counted by kind through trained models on recordings, by
+the rip's own record (`Rip.Stages`, `ReadStages`, which stapes' `truth` and
+`tune ... truth` print), before it is changed. Each with the smallest close:
 
-- **The accounting** drops 4,816 true notes, 6,883 through the room: chord
-  tones and octave doubles whose partials a lower note's fit explains, as the
-  installed scores weigh a strike and a salience against the fit's share and
-  span. It rings a kept note on through a dropped one, 679 ends late. Close: a
-  judge fitted on rows of perfect heads beside a trained model's, or a note the
-  heads are sure of kept, as one the fit cannot see is (`Held`).
-- **One note a pitch at a time**: two parts on one pitch are one note, 1,249
-  lost to a twin on perfect heads, and its end is the first release or strike
-  of either. A second note held by the releases moved no reading with trained
-  models on recordings and is not in the decoders. Close: such notes lost on
-  recordings, counted by kind, before any rule for them.
-- **`dynamics`** moves a velocity the head already says: the loudness reads
-  0.895, 0.769 through the room. Close: one of the two, the head taught the
-  note's level over its passage or the move dropped.
-- **The tuning** of a model's frames is A440: the tuning its cents head hears
-  gained 0.005 of the notes on generated loops alone with trained models and
-  is not in the decoders. Close: recordings off A440 read by kind, before any
-  rule for them.
-- **The key** is a profile's: 201 of 411 right. Close: the tonic weighed where
-  the bass and phrases rest.
-- **The bass's own-pitch rule** drops 432 low notes whose fundamental stands
+- **The accounting** drops true notes, chord tones and octave doubles whose
+  partials a lower note's fit explains, as the installed scores weigh a strike
+  and a salience against the fit's share and span, and rings a kept note on
+  through a dropped one, its end then late. Close: a note the heads are sure of
+  kept, as one the fit cannot see is (`Held`).
+- **`dynamics`** moves a velocity the head already says. Close: one of the two,
+  the head taught the note's level over its passage or the move dropped.
+- **The bass's own-pitch rule** drops true low notes whose fundamental stands
   more than 10 dB (`ripOwnPitch`) under its next partials. Close: the rule only
   where no sure strike of the pitch stands.
-- **A plateau's peak** is read on its last frame (agent notes), so 51 notes
-  (290 through the room) whose sound leaves its first cell start none. Close:
-  read a peak at the middle of equal frames, as `centre` does a beat.
+- **A plateau's peak** is read on its last frame (agent notes), so a note whose
+  sound leaves its first cell starts none. Close: read a peak at the middle of
+  equal frames, as `centre` does a beat.
 
 ### Hold more of the rip to the recording
 
@@ -443,12 +428,13 @@ What is left here, each to settle on trained weights:
   head is not read again once they freeze. Reading it at every bar is the
   sections thread's; the joint path reads it at every bar, in its first bars'
   meter.
-- **The joint path against the readings.** On stapes' loops with the labels as
-  heads it reads every bar of seven meters where the readings miss 2/4, 5/4,
-  7/8 and a quarter of 6/8 and 12/8; on heads spoiled to the trained F1s its
-  errors are the heads' own, 4/4 read 2/4 where the half bar is marked, 6/8 and
-  12/8 read as each other. To settle on the trained heads (`truth` and `tune
-  ... truth` with and without stapes' `heads`) before `joint` is the default.
+- **The joint path against the readings.** It reads 2/4, 5/4 and 7/8, which the
+  readings do not, every bar of them right with the labels as the heads, a
+  ceiling; with trained heads it reads more generated loops right and fewer of
+  a lone guitar's recordings ([stapes'
+  todo](https://github.com/lixenwraith/stapes/blob/main/doc/todo.md#a-set-a-kind-of-sound)).
+  To settle by kind, on real mixes with their bars given, before `joint` is 1
+  for any.
 - **Half and double bars** are not offered (2 and 8 heard beats), nor 5/4
   and 7/8, but on the joint path. 12/8 is, as two bars of 6/8 where the head stands at its lines
   over 6/8's along the same stretch: a 6/8 whose head marks every other line
