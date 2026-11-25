@@ -353,16 +353,15 @@ that a document now states, and link the document instead.
   0 opens none, so the corpus reads the same. `Downbeat` is negative then,
   `progression` reads no frame before zero, and `CompareRips` skips the pickup
   bar against a truth without one.
-- **What is heard at the start keeps its nearest step, stated at 0.** On 120
-  cuts of the test loop a pickup step before frame 0 held a melody note in 61
-  rips (to 64 ms early), the bass in 34 and the hihat in 8, the hits alone
-  meeting `WriteMIDI`'s refusal. Moved to the first step after the start, 99
-  events sat past half a step and 4 of the 24 hits on the recordings' first step
-  went unmatched; stated at 0 (`stepAt`), every rip stays byte for byte.
+- **What is heard at the start keeps its nearest step, stated at 0.** A pickup
+  step before frame 0 can hold a note as well as a hit, the hit alone meeting
+  `WriteMIDI`'s refusal. Moved to the first step after the start, an event can
+  sit past half a step from where it was heard and a hit on the recording's
+  first step go unmatched; stated at 0 (`stepAt`), the rip's bars do not change.
 - **A step is stated up to half a frame off where `at` rounds onto it.** `at`
-  cuts a bar's span evenly and `stepAt` reads its rounded beats, so of some
-  14,000 events on those cuts 42 lie past half a step from their frame, none by
-  more than half a frame: count a quantized event's distance with that slack.
+  cuts a bar's span evenly and `stepAt` reads its rounded beats, so an event can
+  lie past half a step from its frame by up to half a frame: count a quantized
+  event's distance with that slack.
 - **The present decoder lays no pickup line a frame or two before the start.**
   Its tracker reaches back to within half a beat of frame 0 and the first line
   falls on that pulse; the joint path starts on the first beat heard, so heads
@@ -372,20 +371,20 @@ that a document now states, and link the document instead.
   score's tempo map puts a sixteenth's pickup's first tick at -5.6e-17 s at 13 of
   121 tempos, which `WriteMIDI` refuses, where the decoders' whole-frame beats in
   the sequencer's range never do: the floor is in seconds, not in frames.
-- **The grid's edges were where perfect heads' bars lost what they heard.** With
-  every head stapes' label's on 580 generated loops, the joint path left 573
-  hits outside its bars: 317 past the last line of loops that end part-way into a
-  bar, its own last line laid only within half a beat past the frames, and 254
-  within a tenth of a beat before a first line it centres a frame or two after a
-  hit on frame 0; the present path 1,518, 1,423 past its last line. `pickup` and
-  `closing` lay both ends, a beat the head marks heard as a hit is.
+- **The grid's edges were where the bars lost what the heads heard.** A loop
+  that ends part-way into a bar left its hits past the last line, which the joint
+  path laid only within half a beat past the frames, and one that opens on a hit
+  left it a frame or two before the first line, which that path centres on its
+  beat. `pickup` and `closing` lay both ends, a beat the head marks heard as a hit
+  is, and with trained models the bars read better so ([stapes' agent
+  notes](https://github.com/lixenwraith/stapes/blob/main/doc/agent-notes.md#training-rounds)).
 - **A recording cut mid-sound clicks on its last frames**, an onset the analysis
   hears there; a stream's joint path, whose last line fell three frames before
   the offline one's, opened a bar for it, so `closing` leaves the last half
   window out. A beat on the last line is the last bar's end and opens none.
 - **The grid's edges move the bars and nothing else**: a digest of each rip's
-  `Notes`, `Tuning` and `Strikes` alone held through them on 24 loops of `aug gen
-  glide meters overlaps` where the whole rips moved, 14 of 24 through the analysis.
+  `Notes`, `Tuning` and `Strikes` alone holds through a change to them, where one
+  of the whole rip moves.
 - The pitch paths start late against the onsets the beats sit on: the median
   phase of the notes is taken out before quantizing. Under that sharper grid the
   second pass's fragments cost the pad test's melody two hundredths against the
@@ -535,23 +534,22 @@ that a document now states, and link the document instead.
 - **A joint path's meters are told by the lines one has and another lacks, so
   a miss and a half-bar mark tip them both ways.** On four-bar loops a missed
   first line costs 4/4 more than a 12/8 at half its tempo, whose one line takes
-  the best mark, and a half bar marked over `joint_line` gains 2/4 a line a bar:
-  on heads spoiled to the trained F1s 24 of 239 4/4 loops read 2/4. A margin
-  over 4/4 (`joint_margin`) holds both; scaling the downbeat head's word against
-  it moved the margin's meaning instead (2/4 fell to 2 of 20 at half weight).
+  the best mark, and a half bar marked over `joint_line` gains 2/4 a line a bar.
+  A margin over 4/4 (`joint_margin`) holds both; scaling the downbeat head's word
+  against it moved the margin's meaning instead. Both were seen on labels spoiled
+  to the trained F1s in the heads' place, so on the decoder alone.
 - **Heads written as the trainer's targets are plateaus**, a frame either side
   at one, so a decoder that keeps the first of equal frames puts each beat a
   frame early, two where it reads the head's highest within a frame: the joint
   path centres each beat on the frames the head holds its peak on (`centre`).
-  The strikes, releases and starts keep a plateau's last frame (`peaks`,
-  `heardAt`), a frame late, and `pickHits` a hit's first: inside the matchers'
-  windows, but a sound gone from its first cell within two frames no longer
-  sounds where its strike is read.
+  The strikes and releases keep a plateau's last frame (`peaks`), a frame late,
+  and `pickHits` a hit's first: inside the matchers' windows, but a sound gone
+  from its first cell within two frames no longer sounds where its strike is read.
 - **A tempo counted against a loop's `bpm` counts its drift.** Seven loops in
   ten of stapes' corpus drift, three in ten slowing or quickening to 3 to 8% by
-  their end, and a label's `bpm` is the first bar's: with the labels as heads
-  the two decoders read 478 and 511 of 574 loops within 3% of it, 538 and 574
-  of the bars' median tempo. Count both, and the bar, which drift leaves alone.
+  their end, and a label's `bpm` is the first bar's, so a rip right on the tempo
+  its loop plays can read wrong against it. Count both, and the bar, which drift
+  leaves alone.
 - **A change that must not move the rip is held by a digest of rips.** A scratch
   program: every WAV of a rendered corpus (stapes' `corpus <dir> 48 8 aug gen
   meters`) ripped through the analysis and through random weights of `FrameSpec`
@@ -696,8 +694,7 @@ that a document now states, and link the document instead.
   padding. The accounting's templates are a MIDI key's (`accKeys`), so no
   range reaches them.
 - **The own-pitch and steady-rise rules read the frames' tuning** as the
-  accounting and `bright` do; on the 24-loop digest that moved no rip through
-  the analysis, which measures it.
+  accounting and `bright` do.
 - **A rip reads no frame head of a notes model but the measure.** `notesHeads`
   names `voicing`, which `New` therefore asks of the file, and `read` never
   reads it; the onset, drums, wave and voice are the frame model's. So what a
@@ -913,9 +910,9 @@ that a document now states, and link the document instead.
   read every line and beat right on 29 of 298 GuitarSet recordings where the
   present path reads 118, and on 132 of 264 generated loops where 94, the
   meters the present path never offers among them; with the labels as the
-  heads it reads all 298. Its four costs were set on labels and built heads,
-  never on a trained beat head where no drum plays, and `joint` is one switch
-  for every recording (`grid`).
+  heads, its ceiling, it reads all 298. Its four costs were set on labels and
+  built heads, never on a trained beat head where no drum plays, and `joint` is
+  one switch for every recording (`grid`).
 - **A rip does not say which grid it took.** Where the beat head ranks its
   beats no better than chance the bars are the cues' (`track`, and `grid` where
   the heads' readings hold no bar), and `Samples` drops `ripTrack.heard`: a
@@ -995,8 +992,7 @@ that a document now states, and link the document instead.
   with `Samples` rounds the recording to float32 first.
 - **Keeping the stages costs nothing a run can tell**: `BenchmarkRip`'s staged
   way sat within unjudged's spread over five runs (1,129 and 1,137 ms medians),
-  114 allocations and 125 KB more; stapes' search over label frames, which runs no
-  analysis, took 29.4 to 30.4 s for 24 loops with them and 29.5 to 30.5 without.
+  114 allocations and 125 KB more.
 - **`BenchmarkRip` and the stream's `struck` ways are mostly the analysis.**
   The accounting is a small share of the loop's rip there, so a judge loaded
   and the read on move them by a few percent; profile for the stage's own
