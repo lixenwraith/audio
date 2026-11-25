@@ -15,6 +15,58 @@ type activeSound struct {
 	buffer floatBuffer
 	pos    int
 	volume float64
+	placing
+}
+
+// placing is a Placement as the mixer plays it: each ear's gain, the buffer's
+// samples a frame steps over and how far past pos the next read falls, and the
+// low-pass's coefficient, 0 for none, with its two poles
+type placing struct {
+	ears       [2]float64
+	step, frac float64
+	coef       float64
+	poles      [2]float64
+}
+
+// placing holds each field to its range, one not a number taking the zero
+// value's; the square roots are equal power that leaves the middle as rendered
+func (at Placement) placing() placing {
+	pan := bounded(at.Pan, 1)
+	p := placing{
+		ears: [2]float64{math.Sqrt(1 - pan), math.Sqrt(1 + pan)},
+		step: math.Pow(2, bounded(at.Pitch, MaxPlacedPitch)/12),
+	}
+	if at.Cutoff > 0 && at.Cutoff < AudioSampleRate/2 {
+		p.coef = 1 - math.Exp(-2*math.Pi*at.Cutoff/AudioSampleRate)
+	}
+	return p
+}
+
+// bounded is v within ±limit, 0 when v is not a number
+func bounded(v, limit float64) float64 {
+	if v != v {
+		return 0
+	}
+	return min(max(v, -limit), limit)
+}
+
+// read takes the sound's next sample, between two where its step is not whole,
+// through its low-pass where it has one
+func (s *activeSound) read() float64 {
+	v := s.buffer[s.pos]
+	if s.frac > 0 && s.pos+1 < len(s.buffer) {
+		v += (s.buffer[s.pos+1] - v) * s.frac
+	}
+	if s.coef > 0 {
+		s.poles[0] += (v - s.poles[0]) * s.coef
+		s.poles[1] += (s.poles[0] - s.poles[1]) * s.coef
+		v = s.poles[1]
+	}
+	s.frac += s.step
+	whole := math.Floor(s.frac)
+	s.pos += int(whole)
+	s.frac -= whole
+	return v
 }
 
 // Mixer is the audio thread. Fields below the confinement marker are touched
@@ -55,7 +107,7 @@ type Mixer struct {
 	limitBuf   [][2]float64 // the look-ahead delay, a frame's two ears
 	limitPos   int
 	musicBuf   []float64
-	sfxBuf     []float64
+	sfxBuf     [2][]float64 // the sfx bus's two ears over one period
 	bed        bed
 	bedBuf     [2][]float64 // the bed's two ears over one period
 	mixBuf     [2][]float64 // the limited mix's two ears; the tap's while it is written
@@ -143,8 +195,8 @@ func NewMixer(out io.Writer, cache *soundCache, k *kit, period time.Duration) *M
 	}
 	frames := bufferFrames(period)
 	m.musicBuf = make([]float64, frames)
-	m.sfxBuf = make([]float64, frames)
 	for ear := range m.mixBuf {
+		m.sfxBuf[ear] = make([]float64, frames)
 		m.bedBuf[ear] = make([]float64, frames)
 		m.mixBuf[ear] = make([]float64, frames)
 	}
@@ -273,7 +325,7 @@ func (m *Mixer) drainCmds() {
 func (m *Mixer) apply(c audioCmd) {
 	switch c.op {
 	case cmdPlay:
-		m.startSound(c.sound, c.f1)
+		m.startSound(c.sound, c.f1, c.place)
 	case cmdBPM:
 		m.sequencer.SetBPM(c.i1, c.b)
 	case cmdMeter:
@@ -335,7 +387,7 @@ func (m *Mixer) apply(c audioCmd) {
 }
 
 // startSound applies rapid-fire dampening and polyphony caps, then activates a voice on a rotated variant
-func (m *Mixer) startSound(st SoundID, vol float64) {
+func (m *Mixer) startSound(st SoundID, vol float64, at placing) {
 	if m.paused.Load() {
 		m.dropped.Add(1)
 		return
@@ -370,7 +422,7 @@ func (m *Mixer) startSound(st SoundID, vol float64) {
 	}
 	m.lastPlay[st] = now
 
-	m.admit(activeSound{st: st, buffer: buf, volume: vol * m.rapidVol[st]})
+	m.admit(activeSound{st: st, buffer: buf, volume: vol * m.rapidVol[st], placing: at})
 }
 
 // renderTick renders one buffer: music bus and bed, sfx bus, duck, pause, limit, write
@@ -379,7 +431,8 @@ func (m *Mixer) renderTick() {
 	isPaused := m.paused.Load()
 
 	clear(m.musicBuf)
-	clear(m.sfxBuf)
+	clear(m.sfxBuf[0])
+	clear(m.sfxBuf[1])
 
 	// Music plays out the pause fade, then freezes: position holds for an aligned
 	// resume. The bed sounds while the music does, and is in what the tap records.
@@ -403,7 +456,7 @@ func (m *Mixer) renderTick() {
 	// Sfx tails always render; pause gain fades them out
 	sfxLive := len(m.active) > 0
 	if sfxLive {
-		m.active = m.mixActive(m.sfxBuf, len(m.sfxBuf))
+		m.active = m.mixActive(m.sfxBuf)
 	}
 
 	// sidechain duck — music dips under sounding sfx
@@ -433,10 +486,10 @@ func (m *Mixer) renderTick() {
 			}
 		}
 
-		// The bed joins after the duck, so sfx never dip it; with no bed both ears
-		// are the one mix, to the bit
-		v := (m.musicBuf[i]*m.duckGain + m.sfxBuf[i]) * m.pauseGain
-		l, r := v, v
+		// The bed joins after the duck, so sfx never dip it; with no bed and no
+		// sound placed off the middle both ears are the one mix, to the bit
+		l := (m.musicBuf[i]*m.duckGain + m.sfxBuf[0][i]) * m.pauseGain
+		r := (m.musicBuf[i]*m.duckGain + m.sfxBuf[1][i]) * m.pauseGain
 		if bedOn {
 			l += m.bedBuf[0][i] * m.pauseGain
 			r += m.bedBuf[1][i] * m.pauseGain
@@ -481,15 +534,16 @@ func (m *Mixer) renderTick() {
 	}
 }
 
-// mixActive mixes all active sounds into buf, returns remaining sounds
-func (m *Mixer) mixActive(buf []float64, samples int) []activeSound {
+// mixActive mixes all active sounds into the two ears, returns remaining sounds
+func (m *Mixer) mixActive(ears [2][]float64) []activeSound {
 	remaining := m.active[:0]
 
 	for i := range m.active {
 		s := &m.active[i]
-		for j := 0; j < samples && s.pos < len(s.buffer); j++ {
-			buf[j] += s.buffer[s.pos] * s.volume
-			s.pos++
+		for j := 0; j < len(ears[0]) && s.pos < len(s.buffer); j++ {
+			v := s.read() * s.volume
+			ears[0][j] += v * s.ears[0]
+			ears[1][j] += v * s.ears[1]
 		}
 		if s.pos < len(s.buffer) {
 			remaining = append(remaining, *s)
@@ -568,5 +622,5 @@ func (m *Mixer) startBuffer(buf floatBuffer, vol float64) {
 		m.dropped.Add(1)
 		return
 	}
-	m.admit(activeSound{st: SoundNone, buffer: buf, volume: vol})
+	m.admit(activeSound{st: SoundNone, buffer: buf, volume: vol, placing: Placement{}.placing()})
 }

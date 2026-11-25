@@ -1300,6 +1300,103 @@ func TestTheMusicRecordingIsWhatPlaysInBothEars(t *testing.T) {
 	}
 }
 
+// placedTone is a sine at hz, half scale, for a tenth of a second
+func placedTone(hz float64) floatBuffer {
+	tone := make(floatBuffer, AudioSampleRate/10)
+	for i := range tone {
+		tone[i] = 0.5 * math.Sin(2*math.Pi*hz*float64(i)/AudioSampleRate)
+	}
+	return tone
+}
+
+// playPlaced is what a mixer with nothing else sounding plays of a tone placed at
+// at, in each ear, read until the tone has passed through the limiter
+func playPlaced(tone floatBuffer, at Placement) (left, right []float64) {
+	var out bytes.Buffer
+	m := NewMixer(&out, newSoundCache(), nil, AudioBufferDuration)
+	m.admit(activeSound{st: SoundNone, buffer: tone, volume: 1, placing: at.placing()})
+	for range 6 {
+		m.renderTick()
+	}
+	return ears(out.Bytes())
+}
+
+// placedReads is every sample an active sound placed at at reads of tone
+func placedReads(tone floatBuffer, at Placement) []float64 {
+	s := activeSound{buffer: tone, volume: 1, placing: at.placing()}
+	var got []float64
+	for s.pos < len(s.buffer) {
+		got = append(got, s.read())
+	}
+	return got
+}
+
+func rms(x []float64) float64 {
+	sum := 0.0
+	for _, v := range x {
+		sum += v * v
+	}
+	return math.Sqrt(sum / float64(len(x)))
+}
+
+// TestAPlacementPansAtEqualPower: a sound panned hard left is silent in the right
+// ear, and wherever it is panned its two ears hold the power the middle's hold.
+func TestAPlacementPansAtEqualPower(t *testing.T) {
+	cl, cr := playPlaced(placedTone(440), Placement{})
+	if !slices.Equal(cl, cr) {
+		t.Fatal("a sound in the middle differs between the ears")
+	}
+	middle := 2 * rms(cl) * rms(cl)
+	for _, pan := range []float64{-1, -0.4, 0.7} {
+		l, r := playPlaced(placedTone(440), Placement{Pan: pan})
+		if power := rms(l)*rms(l) + rms(r)*rms(r); math.Abs(power/middle-1) > 0.01 {
+			t.Errorf("pan %.1f holds %.4f of the middle's power, want 1", pan, power/middle)
+		}
+		if pan == -1 && rms(r) != 0 {
+			t.Errorf("a sound panned hard left sounds in the right ear at %.4f", rms(r))
+		}
+	}
+}
+
+// TestAPlacementsPitchStepsThroughItsSound: twelve semitones up a sound plays in
+// half its time at twice its frequency, twelve down in twice its time at half.
+func TestAPlacementsPitchStepsThroughItsSound(t *testing.T) {
+	crossings := func(x []float64) int {
+		n := 0
+		for i := 1; i < len(x); i++ {
+			if (x[i-1] < 0) != (x[i] < 0) {
+				n++
+			}
+		}
+		return n
+	}
+	tone := placedTone(440)
+	base := crossings(placedReads(tone, Placement{}))
+	for _, c := range []struct {
+		pitch, ratio float64
+	}{{12, 0.5}, {-12, 2}} {
+		got := placedReads(tone, Placement{Pitch: c.pitch})
+		if want := float64(len(tone)) * c.ratio; math.Abs(float64(len(got))-want) > 1 {
+			t.Errorf("at %+.0f semitones the sound reads %d samples, want %.0f", c.pitch, len(got), want)
+		}
+		if n := crossings(got); math.Abs(float64(n)-float64(base)) > 2 {
+			t.Errorf("at %+.0f semitones the sound crosses zero %d times, want the %d of its own cycles", c.pitch, n, base)
+		}
+	}
+}
+
+// TestAPlacementsCutoffTakesOffTheHighs: a low-pass at 500 Hz keeps a 100 Hz tone
+// and takes a 6 kHz one down past a tenth of its level.
+func TestAPlacementsCutoffTakesOffTheHighs(t *testing.T) {
+	at := Placement{Cutoff: 500}
+	if low, tone := placedReads(placedTone(100), at), placedTone(100); rms(low[len(low)/2:]) < 0.9*rms(tone) {
+		t.Errorf("the cutoff keeps %.2f of a 100 Hz tone, want over 0.9", rms(low[len(low)/2:])/rms(tone))
+	}
+	if high, tone := placedReads(placedTone(6000), at), placedTone(6000); rms(high[len(high)/2:]) > 0.1*rms(tone) {
+		t.Errorf("the cutoff keeps %.2f of a 6 kHz tone, want under 0.1", rms(high[len(high)/2:])/rms(tone))
+	}
+}
+
 // oneNote registers a one-note pattern for a role at the given tiers
 func oneNote(name string, r Role, tiers uint8) PatternID {
 	return RegisterPattern(&Pattern{Name: name, Steps: 16, Role: r, Groups: []string{"g"}, Tiers: tiers,

@@ -63,6 +63,9 @@ const (
 	SoundVariants  = 3  // pre-rendered variants per sound a spec does not count
 	MaxSfxPerSound = 2  // concurrent sfx per SoundID (most-progressed stolen)
 	MaxActiveSfx   = 12 // global concurrent sfx cap
+	MaxPlacedPitch = 24 // semitones a Placement moves a sound either way
+
+	MaxPlacedAttenuation = 120.0 // dB a Placement's Gain takes off at most, past audible
 
 	// Rapid-fire dampening: repeats inside the cooldown attenuate, then
 	// recover proportionally over RapidFireRecovery
