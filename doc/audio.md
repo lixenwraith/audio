@@ -66,7 +66,8 @@ Automatic candidates are tried in this order:
 
 1. `pacat`, the PulseAudio protocol, also commonly available through PipeWire
    compatibility;
-2. `pw-cat`, native PipeWire;
+2. `pw-cat`, native PipeWire: with `--raw`, as 1.4 and later read raw samples,
+   then without, as 1.2 and older do;
 3. `aplay`, ALSA command-line playback;
 4. `sox`, the SoX `play` executable;
 5. `ffplay`, FFmpeg playback;

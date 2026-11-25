@@ -25,6 +25,11 @@ that a document now states, and link the document instead.
   (`golang.org/x/mod`'s `zip.CreateFromVCS` into `dirhash.HashZip`, and
   `dirhash.Hash1` over its `go.mod`), which hold while that tree does not
   change; the same tool gives the lines of a version already in `go.sum`.
+- A player's line is read against a distribution's current tools in a chroot of
+  Arch's bootstrap image, its pacman trusting the proxy's CA: PipeWire,
+  WirePlumber and `pipewire-pulse` under a session bus, a null sink made with
+  `pw-cli create-node adapter` (`object.linger=true`), and `pw-record --target
+  <sink> -P stream.capture.sink=true` on it says whether a line plays.
 
 ## Tests
 
