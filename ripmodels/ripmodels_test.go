@@ -227,66 +227,6 @@ func TestAHeadAfterTheSpecsIsReadByNothing(t *testing.T) {
 	}
 }
 
-// withPlaces is a frame model's config with the trainer's heads after FrameSpec's:
-// struck, which nothing reads, then what is struck at each of places places
-func withPlaces(cfg transformer.Config, places int) transformer.Config {
-	cfg.Outputs = append(slices.Clone(cfg.Outputs), transformer.Head{Name: "struck", Size: 1}, transformer.Head{Name: HeadPlaces, Size: places},
-		transformer.Head{Name: HeadGenes, Size: 2 * audio.StruckGeneCount * places}, transformer.Head{Name: HeadLoudness, Size: places})
-	return cfg
-}
-
-// TestWhatIsStruckAtEachPlaceIsReadIntoTheFrames: a frame model with the heads
-// of what is struck at each place gives every frame, place by place, the
-// sigmoid of its struck and loudness scores and of its genes and the
-// exponent of each gene's log error, as the trainer writes them; one with
-// some of the heads and not all, or one of another size, is refused by name
-func TestWhatIsStruckAtEachPlaceIsReadIntoTheFrames(t *testing.T) {
-	cfg := FrameSpec()
-	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window = 16, 2, 1, 32, 8
-	full := withPlaces(cfg, 3)
-	m, _ := transformer.NewRandom(full, 1)
-	fe, err := New(m, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	x := make([]float64, 2*audio.AudioSampleRate)
-	for i := range x {
-		x[i] = 0.3 * math.Sin(float64(i)*2*math.Pi*220/audio.AudioSampleRate) * math.Exp(-float64(i%11025)/2000)
-	}
-	f, err := fe.Hear(x, audio.AudioSampleRate, audio.DefaultRipParams())
-	if err != nil {
-		t.Fatal(err)
-	}
-	out := m.Forward(fe.planes(features(audio.BandFrames(x, audio.AudioSampleRate), false)))
-	k := 3 * audio.StruckGeneCount
-	if f.Places != 3 || len(f.Struck) != 3*len(out) || len(f.StruckGenes) != k*len(out) || len(f.StruckGenesError) != k*len(out) || len(f.StruckLoudness) != 3*len(out) {
-		t.Fatalf("%d places, %d, %d, %d and %d values over %d frames", f.Places, len(f.Struck), len(f.StruckGenes), len(f.StruckGenesError), len(f.StruckLoudness), len(out))
-	}
-	for i, o := range out {
-		genes := m.Slice(o, HeadGenes)
-		for p := range 3 {
-			if f.Struck[3*i+p] != float32(sigmoid(m.Slice(o, HeadPlaces)[p])) || f.StruckLoudness[3*i+p] != float32(sigmoid(m.Slice(o, HeadLoudness)[p])) {
-				t.Fatalf("frame %d, place %d: struck %g and loudness %g", i, p, f.Struck[3*i+p], f.StruckLoudness[3*i+p])
-			}
-		}
-		for g := range k {
-			if f.StruckGenes[k*i+g] != float32(sigmoid(genes[g])) || f.StruckGenesError[k*i+g] != float32(math.Exp(float64(genes[k+g]))) {
-				t.Fatalf("frame %d, gene %d of the places': %g, stated %g", i, g, f.StruckGenes[k*i+g], f.StruckGenesError[k*i+g])
-			}
-		}
-	}
-	short := full
-	short.Outputs = slices.Clone(full.Outputs[:len(full.Outputs)-1])
-	wide := withPlaces(cfg, 3)
-	wide.Outputs[len(wide.Outputs)-2].Size++
-	for _, c := range []transformer.Config{short, wide} {
-		m, _ := transformer.NewRandom(c, 1)
-		if _, err := New(m, nil); err == nil || !strings.Contains(err.Error(), HeadLoudness) && !strings.Contains(err.Error(), HeadGenes) {
-			t.Errorf("heads %v: %v", c.Outputs, err)
-		}
-	}
-}
-
 // exported is a notes model of random weights as stapes' export writes one: its
 // sure head's row of frameout's weights zero and its bias the measure, the file's
 // checksum (FNV-1a 64 of all before it) written again, and loaded
@@ -601,7 +541,7 @@ func struck(sec int) (x []float64, loudest int) {
 
 // modelHeads are the heads a notes model leaves the frame model, as the rip
 // reads them
-var modelHeads = []string{HeadOnset, HeadDrums, HeadWave, HeadVoice, HeadFamily, HeadBeat, HeadDownbeat, HeadPlaces, HeadGenes, HeadGenes + " error", HeadLoudness}
+var modelHeads = []string{HeadOnset, HeadDrums, HeadWave, HeadVoice, HeadFamily, HeadBeat, HeadDownbeat}
 
 // byHead appends frames' values to to, by the head each is read from, a frame's
 // after another's, and the spectrum under its own name
@@ -616,8 +556,7 @@ func byHead(to map[string][]float32, f *audio.RipFrames) {
 		}
 	}
 	for head, v := range map[string][]float32{HeadPitch: f.Salience, HeadStrike: f.Strike, HeadRelease: f.Release, HeadVelocity: f.Velocity,
-		HeadWave: f.Wave, HeadVoice: f.Voice, HeadFamily: f.Family, "spectrum": f.Spectrum,
-		HeadPlaces: f.Struck, HeadGenes: f.StruckGenes, HeadGenes + " error": f.StruckGenesError, HeadLoudness: f.StruckLoudness} {
+		HeadWave: f.Wave, HeadVoice: f.Voice, HeadFamily: f.Family, "spectrum": f.Spectrum} {
 		to[head] = append(to[head], v...)
 	}
 	// the cents in cells, the head's own scale, where one bar of rounding fits every head
@@ -677,7 +616,7 @@ func apart(a, b []float32, frames, from int) (rms, worst, of float64) {
 func TestTheEarHearsAsTheWholeRecording(t *testing.T) {
 	cfg := FrameSpec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window = 16, 2, 2, 32, 32
-	m, _ := transformer.NewRandom(withPlaces(cfg, 3), 1)
+	m, _ := transformer.NewRandom(cfg, 1)
 	notes := NotesSpec()
 	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
 	notes.Cells.Long = []int{3, 9, 27} // the trainer's

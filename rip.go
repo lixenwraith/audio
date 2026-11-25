@@ -496,15 +496,6 @@ type RipFrames struct {
 	// Spectrum is the recording's mel bands at each frame, frames × RipMelBands,
 	// each band's energy as MelStream gives it: a stream's whose Ripper asks, else nil
 	Spectrum []float32
-	// Places is how many even runs of the bands, from the lowest, a front end
-	// hears what is struck in, zero for none; at each place, frames × Places, how
-	// surely something of no pitch is struck there and how hard, a velocity
-	Places                 int
-	Struck, StruckLoudness []float32
-	// StruckGenes is the genes (StruckGeneNames) of what is struck at each place,
-	// frames × Places × StruckGeneCount, and StruckGenesError the error the front
-	// end states for each; no decoder reads either yet
-	StruckGenes, StruckGenesError []float32
 	// bands are the analysis's onset bands per frame, under 200 Hz, to 4 kHz and
 	// over 5 kHz, the onset strength read from them against each one's loudest;
 	// nil from a model
@@ -556,26 +547,21 @@ func (f *RipFrames) fields(visit func(field any, per int)) {
 	visit(&f.Beat, 1)
 	visit(&f.Downbeat, 1)
 	visit(&f.Spectrum, RipMelBands)
-	visit(&f.Struck, f.Places)
-	visit(&f.StruckGenes, f.Places*StruckGeneCount)
-	visit(&f.StruckGenesError, f.Places*StruckGeneCount)
-	visit(&f.StruckLoudness, f.Places)
 	for b := range f.bands {
 		visit(&f.bands[b], 1)
 	}
 }
 
-// extend appends g's frames to f's, and takes its hop, tuning, measure, range
-// and places where it holds frames: an ear's step that gave none says nothing
-// of them
+// extend appends g's frames to f's, and takes its hop, tuning, measure and
+// range where it holds frames: an ear's step that gave none says nothing of them
 func (f *RipFrames) extend(g *RipFrames) {
 	if g == nil {
 		return
 	}
 	if g.frames() > 0 {
-		f.Hop, f.Tuning, f.Sure, f.Range, f.Places = g.Hop, g.Tuning, g.Sure, g.Range, g.Places
+		f.Hop, f.Tuning, f.Sure, f.Range = g.Hop, g.Tuning, g.Sure, g.Range
 	}
-	from := make([]any, 0, 28) // every field's, at one allocation
+	from := make([]any, 0, 24) // every field's, at one allocation
 	g.fields(func(field any, _ int) { from = append(from, field) })
 	i := 0
 	f.fields(func(field any, _ int) {
