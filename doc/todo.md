@@ -394,11 +394,10 @@ On recordings no fit saw (the `bars` of [a pair's
 table](https://github.com/lixenwraith/stapes/blob/main/doc/rip-training.md#a-pairs-table))
 the lines read under the beats on every kind: through the first round's frame
 model 0.619 and 0.717 of a guitar's, 0.681 and 0.814 of generated loops', 0.632
-and 0.943 of E-GMD's; trained on with E-GMD's hits, which took the guitar's down,
-0.487 and 0.639, 0.673 and 0.812, 0.682 and 0.963. The first reads every line and
-beat right on 37 of 138 GuitarSet recordings it did not train on and 114 of 160
-it did, on 223 of 399 generated loops and on 9 of 40 E-GMD takes. What is left
-here:
+and 0.943 of E-GMD's; trained on with E-GMD's hits 0.487 and 0.639, the guitar's
+fallen, 0.673 and 0.812, 0.682 and 0.963. The first reads every line and beat
+right on 37 of 138 GuitarSet recordings it did not train on and 114 of 160 it
+did, on 223 of 399 generated loops and on 9 of 40 E-GMD takes. What is left here:
 
 - **The heads left out.** The same weights read with their heads set aside (a
   `FrontEnd` whose frames have `Beat` nil), by kind beside the reading with them:
