@@ -46,8 +46,6 @@ type RipParams struct {
 	StrikeLow     float64 `toml:"strike_low"`     // how sure a strike under the melody's register must be, as every attack rings a body's or a room's low mode
 	StrikeAgain   float64 `toml:"strike_again"`   // how sure a strike of a pitch still sounding must be to end its note and start another
 	Release       float64 `toml:"release"`        // how sure a front end that hears each pitch let go must be before the release ends its note
-	OwnPitch      float64 `toml:"own_pitch"`      // the least dB a bass note's own pitch stands over its next partials, under which it is a higher note's shadow
-	CentsTuning   float64 `toml:"cents_tuning"`   // the share of the tuning a front end's cents head hears that its frames state where it states none; 0 leaves A440
 
 	TempoComb float64 `toml:"tempo_comb"`  // what the onsets' repetition at twice a lag adds to the lag's own, where the tempo is read from them
 	BeatComb2 float64 `toml:"beat_comb_2"` // what the beat head's repetition at twice a lag adds to the lag's own, where the tempo is read from it
@@ -82,12 +80,14 @@ type RipParams struct {
 
 // ripDrumsPerMinute is the least a drum strikes to be part of the music, ripLineNote
 // and ripLineStrength how long and strong a bass note stands without a strike,
-// ripSteadyRise the least dB it rises over its pitch's steady level, ripDynamics
-// the most dB a passage's level moves a velocity
+// ripOwnPitch the least dB a low note's own pitch stands over its next partials,
+// under which it is a higher note's shadow, ripSteadyRise the least dB it rises over
+// its pitch's steady level, ripDynamics the most dB a passage's level moves a velocity
 const (
 	ripDrumsPerMinute = 4
 	ripLineNote       = 0.15
 	ripLineStrength   = 0.8
+	ripOwnPitch       = -10
 	ripSteadyRise     = 6
 	ripDynamics       = 12
 )
@@ -98,7 +98,6 @@ func DefaultRipParams() RipParams {
 		OnsetFloor: 2.0, OnsetMin: 0.1, OnsetGap: 0.06, KickShare: 0.06, SnareShare: 0.45, SnareNoise: 0.1, HatShare: 0.3,
 		Harmonics: 6, HarmonicDecay: 0.8, Voicing: 0.3, Jump: 0.06, Switch: 0.35, Retrigger: 0.4, MinNote: 0.06,
 		SecondVoice: 0.5, Compress: 1, Cross: 0.003, Strike: 0.8, StrikeLow: 0.9, StrikeHold: 0.9, StrikeGap: 0.12, StrikeAgain: 0.95, Release: 0.8,
-		OwnPitch:  -10,
 		TempoComb: 0.5, BeatComb2: 0.8, BeatComb3: 0.5, BeatComb4: 0.6, BeatCut2: 0.7, BeatCut3: 0.33,
 		BarLine: 1, BarBeat: 1, BarAccent: 0.5, BarHead: 1, BarMove: 2,
 		MeterMargin: 0.35, MeterHead: 1, RepeatMargin: 0.03, NearMargin: 0.07, NearRepeat: 0.015,
@@ -168,8 +167,6 @@ var ripGenes = []ripGene{
 	{"key_open", 0, 3, func(p *RipParams) *float64 { return &p.KeyOpen }},
 	{"key_close", 0, 3, func(p *RipParams) *float64 { return &p.KeyClose }},
 	{"key_bar", 0.1, 1, func(p *RipParams) *float64 { return &p.KeyBar }},
-	{"own_pitch", -40, 0, func(p *RipParams) *float64 { return &p.OwnPitch }},
-	{"cents_tuning", 0, 1, func(p *RipParams) *float64 { return &p.CentsTuning }},
 }
 
 // ripCounts are the integer parameters' fields by their genes' names
@@ -1918,46 +1915,10 @@ func tuning(x []float64) float64 {
 			re, im, sum = re+mag[k]*math.Cos(angle), im+mag[k]*math.Sin(angle), sum+mag[k]
 		}
 	})
-	return semitoneMean(re, im, sum)
-}
-
-// semitoneMean is the cents of votes summed around the circle of a semitone,
-// each its weight times its angle's cosine and sine over a weight of sum: their
-// mean's angle, zero where they agree on no offset
-func semitoneMean(re, im, sum float64) float64 {
 	if sum == 0 || math.Hypot(re, im)/sum < 0.3 {
 		return 0
 	}
 	return math.Atan2(im, re) / (2 * math.Pi) * 100
-}
-
-// centsVotes are frame t's votes for the tuning (semitoneMean), each cell the
-// cents head reads within a quarter tone voting its cents with its salience
-func (f *RipFrames) centsVotes(t int) (re, im, sum float64) {
-	k := f.Pitches().Len()
-	for i := t * k; i < (t+1)*k && i < len(f.Cents); i++ {
-		if w := float64(f.Salience[i]); w > 0 && (f.CentsError == nil || f.CentsError[i] < 50) {
-			a := 2 * math.Pi * float64(f.Cents[i]) / 100
-			re, im, sum = re+w*math.Cos(a), im+w*math.Sin(a), sum+w
-		}
-	}
-	return re, im, sum
-}
-
-// statesTuning is whether the frames take the tuning their cents head hears:
-// where p shares it and the front end states none
-func (f *RipFrames) statesTuning(p RipParams) bool {
-	return p.CentsTuning != 0 && f.Tuning == 0 && f.Cents != nil
-}
-
-// centsTuning is the tuning the frames' cents head hears over every frame
-func (f *RipFrames) centsTuning() float64 {
-	var re, im, sum float64
-	for t := range f.frames() {
-		a, b, c := f.centsVotes(t)
-		re, im, sum = re+a, im+b, sum+c
-	}
-	return semitoneMean(re, im, sum)
 }
 
 // tempo is the lag the onset strength repeats at, the beat head's where one is
@@ -3793,7 +3754,7 @@ func (f *RipFrames) lines(x []float64, p RipParams, tr *ripTrace) (bass, melody 
 	steady := map[[2]int]ripSteady{}
 	bass = slices.DeleteFunc(bass, func(n ripNote) bool {
 		switch {
-		case ownPitch(x, n, f.Hop, f.Tuning) < p.OwnPitch:
+		case ownPitch(x, n, f.Hop, f.Tuning) < ripOwnPitch:
 			tr.note(StageOwnPitch, RipDropped, WhyNone, n)
 			return true
 		case steadyRise(x, n, f.Hop, f.Tuning, steady) < ripSteadyRise:

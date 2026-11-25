@@ -49,13 +49,11 @@ type RipStream struct {
 	late         *RipFrames
 	late0, wrote int
 	flux         []float64 // the decoders' onset strength, the window's left as heard
-	// the loudest of each drum's onset strength and each onset band, each
-	// register's loudest row a frame and the cents head's votes for the tuning
-	// (semitoneMean), over the frames up to counted
+	// the loudest of each drum's onset strength and each onset band, and each
+	// register's loudest row a frame, over the frames up to counted
 	loud    [InstrClap]float64
 	peak    [3]float64
 	levels  [ripRegisters]ripLevels
-	tune    [3]float64
 	counted int
 	// held from the first bars frozen: the beat tracked and the reading the
 	// bars are decoded in, the meter and tempo they are named, the key they
@@ -340,10 +338,6 @@ func (s *RipStream) count(upto int) {
 			r := register{f: f, lo: lh[0], reach: registerReach(lh[0], lh[1])}
 			s.levels[i].add(r.peak(t))
 		}
-		if f.statesTuning(s.p) {
-			re, im, sum := f.centsVotes(t)
-			s.tune = [3]float64{s.tune[0] + re, s.tune[1] + im, s.tune[2] + sum}
-		}
 		if s.rp.Judge != nil || s.rp.Strikes && s.rp.Rows { // what reads a row
 			s.fluxes.add(f.Flux[t])
 		}
@@ -371,9 +365,6 @@ func (s *RipStream) decode(upto int, end bool) error {
 	x := s.x
 	if !end {
 		x = x[:min(len(x), (upto-s.w0)*RipHop+RipN/2)]
-	}
-	if f.statesTuning(s.p) {
-		f.Tuning = s.p.CentsTuning * semitoneMean(s.tune[0], s.tune[1], s.tune[2])
 	}
 	f.loud, f.refs = s.loud, map[[2]int]float64{}
 	if s.fluxes.n > 0 {
