@@ -227,6 +227,64 @@ func TestAHeadAfterTheSpecsIsReadByNothing(t *testing.T) {
 	}
 }
 
+// withStruck is a frame model's config with the trainer's heads of what is struck
+// after FrameSpec's
+func withStruck(cfg transformer.Config) transformer.Config {
+	cfg.Outputs = append(slices.Clone(cfg.Outputs), transformer.Head{Name: HeadStruck, Size: 1}, transformer.Head{Name: HeadStruckVel, Size: 1})
+	return cfg
+}
+
+// TestWhatIsStruckIsReadIntoTheFrames: a frame model with both heads of what is
+// struck gives each frame the sigmoid of each, and the frames of one without them
+// hold neither; one with one and not the other, or one of another size, is refused
+// by the head it lacks
+func TestWhatIsStruckIsReadIntoTheFrames(t *testing.T) {
+	cfg := FrameSpec()
+	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window = 16, 2, 1, 32, 8
+	full := withStruck(cfg)
+	x, _ := struck(2)
+	var heard []*audio.RipFrames
+	for _, c := range []transformer.Config{cfg, full} {
+		m, _ := transformer.NewRandom(c, 1)
+		fe, err := New(m, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f, err := fe.Hear(x, audio.RipRate, audio.DefaultRipParams())
+		if err != nil {
+			t.Fatal(err)
+		}
+		heard = append(heard, f)
+	}
+	m, _ := transformer.NewRandom(full, 1)
+	out := m.Forward((&FrontEnd{Frame: m}).planes(features(audio.BandFrames(x, audio.RipRate), false)))
+	if f := heard[0]; f.Struck != nil || f.StruckVel != nil {
+		t.Errorf("a model without the heads heard %d and %d values", len(f.Struck), len(f.StruckVel))
+	}
+	f := heard[1]
+	if len(f.Struck) != len(out) || len(f.StruckVel) != len(out) {
+		t.Fatalf("%d and %d values over %d frames", len(f.Struck), len(f.StruckVel), len(out))
+	}
+	for i, o := range out {
+		if f.Struck[i] != sigmoid(m.Slice(o, HeadStruck)[0]) || f.StruckVel[i] != sigmoid(m.Slice(o, HeadStruckVel)[0]) {
+			t.Fatalf("frame %d struck at %g, as hard as %g", i, f.Struck[i], f.StruckVel[i])
+		}
+	}
+	for _, i := range []int{len(full.Outputs) - 2, len(full.Outputs) - 1} {
+		name := full.Outputs[i].Name
+		lone, wide := full, full
+		lone.Outputs = slices.Delete(slices.Clone(full.Outputs), i, i+1)
+		wide.Outputs = slices.Clone(full.Outputs)
+		wide.Outputs[i].Size = 2
+		for _, c := range []transformer.Config{lone, wide} {
+			m, _ := transformer.NewRandom(c, 1)
+			if _, err := New(m, nil); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("no head %q of 1", name)) {
+				t.Errorf("heads %v: %v", c.Outputs[len(cfg.Outputs):], err)
+			}
+		}
+	}
+}
+
 // exported is a notes model of random weights as stapes' export writes one: its
 // sure head's row of frameout's weights zero and its bias the measure, the file's
 // checksum (FNV-1a 64 of all before it) written again, and loaded
@@ -541,7 +599,7 @@ func struck(sec int) (x []float64, loudest int) {
 
 // modelHeads are the heads a notes model leaves the frame model, as the rip
 // reads them
-var modelHeads = []string{HeadOnset, HeadDrums, HeadWave, HeadVoice, HeadFamily, HeadBeat, HeadDownbeat}
+var modelHeads = []string{HeadOnset, HeadDrums, HeadWave, HeadVoice, HeadFamily, HeadBeat, HeadDownbeat, HeadStruck, HeadStruckVel}
 
 // byHead appends frames' values to to, by the head each is read from, a frame's
 // after another's, and the spectrum under its own name
@@ -550,6 +608,9 @@ func byHead(to map[string][]float32, f *audio.RipFrames) {
 		to[HeadOnset] = append(to[HeadOnset], float32(v))
 		if f.Beat != nil {
 			to[HeadBeat], to[HeadDownbeat] = append(to[HeadBeat], float32(f.Beat[t])), append(to[HeadDownbeat], float32(f.Downbeat[t]))
+		}
+		if f.Struck != nil {
+			to[HeadStruck], to[HeadStruckVel] = append(to[HeadStruck], float32(f.Struck[t])), append(to[HeadStruckVel], float32(f.StruckVel[t]))
 		}
 		for d := range f.Onset {
 			to[HeadDrums] = append(to[HeadDrums], float32(f.Onset[d][t]))
@@ -616,7 +677,7 @@ func apart(a, b []float32, frames, from int) (rms, worst, of float64) {
 func TestTheEarHearsAsTheWholeRecording(t *testing.T) {
 	cfg := FrameSpec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN, cfg.Window = 16, 2, 2, 32, 32
-	m, _ := transformer.NewRandom(cfg, 1)
+	m, _ := transformer.NewRandom(withStruck(cfg), 1)
 	notes := NotesSpec()
 	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
 	notes.Cells.Long = []int{3, 9, 27} // the trainer's

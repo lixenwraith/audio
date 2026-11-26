@@ -878,6 +878,9 @@ with the key it was struck on (`RipHit.Key`).
 `MatchHits` lays the hits on the rip's own (`Rip.Hits`, each step placed on its
 beats) under the stretch and offset that match most, each within half a step, or
 timed as they stand: a groove matches as well a whole number of beats off.
+`MatchStruck` lays strikes so by their time alone, whatever drum either side names,
+over instants (`Instants`): a strike and those within a gap of an instant's first are
+one, so what is struck together counts once and a roll does not.
 `MatchBars` scores the rip's bar lines, which no note's map sees and on whose
 phase every pattern the rip compresses into turns, against a truth's beats and
 downbeats in the recording's seconds (`BarScore`): its median bar over the
@@ -955,7 +958,7 @@ the power the harmonic spectrum is raised to before the salience, under one to
 flatten the partials a saturated mix piles on every note; a `[rip]` table in a
 TOML document carries a set (`LoadRipParams`, `MarshalRipParams`), each key in
 its range: `onset_min`'s reaches 0.9, as a frame model sure of its drum hits
-wants its bar far above the analysis's 0.1. The bars' weights and
+wants its bar far above the analysis's 0.1, and `struck`'s 0.999. The bars' weights and
 margins are among them (`tempo_comb`, `beat_comb_2` to `4`, `beat_cut_2`, `beat_cut_3`, `bar_line`,
 `bar_beat`, `bar_accent`, `bar_head`, `bar_move`, `meter_margin`, `meter_head`,
 `repeat_margin`, `near_margin`, `near_repeat`), each at the value the decoders
@@ -989,7 +992,8 @@ shares over `RipFamilies`: piano, guitar, voice, bass, strings, winds, synth,
 drums or unknown), which no decoder reads yet, and the beat and the bar line
 (`ripmodels.HeadBeat`, `HeadDownbeat`, after the family in `FrameSpec`; a file
 whose heads do not start with `FrameSpec`'s is refused, and a head after them is
-read by nothing).
+read by nothing but the two of what is struck of no pitch, `HeadStruck` and
+`HeadStruckVel`, which a file has both of or neither).
 From strikes both registers' notes start where a pitch is struck, as hard
 as it was, and last while
 it sounds or until it is let go (`Release`, the pitch ringing on as far as a new
@@ -1051,7 +1055,13 @@ since they sort the strikes into two populations the score weighs apart, and
 strikes judged all together let a bass note's partials take its sound. A front end's drum strength is how sure it is, so a
 drum it never grows sure of stays silent, where a bar set against its own loudest
 would raise its doubts to hits, and one striking under four times a minute is no
-part (`drumHits`). A register's voice is the mean of the frames' genes over its
+part (`drumHits`). Where it says what is struck of no pitch and how hard
+(`RipFrames.Struck`, `StruckVel`), a rip keeps every such strike, a drum's or no
+drum's (`Rip.Struck`, a `RipHit` each): the peaks over `struck`, which starts where
+the trainer's weight on a strike puts one at even odds, the surer of two within
+`onset_gap`, as hard as is said there and of the drum a hit of which lies within a
+frame, the surest, or of none (`Drum` -1). No bar holds one, so what a song plays
+stays the drums' hits, and a stream's bars carry none. A register's voice is the mean of the frames' genes over its
 notes, one voice over the melody's two lines, on a modal bank whatever wave the
 head names, as it names saw through a phone's narrow band; where a notes model
 says what plays each pitch (below), a line's voice is its own notes' instead.
@@ -1064,7 +1074,7 @@ notes model (`ripmodels.NotesSpec`, the trainer's PitchNet), a cell net
 (`transformer.Cells`) of convolutions alone with the same weights at every
 pitch, gives the pitch, voicing, strike, release and velocity heads, and the
 frame model the onsets, the drums, the wave and voice genes, the family, the
-beat and the bar line. It reads the harmonic stack (`stacked`): each of the four
+beat, the bar line and what is struck. It reads the harmonic stack (`stacked`): each of the four
 planes of the features (below) a channel for each harmonic of a half and one to
 seven, the bands shifted so a pitch's harmonics lie at its own bin, 32 channels
 of 270 bins, bin k band k, from the semitone under A0 to the one over C8, each

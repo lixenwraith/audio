@@ -634,6 +634,34 @@ func MatchHits(a, b []RipHit, tol float64, timed bool) HitsAgreement {
 	return ag
 }
 
+// Instants is the hits' instants in time, each its first hit: a hit and those
+// within gap seconds of it are one whatever they strike, and the next past that
+// starts another, so a roll is not one
+func Instants(hits []RipHit, gap float64) []RipHit {
+	hits = slices.Clone(hits)
+	slices.SortStableFunc(hits, func(a, b RipHit) int { return cmpFloat(a.Start, b.Start) })
+	var out []RipHit
+	for _, h := range hits {
+		if k := len(out) - 1; k < 0 || h.Start > out[k].Start+gap+1e-9 {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// MatchStruck aligns b's strikes to a's by their time alone, whatever drum either
+// names, as MatchHits aligns one drum's
+func MatchStruck(a, b []RipHit, tol float64, timed bool) HitLine {
+	one := func(hits []RipHit) []RipHit {
+		hits = slices.Clone(hits)
+		for i := range hits {
+			hits[i].Drum = InstrKick
+		}
+		return hits
+	}
+	return MatchHits(one(a), one(b), tol, timed).Drums[InstrKick]
+}
+
 // pairHits counts the hits of b, mapped onto a's time, that take one of a's,
 // and fills line when it is given
 func pairHits(a, b []RipHit, stretch, offset, tol float64, line *HitLine) int {

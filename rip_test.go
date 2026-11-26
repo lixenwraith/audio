@@ -833,6 +833,40 @@ func TestAFrontEndsDoubtsAreNoDrums(t *testing.T) {
 	}
 }
 
+// TestARipKeepsEveryStrikeOfNoPitchItsFrontEndHears: the peaks of what is struck over
+// the parameter, the surer of two within the gap and none before the music, each as
+// hard as heard and of the drum a hit of which lies within a frame, the surer's of two,
+// or of none; the rest of the rip is as without it, a stream's bars carry none, and a
+// front end that hears none keeps none
+func TestARipKeepsEveryStrikeOfNoPitchItsFrontEndHears(t *testing.T) {
+	f := &RipFrames{Hop: RipFrameSec, Struck: make([]float64, 600), StruckVel: make([]float64, 600)}
+	for frame, sure := range map[int]float64{40: 0.99, 99: 0.94, 100: 0.95, 101: 0.94, 103: 0.99, 200: 0.9, 300: 0.888, 400: 0.99, 500: 0.99} {
+		f.Struck[frame], f.StruckVel[frame] = sure, float64(frame)/600
+	}
+	hits := [InstrClap][]ripHit{{{201, 0.8}, {500, 0.3}}, {{199, 0.9}}, {{402, 0.9}}}
+	at := func(frame int, d InstrumentType) RipHit {
+		return RipHit{Start: float64(frame) * f.Hop, Drum: d, Vel: float64(frame) / 600}
+	}
+	want := []RipHit{at(103, -1), at(200, InstrSnare), at(400, -1), at(500, InstrKick)}
+	if got := f.struck(hits, 60, DefaultRipParams()); !slices.Equal(got, want) {
+		t.Errorf("strikes %+v, want %+v", got, want)
+	}
+	ae, slots := startLoopEngine(t)
+	x, g := heardLoop(t, ae, slots, Meter{}, 120, 120, 8, func(int) (float64, float64) { return 0.9, 0.1 })
+	without := ripHeard(t, x, g, false)
+	g.Struck, g.StruckVel = make([]float64, g.frames()), make([]float64, g.frames())
+	for k := 43; k < g.frames(); k += 43 {
+		g.Struck[k] = 0.99
+	}
+	r, live := ripHeard(t, x, g, false), ripHeard(t, x, g, true)
+	if n := (g.frames() - 1) / 43; len(r.Struck) != n || live.Struck != nil || without.Struck != nil {
+		t.Errorf("%d strikes kept of %d, %d by a stream's bars, %d by a front end that hears none", len(r.Struck), n, len(live.Struck), len(without.Struck))
+	}
+	if r.Struck = nil; !reflect.DeepEqual(r, without) {
+		t.Error("the strikes moved the rest of the rip")
+	}
+}
+
 // TestANotesVelocityFollowsItsPassage: the same velocity heard in a loud passage
 // and a soft one comes out apart by their level, and a passage far softer stops at the bound.
 func TestANotesVelocityFollowsItsPassage(t *testing.T) {
@@ -1383,6 +1417,32 @@ func TestMatchHitsTimedSearchesNoMap(t *testing.T) {
 	}
 	if ag := MatchHits(heard, given, beat/StepsPerBeat/2, true); ag.Stretch != 1 || ag.Offset != 0 || matched(ag) != [2]int{30, 60} {
 		t.Errorf("timed: map %.3f × given %+.3f, %v matched; want none, and all but the two beats given before the rip's", ag.Stretch, ag.Offset, matched(ag))
+	}
+}
+
+// TestStrikesAreMatchedByInstant: a hit and those within the gap of an instant's first
+// are one instant whatever they strike, so hits each within the gap of the one before
+// make more than one; a given instant is answered once, by the nearest of the rip's
+// within the tolerance, whatever drum either names
+func TestStrikesAreMatchedByInstant(t *testing.T) {
+	hits := func(starts ...float64) (out []RipHit) {
+		for i, s := range starts {
+			out = append(out, RipHit{Start: s, Drum: InstrumentType(i%4 - 1)})
+		}
+		return out
+	}
+	starts := func(hits []RipHit) (out []float64) {
+		for _, h := range hits {
+			out = append(out, h.Start)
+		}
+		return out
+	}
+	if got, want := starts(Instants(hits(0.14, 0, 0.059, 0.03, 0.1, 0.07), 0.06)), []float64{0, 0.07, 0.14}; !slices.Equal(got, want) {
+		t.Errorf("instants at %v, want %v", got, want)
+	}
+	l := MatchStruck(hits(1.04, 1.02, 3, 5), hits(1, 2, 3), 0.05, true)
+	if l.A != 4 || l.B != 3 || l.Matched != 2 || !slices.Equal(starts(l.OnlyA), []float64{1.04, 5}) || !slices.Equal(starts(l.OnlyB), []float64{2}) {
+		t.Errorf("%d of %d given answered by %d heard, only heard %v, only given %v", l.Matched, l.B, l.A, starts(l.OnlyA), starts(l.OnlyB))
 	}
 }
 

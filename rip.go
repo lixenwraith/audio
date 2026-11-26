@@ -29,6 +29,7 @@ type RipParams struct {
 	SnareShare float64 `toml:"snare_share"` // the share between 200 Hz and 4 kHz a snare has at least
 	SnareNoise float64 `toml:"snare_noise"` // and the share above 5 kHz its wires give it at least
 	HatShare   float64 `toml:"hat_share"`   // the share above 5 kHz that makes a hit a hihat
+	Struck     float64 `toml:"struck"`      // how sure a front end that hears what is struck of no pitch must be of a strike
 
 	Harmonics     int     `toml:"harmonics"`      // partials summed into a pitch's salience
 	HarmonicDecay float64 `toml:"harmonic_decay"` // the weight ratio between successive partials
@@ -93,7 +94,7 @@ const (
 func DefaultRipParams() RipParams {
 	return RipParams{
 		TempoPrior: 120, TempoWidth: 1, Tightness: 50,
-		OnsetFloor: 2.0, OnsetMin: 0.1, OnsetGap: 0.06, KickShare: 0.06, SnareShare: 0.45, SnareNoise: 0.1, HatShare: 0.3,
+		OnsetFloor: 2.0, OnsetMin: 0.1, OnsetGap: 0.06, KickShare: 0.06, SnareShare: 0.45, SnareNoise: 0.1, HatShare: 0.3, Struck: 8.0 / 9,
 		Harmonics: 6, HarmonicDecay: 0.8, Voicing: 0.3, Jump: 0.06, Switch: 0.35, Retrigger: 0.4, MinNote: 0.06,
 		SecondVoice: 0.5, Compress: 1, Cross: 0.003, Strike: 0.8, StrikeLow: 0.9, StrikeHold: 0.9, StrikeGap: 0.12, StrikeAgain: 0.95, Release: 0.8,
 		TempoComb: 0.5, BeatComb2: 0.8, BeatComb3: 0.5, BeatComb4: 0.6, BeatCut2: 0.7, BeatCut3: 0.33,
@@ -124,6 +125,7 @@ var ripGenes = []ripGene{
 	{"snare_share", 0.3, 0.7, func(p *RipParams) *float64 { return &p.SnareShare }},
 	{"snare_noise", 0.02, 0.3, func(p *RipParams) *float64 { return &p.SnareNoise }},
 	{"hat_share", 0.15, 0.6, func(p *RipParams) *float64 { return &p.HatShare }},
+	{"struck", 0.2, 0.999, func(p *RipParams) *float64 { return &p.Struck }},
 	{"harmonics", 3, 8, nil},
 	{"harmonic_decay", 0.5, 0.95, func(p *RipParams) *float64 { return &p.HarmonicDecay }},
 	{"voicing", 0.1, 0.6, func(p *RipParams) *float64 { return &p.Voicing }},
@@ -283,6 +285,10 @@ type Rip struct {
 	MelodyVoice, UnderVoice, BassVoice *VoiceDef
 	// Notes is the transcript before the grid: every note heard, in time
 	Notes []RipNote
+	// Struck is every strike of no pitch heard, in time, where the front end hears
+	// them (RipFrames.Struck), on a drum's line or on none: no bar holds one, and a
+	// stream's bars carry none; nil where it does not, and for a score
+	Struck []RipHit
 	// Tone is how each drum sounds in the recording, what Kit matches the
 	// registered drums to; unread for a score
 	Tone [InstrClap]RipTone
@@ -356,10 +362,10 @@ type RipVoice struct {
 // RipUnmeasured is a RipNote's Bright where none was measured, never a share
 const RipUnmeasured = -1.0
 
-// RipHit is a drum's hit in seconds of a recording
+// RipHit is a drum's hit in seconds of a recording, or a strike of no drum's line
 type RipHit struct {
 	Start float64
-	Drum  InstrumentType // InstrKick, InstrSnare or InstrHihat
+	Drum  InstrumentType // InstrKick, InstrSnare or InstrHihat; -1 for none
 	Vel   float64
 	Key   int // the General MIDI key it is struck on, a file's (ReadMIDI); 0 none, written as its line's first
 }
@@ -493,6 +499,9 @@ type RipFrames struct {
 	// line fall on each frame, a posterior a front end that hears them states; nil
 	// from the analysis and from a model without the heads
 	Beat, Downbeat []float64
+	// Struck is how surely something of no pitch is struck at each frame, a drum's
+	// or no drum's, and StruckVel how hard; nil as Beat is
+	Struck, StruckVel []float64
 	// Spectrum is the recording's mel bands at each frame, frames × RipMelBands,
 	// each band's energy as MelStream gives it: a stream's whose Ripper asks, else nil
 	Spectrum []float32
@@ -546,6 +555,8 @@ func (f *RipFrames) fields(visit func(field any, per int)) {
 	visit(&f.Voices, RipVoiceCells*RipVoiceSize)
 	visit(&f.Beat, 1)
 	visit(&f.Downbeat, 1)
+	visit(&f.Struck, 1)
+	visit(&f.StruckVel, 1)
 	visit(&f.Spectrum, RipMelBands)
 	for b := range f.bands {
 		visit(&f.bands[b], 1)
@@ -561,7 +572,7 @@ func (f *RipFrames) extend(g *RipFrames) {
 	if g.frames() > 0 {
 		f.Hop, f.Tuning, f.Sure, f.Range = g.Hop, g.Tuning, g.Sure, g.Range
 	}
-	from := make([]any, 0, 24) // every field's, at one allocation
+	from := make([]any, 0, 32) // every field's, at one allocation
 	g.fields(func(field any, _ int) { from = append(from, field) })
 	i := 0
 	f.fields(func(field any, _ int) {
@@ -751,8 +762,9 @@ func (rp Ripper) Samples(x []float64, rate int) (*Rip, error) {
 		tr = &ripTrace{hop: f.Hop}
 	}
 	ev := rp.events(f, x, p, tr)
-	if t := musicStart(x); t > 0 {
-		ev.from(t)
+	from := musicStart(x)
+	if from > 0 {
+		ev.from(from)
 	}
 	g, bpm, _, err := rp.grid(f, ev, p, true)
 	if err != nil {
@@ -769,7 +781,7 @@ func (rp Ripper) Samples(x []float64, rate int) (*Rip, error) {
 	}
 	r.MelodyVoice, r.UnderVoice, r.BassVoice = voiceOf(lead), voiceOf(under), voiceOf(ev.bass)
 	r.Tone = drumTones(x, raw, rate, hitStarts(x, ev.seconds(f.Hop)))
-	r.Strikes, r.Stages = ev.strikes, tr.list()
+	r.Strikes, r.Stages, r.Struck = ev.strikes, tr.list(), f.struck(ev.hits, from, p)
 	return r, nil
 }
 
@@ -3190,6 +3202,43 @@ func (f *RipFrames) drumHits(p RipParams) [InstrClap][]ripHit {
 		if float64(len(hits)) >= ripDrumsPerMinute*float64(len(f.Onset[d]))*f.Hop/60 {
 			out[d] = hits
 		}
+	}
+	return out
+}
+
+// struck picks the strikes of no pitch a front end hears, from the frame the music
+// starts as the hits are (heardFrom): the peaks of Struck over the parameter, the
+// surer of two within OnsetGap, each as hard as StruckVel says and of the drum a
+// hit of which lies within a frame of it, the surest, or of none; nil where the
+// front end hears none
+func (f *RipFrames) struck(hits [InstrClap][]ripHit, from int, p RipParams) []RipHit {
+	if f.Struck == nil {
+		return nil
+	}
+	type drum struct {
+		of   InstrumentType
+		sure float64
+	}
+	near := map[int]drum{}
+	for d, hs := range hits {
+		for _, h := range hs {
+			for t := h.frame - 1; t <= h.frame+1; t++ {
+				if h.strength > near[t].sure {
+					near[t] = drum{InstrumentType(d), h.strength}
+				}
+			}
+		}
+	}
+	out := []RipHit{}
+	for _, h := range pickHits(f.Struck, max(int(p.OnsetGap/f.Hop), 1), RipParams{OnsetMin: p.Struck}, f.Hop, 1) {
+		if h.frame < from-2 {
+			continue
+		}
+		s := RipHit{Start: float64(h.frame) * f.Hop, Drum: -1, Vel: f.StruckVel[h.frame]}
+		if d, ok := near[h.frame]; ok {
+			s.Drum = d.of
+		}
+		out = append(out, s)
 	}
 	return out
 }
