@@ -1747,7 +1747,7 @@ func barGrid(bars int, beat float64, step int) (*Rip, []float64) {
 // and bar lines has every line on a downbeat and every beat on a beat, at phase 0
 func TestMatchBarsScoresTheSameDownbeatsOne(t *testing.T) {
 	r, downbeats := barGrid(8, 0.5, BeatsPerBar)
-	if s := MatchBars(r, r.Beats, downbeats); s != (BarScore{Ratio: 1, Same: true, Downbeats: 1, Beats: 1}) {
+	if s := MatchBars(r, r.Beats, downbeats, nil); s != (BarScore{Ratio: 1, Same: true, Downbeats: 1, Beats: 1}) {
 		t.Errorf("%+v", s)
 	}
 }
@@ -1761,7 +1761,7 @@ func TestMatchBarsReadsDownbeatsABeatEarlyAsPhaseAQuarter(t *testing.T) {
 	for i := BeatsPerBar - 1; i < len(r.Beats); i += BeatsPerBar {
 		downbeats = append(downbeats, r.Beats[i])
 	}
-	if s := MatchBars(r, r.Beats, downbeats); !s.Same || s.Downbeats != 0 || math.Abs(s.Phase-0.25) > 1e-9 || s.Beats != 1 {
+	if s := MatchBars(r, r.Beats, downbeats, nil); !s.Same || s.Downbeats != 0 || math.Abs(s.Phase-0.25) > 1e-9 || s.Beats != 1 {
 		t.Errorf("%+v", s)
 	}
 }
@@ -1781,10 +1781,10 @@ func TestMatchBarsCountsTheBeatsAtTheGridsEdges(t *testing.T) {
 	for i := -2; i <= 22; i++ {
 		outer.Beats = append(outer.Beats, 0.3+0.5*float64(i))
 	}
-	if s := MatchBars(inner, beats, downbeats); s.Before != 2 || s.BeforeLost != 2 || s.After != 3 || s.AfterLost != 3 {
+	if s := MatchBars(inner, beats, downbeats, nil); s.Before != 2 || s.BeforeLost != 2 || s.After != 3 || s.AfterLost != 3 {
 		t.Errorf("from the first line to the last: %+v, want 2 of 2 lost before and 3 of 3 after", s)
 	}
-	if s := MatchBars(outer, beats, downbeats); s.Before != 2 || s.BeforeLost != 0 || s.After != 3 || s.AfterLost != 0 {
+	if s := MatchBars(outer, beats, downbeats, nil); s.Before != 2 || s.BeforeLost != 0 || s.After != 3 || s.AfterLost != 0 {
 		t.Errorf("a bar opened either side: %+v, want none of 2 lost before and none of 3 after", s)
 	}
 }
@@ -1796,7 +1796,7 @@ func TestMatchBarsCallsAHalfLengthGridNotSame(t *testing.T) {
 	r, _ := barGrid(16, 0.25, 1)
 	_, beats := barGrid(8, 0.5, 1)
 	_, downbeats := barGrid(8, 0.5, BeatsPerBar)
-	if s := MatchBars(r, beats, downbeats); s.Same || math.Abs(s.Ratio-0.5) > 1e-9 || s.Downbeats != 0 {
+	if s := MatchBars(r, beats, downbeats, nil); s.Same || math.Abs(s.Ratio-0.5) > 1e-9 || s.Downbeats != 0 {
 		t.Errorf("%+v", s)
 	}
 }
@@ -2439,7 +2439,7 @@ func TestTheBarsReachWhatTheRecordingHolds(t *testing.T) {
 					t.Errorf("%s: %d bars, %d chords, the first bar's kicks %v, the last's %v: want %d bars and chords, a kick on step %d first and on 0 and 4 last",
 						name, len(r.Bars), len(r.Progression), r.Bars[0].Drums[InstrKick], r.Bars[len(r.Bars)-1].Drums[InstrKick], want, first)
 				}
-				if s := MatchBars(r, marks, nil); s.Beats != 1 {
+				if s := MatchBars(r, marks, nil, nil); s.Beats != 1 {
 					t.Errorf("%s: %.3f of the beats marked have a beat, the rip's %v", name, s.Beats, r.Beats)
 				}
 				for _, c := range r.Stages {
@@ -3375,6 +3375,63 @@ func TestTheTempoAndTheBeatsAreTheBeatHeads(t *testing.T) {
 	}
 	if beats := tr.beats(); !every(beats, 20, 60) || len(beats) < 48 {
 		t.Errorf("%d beats %v, want the head's, every 60 frames from 20", len(beats), beats[:min(len(beats), 8)])
+	}
+}
+
+// TestATempoThatChangesIsReadInSections: heads marking a beat every 38 frames,
+// then every 30 from frame 760, a line every fourth beat, rip in two sections at
+// 136 and 172, every line and beat where the heads mark them; marking every 38
+// to the end, in one
+func TestATempoThatChangesIsReadInSections(t *testing.T) {
+	const slow, fast, at = 38, 30, 760
+	x := make([]float64, (at+24*fast)*RipHop)
+	for _, c := range []struct {
+		name   string
+		change bool
+	}{{"changing", true}, {"steady", false}} {
+		f, err := analysis{}.Hear(x, RipRate, DefaultRipParams())
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := f.frames()
+		f.Beat, f.Downbeat = make([]float64, n), make([]float64, n)
+		for k := range n {
+			f.Beat[k], f.Downbeat[k] = 0.01, 0.01
+		}
+		var beats, lines []float64
+		mark := func(from, to, beat int) {
+			for i, b := 0, from; b < to; i, b = i+1, b+beat {
+				for k := max(b-1, 0); k <= b+1 && k < n; k++ {
+					if f.Beat[k] = 0.98; i%4 == 0 {
+						f.Downbeat[k] = 0.98
+					}
+				}
+				if beats = append(beats, float64(b)*f.Hop); i%4 == 0 {
+					lines = append(lines, float64(b)*f.Hop)
+				}
+			}
+		}
+		var sections []float64
+		if c.change {
+			mark(0, at, slow)
+			mark(at, n, fast)
+			sections = []float64{at * f.Hop}
+		} else {
+			mark(0, n, slow)
+		}
+		r, err := framesRip(Ripper{}, f, x, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := MatchBars(r, beats, lines, sections)
+		switch {
+		case c.change && (len(r.Sections) != 2 || r.Sections[0].BPM != 136 || r.Sections[1].BPM != 172):
+			t.Errorf("%s: sections %+v, want two, at 136 and 172", c.name, r.Sections)
+		case !c.change && (r.Sections != nil || r.BPM != 136):
+			t.Errorf("%s: %d bpm in sections %+v, want one at 136", c.name, r.BPM, r.Sections)
+		case s.Downbeats != 1 || s.Beats != 1 || s.Found != len(sections) || s.Split != 0:
+			t.Errorf("%s: bars %+v, want every line and beat, %d boundaries found and none split", c.name, s, len(sections))
+		}
 	}
 }
 

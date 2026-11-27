@@ -783,6 +783,29 @@ heard: offline the rip is that of the frames without them.
   on beats tracked on the head, or by the cues where its first bars' heads gave
   no reading: it consults the downbeat head for its first bars alone.
 
+**Sections.** Where the heads are heard, a recording is read in sections
+(`Rip.Sections`, `RipSection`): the frame where the beat head's periodicity
+changes most (`change`: one less the correlation of its autocorrelations, at
+the lags of a beat from 480 to 60 a minute, over the 3.5 s either side) parts
+two stretches when the heads agree with the grids decoded on each alone, its
+frames, its events and its own tonality, by more than with the one grid over
+both (`gain`: the beat head's mean at the grids' beats and the downbeat head's at
+their lines, each over the same frames, by `ripSectionGain`), and each stretch is
+read so again; else the recording is one section and its grid the whole's, as
+before. Each section's bars end on the next one's first line, the key is named
+over every bar, a hit's velocity is against its drum's loudest over the
+recording, and the transcript is the whole's. `BPM` and `Meter` are the first
+section's; `Lines` is every bar line, each section's beats in its own meter, as
+`stepAt`, `MatchBars` and `MatchChords` read `Beats`. Both numbers were fitted on
+the fit side of recordings of two loops (stapes' `tool/rip-lab/audit/joinloops.py`):
+the window, of 2, 2.5, 3, 3.5 and 4 s, under which the change's highest falls
+within a bar of the boundary on most of the fit halves' tempo and meter
+recordings, and the gain the most a split reaches on recordings of one section
+(GuitarSet's players 00 to 02 on their held-out sheets, E-GMD's validation draw),
+0.292. The stream holds its first bars' grid, and `Song`, `Pattern` and
+`Patterns` lay every bar in the first section's meter
+([todo](todo.md#a-song-of-sections)).
+
 **The joint path** (`joint` 1; `jointGrid`) decides the tempo, the bar line and
 the meter as one path over the heads, in place of the readings above, where the
 frames carry them and the beat head ranks its beats over chance; `joint` 0, the
@@ -881,14 +904,17 @@ timed as they stand: a groove matches as well a whole number of beats off.
 `MatchStruck` lays strikes so by their time alone, whatever drum either side names,
 over instants (`Instants`): a strike and those within a gap of an instant's first are
 one, so what is struck together counts once and a roll does not.
-`MatchBars` scores the rip's bar lines, which no note's map sees and on whose
-phase every pattern the rip compresses into turns, against a truth's beats and
-downbeats in the recording's seconds (`BarScore`): its median bar over the
-truth's (`Ratio`, `Same` within a tenth), the share of downbeats with a line
-within an eighth of a bar when the bars are the same, the median offset of the
-nearest line in bars (`Phase`), and the share of beats with a rip beat within a
-quarter of a beat, with the beats before the first downbeat and after the last,
-the grid's edges, and those of them it lacks (`Before`, `After`). A score gives its beats and bars under its time signatures
+`MatchBars` scores the rip's bar lines (`Lines`), which no note's map sees and
+on whose phase every pattern the rip compresses into turns, against a truth's
+beats and downbeats in the recording's seconds, a section at a time where the
+truth gives sections (`BarScore`): its median bar over the truth's (`Ratio`,
+`Same` within a tenth, of the first section), the share of downbeats with a line
+within an eighth of a bar where the section's bars are the same, the median
+offset of the nearest line in bars (`Phase`), and the share of beats with a rip
+beat within a quarter of a beat, with the beats before the first downbeat and
+after the last, the grid's edges, and those of them it lacks (`Before`,
+`After`); and the truth's boundaries a section of the rip's begins within a bar
+of (`Found`), and the rip's that begin within a bar of none (`Split`). A score gives its beats and bars under its time signatures
 and tempo map, placed on the recording by the agreement's map (`MIDIScore.Beats`,
 downbeats from the first full bar), and a JAMS file its `beat_position`
 annotation in the recording's own clock (`ReadJAMSBeats`, as GuitarSet's,

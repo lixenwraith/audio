@@ -701,28 +701,34 @@ func pairHits(a, b []RipHit, stretch, offset, tol float64, line *HitLine) int {
 
 // BarScore is how a rip's bar lines sit on a truth's beats and downbeats
 type BarScore struct {
-	Ratio     float64 // the median rip bar's length over the median truth bar's, 0 without two of either
+	Ratio     float64 // the median rip bar's length over the median truth bar's, 0 without two of either, of the truth's first section
 	Same      bool    // Ratio within a tenth of one
-	Downbeats float64 // the share of truth downbeats with a rip bar line within an eighth of their bar, 0 unless Same
+	Downbeats float64 // the share of truth downbeats with a rip bar line within an eighth of their bar, none of a section whose bar the rip's is not
 	Phase     float64 // the median offset of the nearest rip bar line from a truth downbeat, in its bars, in [-0.5, 0.5)
 	Beats     float64 // the share of truth beats with a rip beat within a quarter of their beat
 	// Before and After are the truth beats before its first downbeat and after its
 	// last, the grid's edges, and BeforeLost and AfterLost those of them with no
 	// rip beat within a quarter of their beat
 	Before, BeforeLost, After, AfterLost int
+	// Boundaries are the sections the truth gives after its first, Found those a
+	// section of the rip's begins within a bar of, and Split the rip's sections
+	// that begin within a bar of none
+	Boundaries, Found, Split int
 }
 
-// MatchBars scores a rip's bar lines, one every Meter.Beats() of its Beats from
-// the first, against a truth's beats and downbeats in the recording's seconds:
-// the notes' time map never sees a bar line, and the bar's phase decides every
-// pattern the rip compresses into
-func MatchBars(r *Rip, beats, downbeats []float64) BarScore {
-	var lines []float64
-	for i := 0; i < len(r.Beats); i += r.Meter.Beats() {
-		lines = append(lines, r.Beats[i])
-	}
+// MatchBars scores a rip's bar lines (Rip.Lines) against a truth's beats and
+// downbeats in the recording's seconds, a section at a time where the truth
+// gives sections, the second each after its first begins: the notes' time map
+// never sees a bar line, and the bar's phase decides every pattern the rip
+// compresses into
+func MatchBars(r *Rip, beats, downbeats, sections []float64) BarScore {
+	lines := r.Lines()
 	beats = slices.Compact(slices.Sorted(slices.Values(beats)))
 	downbeats = slices.Compact(slices.Sorted(slices.Values(downbeats)))
+	cuts := slices.Concat([]float64{math.Inf(-1)}, slices.Sorted(slices.Values(sections)), []float64{math.Inf(1)})
+	within := func(xs []float64, k int) []float64 {
+		return slices.DeleteFunc(slices.Clone(xs), func(x float64) bool { return x < cuts[k] || x >= cuts[k+1] })
+	}
 	gap := func(xs []float64, i int) float64 { // to the next, the last's from the one before
 		if i+1 < len(xs) {
 			return xs[i+1] - xs[i]
@@ -747,47 +753,82 @@ func MatchBars(r *Rip, beats, downbeats []float64) BarScore {
 		return median(gaps)
 	}
 	var s BarScore
-	if rip, truth := bar(lines), bar(downbeats); rip > 0 && truth > 0 {
-		s.Ratio = rip / truth
+	var on, onBeat, given, givenBeats int
+	var phases []float64
+	starts := make([]float64, 0, len(r.Sections))
+	for _, sec := range r.Sections[min(1, len(r.Sections)):] {
+		starts = append(starts, sec.Start)
 	}
-	s.Same = math.Abs(s.Ratio-1) <= 0.1
-	if len(lines) > 0 && len(downbeats) > 1 {
-		on, phases := 0, make([]float64, len(downbeats))
-		for i, d := range downbeats {
-			off := nearest(lines, d) - d
-			if math.Abs(off) <= gap(downbeats, i)/8 {
-				on++
-			}
-			p := off / gap(downbeats, i)
-			phases[i] = p - math.Floor(p+0.5)
+	near := make([]bool, len(starts))
+	for k := 0; k+1 < len(cuts); k++ {
+		db, bt := within(downbeats, k), within(beats, k)
+		var ratio float64
+		if rip, truth := bar(within(lines, k)), bar(db); rip > 0 && truth > 0 {
+			ratio = rip / truth
 		}
+		same := math.Abs(ratio-1) <= 0.1
+		if k == 0 {
+			s.Ratio, s.Same = ratio, same
+		}
+		if k > 0 {
+			s.Boundaries++
+			found := false
+			for i, st := range starts {
+				if math.Abs(st-cuts[k]) <= bar(db) {
+					near[i], found = true, true
+				}
+			}
+			if found {
+				s.Found++
+			}
+		}
+		if len(lines) > 0 && len(db) > 1 {
+			given += len(db)
+			for i, d := range db {
+				off := nearest(lines, d) - d
+				if math.Abs(off) <= gap(db, i)/8 && same {
+					on++
+				}
+				p := off / gap(db, i)
+				phases = append(phases, p-math.Floor(p+0.5))
+			}
+		}
+		if len(r.Beats) > 0 && len(bt) > 1 {
+			givenBeats += len(bt)
+			for j, b := range bt {
+				got := math.Abs(nearest(r.Beats, b)-b) <= gap(bt, j)/4
+				if got {
+					onBeat++
+				}
+				if len(downbeats) == 0 {
+					continue
+				}
+				switch eps := gap(bt, j) / 4; {
+				case b < downbeats[0]-eps:
+					if s.Before++; !got {
+						s.BeforeLost++
+					}
+				case b > downbeats[len(downbeats)-1]+eps:
+					if s.After++; !got {
+						s.AfterLost++
+					}
+				}
+			}
+		}
+	}
+	for _, n := range near {
+		if !n {
+			s.Split++
+		}
+	}
+	if len(phases) > 0 {
 		s.Phase = median(phases)
-		if s.Same {
-			s.Downbeats = float64(on) / float64(len(downbeats))
-		}
 	}
-	if len(r.Beats) > 0 && len(beats) > 1 {
-		on := 0
-		for j, b := range beats {
-			got := math.Abs(nearest(r.Beats, b)-b) <= gap(beats, j)/4
-			if got {
-				on++
-			}
-			if len(downbeats) == 0 {
-				continue
-			}
-			switch eps := gap(beats, j) / 4; {
-			case b < downbeats[0]-eps:
-				if s.Before++; !got {
-					s.BeforeLost++
-				}
-			case b > downbeats[len(downbeats)-1]+eps:
-				if s.After++; !got {
-					s.AfterLost++
-				}
-			}
-		}
-		s.Beats = float64(on) / float64(len(beats))
+	if given > 0 {
+		s.Downbeats = float64(on) / float64(given)
+	}
+	if givenBeats > 0 {
+		s.Beats = float64(onBeat) / float64(givenBeats)
 	}
 	return s
 }
@@ -987,20 +1028,20 @@ type ChordReading struct{ Given, Right float64 }
 // the given chord's, and wrong where no bar of the rip's lies
 func MatchChords(r *Rip, given []RipChord) ChordReading {
 	var out ChordReading
-	per, iv := r.Meter.Beats(), ScaleIntervals(r.Scale)
+	lines, iv := r.Lines(), ScaleIntervals(r.Scale)
 	for _, c := range given {
 		if c.End <= c.Start || len(c.Tones) == 0 {
 			continue
 		}
 		out.Given += c.End - c.Start
 		for b, d := range r.Progression {
-			if len(iv) == 0 || (b+1)*per >= len(r.Beats) {
+			if len(iv) == 0 || b+1 >= len(lines) {
 				break
 			}
 			if (r.Root+iv[d%len(iv)]-c.Tones[0])%12 != 0 {
 				continue
 			}
-			if lo, hi := max(c.Start, r.Beats[b*per]), min(c.End, r.Beats[(b+1)*per]); hi > lo {
+			if lo, hi := max(c.Start, lines[b]), min(c.End, lines[b+1]); hi > lo {
 				out.Right += hi - lo
 			}
 		}

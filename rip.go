@@ -283,6 +283,10 @@ type Rip struct {
 	// (RipNote.Voice), their mean, where it tells them, else its voice head's over
 	// the register's notes; nil with neither. stapes fits every line's from it.
 	MelodyVoice, UnderVoice, BassVoice *VoiceDef
+	// Sections are the stretches its tempo, meter and bar line were decided on
+	// apart, in order, where it holds two or more; nil for a rip of one, whose
+	// BPM and Meter are its own, as a rip of several takes its first's
+	Sections []RipSection
 	// Notes is the transcript before the grid: every note heard, in time
 	Notes []RipNote
 	// Struck is every strike of no pitch heard, in time, where the front end hears
@@ -391,8 +395,9 @@ func (r *Rip) Hits() []RipHit {
 // its nearest step (ripGrid.at), which a pickup bar can lay a frame or two
 // before it, and a step on the start between two beats sums a hair either side
 func (r *Rip) stepAt(b, pos int) (float64, bool) {
-	per, sub := r.Meter.Beats(), r.Meter.Beat()
-	i := per*b + pos/sub
+	s, at := r.sectionOf(b)
+	sub := s.Meter.Beat()
+	i := at + pos/sub
 	if i+1 >= len(r.Beats) {
 		return 0, false
 	}
@@ -766,14 +771,24 @@ func (rp Ripper) Samples(x []float64, rate int) (*Rip, error) {
 	if from > 0 {
 		ev.from(from)
 	}
-	g, bpm, _, err := rp.grid(f, ev, p, true)
+	var o []float64
+	if f.heard() {
+		o = f.beaten()
+	}
+	spans, err := rp.spans(f, ev, p, o, 0, f.frames())
 	if err != nil {
 		return nil, err
 	}
-	ev.root, ev.scale = f.key(g, p)
-	// the pitch paths start late against the onsets the beats were set by: the
-	// notes' median lag comes out before they are quantized
-	r := g.lay(f, x, ev, bpm, g.shift(slices.Concat(ev.melody, ev.bass)), [InstrClap]float64{}, p)
+	var r *Rip
+	if len(spans) > 1 {
+		r = f.laySections(x, ev, spans, p)
+	} else {
+		g, bpm := spans[0].g, spans[0].bpm
+		ev.root, ev.scale = f.key(g, p)
+		// the pitch paths start late against the onsets the beats were set by: the
+		// notes' median lag comes out before they are quantized
+		r = g.lay(f, x, ev, bpm, g.shift(slices.Concat(ev.melody, ev.bass)), [InstrClap]float64{}, p)
+	}
 	lead, under := ev.melody, ev.melody
 	if f.Voices != nil { // each line's own notes say what plays it
 		second := func(n ripNote) bool { return n.second }
@@ -1086,12 +1101,19 @@ func (f *RipFrames) claims(beats []int) (on, halves float64) {
 	return claim(0), claim(0, 3)
 }
 
-// lay lays the events on the grid as a rip at tempo bpm: its meter and key, each
-// bar's chord, beats and drums, the notes on their steps shift frames early, as
-// the pitch paths start late against the onsets the beats sit on, and the
-// transcript of every note heard; loud is each drum's loudest hit, the hits'
-// own where zero
+// lay lays the events on the grid as a rip at tempo bpm (laid), with the
+// transcript of every note heard
 func (g ripGrid) lay(f *RipFrames, x []float64, ev ripEvents, bpm float64, shift int, loud [InstrClap]float64, p RipParams) *Rip {
+	r := g.laid(f, ev, bpm, shift, loud, p)
+	r.Notes = f.transcript(x, ev)
+	return r
+}
+
+// laid is the events on the grid at tempo bpm: its meter and key, each bar's
+// chord, beats and drums, the notes on their steps shift frames early, as the
+// pitch paths start late against the onsets the beats sit on; loud is each
+// drum's loudest hit, the hits' own where zero
+func (g ripGrid) laid(f *RipFrames, ev ripEvents, bpm float64, shift int, loud [InstrClap]float64, p RipParams) *Rip {
 	r := &Rip{BPM: int(math.Round(bpm)), Meter: g.m, Tuning: f.Tuning, Range: f.Pitches(), Root: ev.root, Scale: ev.scale, Downbeat: float64(g.lines[0]) * f.Hop, Bars: make([]RipBar, g.bars()), Params: p}
 	r.Progression = progression(f.barChroma(g), r.Root, r.Scale)
 	r.Beats = make([]float64, g.m.Beats()*g.bars()+1)
@@ -1113,17 +1135,24 @@ func (g ripGrid) lay(f *RipFrames, x []float64, ev ripEvents, bpm float64, shift
 	for _, n := range ev.bass {
 		g.place(r, early(n), func(b *RipBar) *[]Step { return &b.Bass })
 	}
+	return r
+}
+
+// transcript is every note heard, in time, each melody-register note's
+// brightness measured
+func (f *RipFrames) transcript(x []float64, ev ripEvents) []RipNote {
 	f.bright(x, ev.melody, ev.bass)
+	var notes []RipNote
 	for i, ns := range [2][]ripNote{ev.melody, ev.bass} {
 		for _, n := range ns {
 			if i == 1 {
 				n.bright = RipUnmeasured
 			}
-			r.Notes = append(r.Notes, RipNote{Start: float64(n.start) * f.Hop, End: float64(n.end) * f.Hop, MIDI: n.midi, Vel: n.vel, Bass: i == 1, Second: n.second, Bright: n.bright, Bend: n.bend, BendAt: n.bendAt, Program: -1, Voice: f.voice(n.said)})
+			notes = append(notes, RipNote{Start: float64(n.start) * f.Hop, End: float64(n.end) * f.Hop, MIDI: n.midi, Vel: n.vel, Bass: i == 1, Second: n.second, Bright: n.bright, Bend: n.bend, BendAt: n.bendAt, Program: -1, Voice: f.voice(n.said)})
 		}
 	}
-	slices.SortFunc(r.Notes, func(a, b RipNote) int { return cmp.Compare(a.Start, b.Start) })
-	return r
+	slices.SortFunc(notes, func(a, b RipNote) int { return cmp.Compare(a.Start, b.Start) })
+	return notes
 }
 
 // bright sets each melody-register note's share of its fundamental in its

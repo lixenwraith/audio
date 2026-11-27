@@ -456,9 +456,9 @@ did, on 223 of 399 generated loops and on 9 of 40 E-GMD takes. What is left here
   played recordings, not set. The joint path's tempo moves instead, its
   beats a bar's exactly.
 - **The stream** holds the phase of its first bars, as before: the downbeat
-  head is not read again once they freeze. Reading it at every bar is the
-  sections thread's; the joint path reads it at every bar, in its first bars'
-  meter.
+  head is not read again once they freeze. The offline rip reads sections
+  ([A song of sections](#a-song-of-sections)); the stream does not, and the
+  joint path reads the head at every bar, in its first bars' meter.
 - **The joint path against the readings.** It reads 2/4, 5/4 and 7/8, which the
   readings do not, every bar of them right with the labels as the heads, a
   ceiling; with trained heads it reads more generated loops right and fewer of
@@ -476,6 +476,20 @@ did, on 223 of 399 generated loops and on 9 of 40 E-GMD takes. What is left here
   tracked on two eighths, which no meter holds, reads them as eighths at half
   its tempo, or halved where its eighths pass 240 a minute.
 
+
+### A song of sections
+
+- Priority: P2
+- Affected files: `song.go`, `sections.go`, `ripstream.go`
+
+A rip of several sections ([Audio §9](audio.md#9-ripping-a-recording)) lays
+each section's bars in its own meter, but `Song`, `Pattern` and `Patterns`
+lay every bar in the first section's: a song of sections needs each bar's
+pattern in its own section's meter, a meter word and a tempo word on each
+section's first bar (a `SongDef` bar's words hold both), and the windows of
+`Patterns` cut at sections. The stream holds its first bars' grid to the end;
+reading sections there means deciding each bar's again until two decisions
+agree ([stapes' rip design §7](https://github.com/lixenwraith/stapes/blob/main/doc/rip-design.md#7-plan)).
 ### Begin the first bar with the recording
 
 - Priority: P2

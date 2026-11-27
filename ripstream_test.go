@@ -66,7 +66,7 @@ func TestRipStreamFreezesTheOfflineBars(t *testing.T) {
 	for i := 0; i < len(off.Beats); i += off.Meter.Beats() {
 		downbeats = append(downbeats, off.Beats[i])
 	}
-	if sc := MatchBars(r, off.Beats, downbeats); !sc.Same || sc.Downbeats < 1 || sc.Beats < 1 {
+	if sc := MatchBars(r, off.Beats, downbeats, nil); !sc.Same || sc.Downbeats < 1 || sc.Beats < 1 {
 		t.Errorf("against the offline rip's beats and bar lines %+v", sc)
 	}
 }

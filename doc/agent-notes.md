@@ -932,6 +932,20 @@ that a document now states, and link the document instead.
   (stapes' agent notes hold the figures). A change to any of them is read by
   the ends' reading, not by the notes'.
 
+- **A beat head's marks are no tempo: it marks another metrical level for bars
+  at a time.** Inside one four-bar loop the median spacing of its marks over a
+  half moved up to threefold or more (eighths for quarters), more than across a
+  tempo change of 15 to 60%; and grids decoded on either half of a steady
+  recording read another tempo (over 4%) or meter on 34 of 60 of GuitarSet's
+  fit-side recordings and 30 of 58 of E-GMD's validation takes. A section is
+  parted by how much more the heads agree with the two halves' grids than with
+  one (`gain`), whose bound is the most it reaches on recordings of one section.
+- **A meter that changes at one tempo moves the lines alone.** On two loops in
+  two meters at one bpm the split was taken on 3 of 20 read-back recordings,
+  where on two tempos 10 of 20, the beats agreeing either way; and the present
+  path reads no 5/4, 7/8 or 2/4 a section could hold, which only the joint path
+  offers.
+
 ## A live rip
 
 - **A statistic over the whole recording is a window's in a live rip unless it
