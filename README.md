@@ -137,8 +137,8 @@ a `Ripper` hears through the package's analysis or through any `RipFrontEnd`
 that fills `RipFrames`, as the `ripmodels` subpackage does with a transformer
 over `BandFrames`, which also hears the voices the notes are played with
 (`VoiceDef.Genes`). A front end that hears strikes has its notes held to the
-recording, by installed scores or by a trained judge loaded beside its notes
-model (`LoadRipJudge`, `Ripper.Judge`), and the strikes judged can be read with
+recording, by installed scores or by a trained judge bound to the heads its
+row reads (`LoadRipJudge`, `Ripper.Judge`), and the strikes judged can be read with
 their verdicts and rows (`Ripper.Strikes`, `Rip.Strikes`), and what each stage of
 the decoders made, dropped or moved (`Ripper.Stages`, `Rip.Stages`), which
 `ReadStages` reads against a truth. `ReadWAV` reads any

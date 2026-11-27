@@ -6,8 +6,10 @@
 package ripmodels
 
 import (
+	"cmp"
 	"encoding/binary"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"math"
 	"slices"
@@ -16,7 +18,7 @@ import (
 	"github.com/lixenwraith/transformer"
 )
 
-// The heads, in the order the output vector lays them
+// The heads a decoder reads, by name wherever a file lays them (heads)
 const (
 	HeadOnset    = "onset"    // anything struck or started at this frame
 	HeadDrums    = "drums"    // kick, snare, hihat
@@ -54,31 +56,30 @@ const Layout = "layout"
 // layoutName is audio.RipLayout as a refusal names it
 const layoutName = "315 bands three a semitone from G#0, a fine plane and a sharp one"
 
-// FrameSpec is the frame model the trainer builds, which a weight file must match
-// in its inputs, heads and layout, any head after these but what is struck read by
-// nothing: the piano's pitches, each plane's bands in dB in two channels, fine then
-// sharp, or the PCEN planes after them in four (features). Its width, depth and
-// window may differ.
+// FrameSpec is the frame model the trainer builds: its inputs, the piano's
+// pitches, each plane's bands in dB in two channels, fine then sharp, or the PCEN
+// planes after them in four (features), the twelve heads a weight file must hold
+// by name wherever it lays them, and its layout. Its width, depth and window may
+// differ, and a head the decoders do not read is ignored.
 func FrameSpec() transformer.Config {
-	n := audio.RipPiano.Len()
+	var out []transformer.Head
+	for _, h := range heads {
+		if h.frameCore {
+			out = append(out, h.of())
+		}
+	}
 	return transformer.Config{
 		Inputs: audio.RipBands + 1, Channels: 2, Dim: 256, Heads: 8, Layers: 4, FFN: 1024, Window: 64,
-		Outputs: []transformer.Head{
-			{Name: HeadOnset, Size: 1}, {Name: HeadDrums, Size: int(audio.InstrClap)}, {Name: HeadPitch, Size: n},
-			{Name: HeadVoicing, Size: 1}, {Name: HeadWave, Size: len(audio.VoiceWaves)}, {Name: HeadVoice, Size: audio.VoiceGeneCount},
-			{Name: HeadStrike, Size: n}, {Name: HeadRelease, Size: n}, {Name: HeadVelocity, Size: n},
-			{Name: HeadFamily, Size: len(audio.RipFamilies)}, {Name: HeadBeat, Size: 1}, {Name: HeadDownbeat, Size: 1},
-		},
-		Constants: []transformer.Constant{{Name: Layout, Value: audio.RipLayout}},
+		Outputs: out, Constants: []transformer.Constant{{Name: Layout, Value: audio.RipLayout}},
 	}
 }
 
 // NotesSpec is the notes model the trainer builds (PitchNet), a cell net over the
 // piano's harmonic stack (stacked) whose cells are its pitches, which a weight
-// file must match in its inputs, layout and the heads notesHeads names; its other
-// sizes may differ.
+// file must match in its inputs, layout and the notes' core heads (heads); its
+// other sizes may differ.
 func NotesSpec() transformer.Config {
-	heads, n := FrameSpec().Outputs, audio.RipPiano.Len()
+	n := audio.RipPiano.Len()
 	scalars := make([]int, stackPlanes)
 	for p := range scalars { // each plane's scalar ends its first channel
 		scalars[p] = p*len(stackShifts)*(stackBins+1) + stackBins
@@ -88,62 +89,98 @@ func NotesSpec() transformer.Config {
 		Scalars: scalars, Frame: 64, FrameTime: 5, AgainTime: 9, Dilation: 2}
 	return transformer.Config{
 		Inputs: stackBins + 1, Channels: stackChannels,
-		Outputs: []transformer.Head{heads[2], heads[6], heads[7], heads[8], {Name: HeadCents, Size: 2 * n},
-			{Name: HeadPitchFamily, Size: (len(audio.RipFamilies) - 1) * n},
-			{Name: HeadPitchWave, Size: len(audio.VoiceWaves) * n}, {Name: HeadPitchVoice, Size: audio.VoiceGeneCount * n},
-			heads[0], heads[1], heads[3], heads[4], heads[5], {Name: HeadSure, Size: 1}},
+		Outputs: []transformer.Head{named(HeadPitch), named(HeadStrike), named(HeadRelease), named(HeadVelocity), named(HeadCents),
+			named(HeadPitchFamily), named(HeadPitchWave), named(HeadPitchVoice),
+			named(HeadOnset), named(HeadDrums), named(HeadVoicing), named(HeadWave), named(HeadVoice), named(HeadSure)},
 		Cells: cells, Constants: FrameSpec().Constants,
 	}
 }
 
-// notesHead is a head a notes model gives: one of FrameSpec's it gives in place
-// of the frame model's, or one of its own of per values a pitch and frame values
-// a frame; a probe's file has no cents head, and rips as its start did
-type notesHead struct {
-	name       string
-	per, frame int
-	optional   bool
+// head is a head the decoders read: its values a pitch and its values a frame;
+// whether a model over the harmonic stack gives it, in the frame model's place
+// where that has one too; and whether the frame model, or the notes once a model
+// over the stack gives them, are refused without it
+type head struct {
+	name                 string
+	per, frame           int
+	stack                bool
+	frameCore, notesCore bool
 }
 
-// notesHeads is a row a head
-var notesHeads = []notesHead{{name: HeadPitch}, {name: HeadVoicing}, {name: HeadStrike}, {name: HeadRelease}, {name: HeadVelocity},
-	{name: HeadCents, per: 2, optional: true}, {name: HeadPitchFamily, per: len(audio.RipFamilies) - 1}, {name: HeadPitchWave, per: len(audio.VoiceWaves)},
-	{name: HeadPitchVoice, per: audio.VoiceGeneCount}, {name: HeadSure, frame: 1}}
+// heads is a row a head the decoders read. One added from now on is no core's:
+// a file without it loads, and its decoder runs without it.
+var heads = []head{
+	{name: HeadOnset, frame: 1, frameCore: true},
+	{name: HeadDrums, frame: int(audio.InstrClap), frameCore: true},
+	{name: HeadPitch, per: 1, stack: true, frameCore: true, notesCore: true},
+	{name: HeadVoicing, frame: 1, stack: true, frameCore: true, notesCore: true},
+	{name: HeadWave, frame: len(audio.VoiceWaves), frameCore: true},
+	{name: HeadVoice, frame: audio.VoiceGeneCount, frameCore: true},
+	{name: HeadStrike, per: 1, stack: true, frameCore: true, notesCore: true},
+	{name: HeadRelease, per: 1, stack: true, frameCore: true, notesCore: true},
+	{name: HeadVelocity, per: 1, stack: true, frameCore: true, notesCore: true},
+	{name: HeadFamily, frame: len(audio.RipFamilies), frameCore: true},
+	{name: HeadBeat, frame: 1, frameCore: true},
+	{name: HeadDownbeat, frame: 1, frameCore: true},
+	{name: HeadStruck, frame: 1},
+	{name: HeadStruckVel, frame: 1},
+	{name: HeadCents, per: 2, stack: true}, // a probe's notes model has none, and rips as its start did
+	{name: HeadPitchFamily, per: len(audio.RipFamilies) - 1, stack: true, notesCore: true},
+	{name: HeadPitchWave, per: len(audio.VoiceWaves), stack: true, notesCore: true},
+	{name: HeadPitchVoice, per: audio.VoiceGeneCount, stack: true, notesCore: true},
+	{name: HeadSure, frame: 1, stack: true, notesCore: true},
+}
 
-// FrontEnd hears with a frame model, and takes the notes from Notes when it has one
+// of is the head as a weight file names it
+func (h head) of() transformer.Head {
+	return transformer.Head{Name: h.name, Size: h.per*audio.RipPiano.Len() + h.frame}
+}
+
+// named is the head of that name as a weight file names it
+func named(name string) transformer.Head {
+	return heads[slices.IndexFunc(heads, func(h head) bool { return h.name == name })].of()
+}
+
+// rowHeads are the heads a judge's row reads (audio.RipRowVersion), of the notes
+// and of the frame model: the planes it lays and the notes it is read against
+var rowHeads = [2][]string{{HeadPitch, HeadStrike, HeadRelease, HeadVelocity, HeadCents}, {HeadOnset}}
+
+// FrontEnd hears with its models, the frame model first, each head read from
+// the one model that gives it (New)
 type FrontEnd struct {
-	Frame *transformer.Model
-	Notes *transformer.Model
+	Models []*transformer.Model
 	// Ahead is the seconds a frame of an Ear waits for those after it before the
 	// frame model hears it, when under its reach: its blocks share the wait, and
 	// its heads are no longer Hear's. Zero waits the reach.
 	Ahead float64
-	// NotesSum is the checksum the file of the weights that give the notes ends
-	// in, the notes model's or else the frame model's: what a judge names the weights
-	// it was fitted on by (audio.LoadRipJudge). Load sets it; zero from New.
-	NotesSum uint64
+	// Weights names what a judge's row is read through (audio.LoadRipJudge): the
+	// digests of the heads it reads, which New sets, and the checksum the file of
+	// the model that gives the notes ends in, which Load sets
+	Weights audio.RipWeights
+	from    map[string]int // the model each head given is read from
+	stack   []bool         // whether each model hears the harmonic stack
 }
 
-// Load reads a frame model's weight file, and a notes model's from notes when it
-// is not nil, and checks they hear and say what the rip expects.
-func Load(r, notes io.Reader) (*FrontEnd, error) {
-	sum := &tail{r: r}
-	m, err := transformer.Load(sum)
-	if err != nil {
-		return nil, err
-	}
-	var n *transformer.Model
-	if notes != nil {
-		sum = &tail{r: notes}
-		if n, err = transformer.Load(sum); err != nil {
-			return nil, fmt.Errorf("notes model: %w", err)
+// Load reads the frame model's weight file and any others', and checks they
+// hear and say what the rip expects (New).
+func Load(frame io.Reader, others ...io.Reader) (*FrontEnd, error) {
+	models, sums := make([]*transformer.Model, 1+len(others)), make([]uint64, 1+len(others))
+	for i, r := range append([]io.Reader{frame}, others...) {
+		t := &tail{r: r}
+		m, err := transformer.Load(t)
+		if err != nil {
+			if i > 0 {
+				return nil, fmt.Errorf("model %d: %w", i+1, err)
+			}
+			return nil, err
 		}
+		models[i], sums[i] = m, binary.LittleEndian.Uint64(t.last[:])
 	}
-	fe, err := New(m, n)
+	fe, err := New(models[0], models[1:]...)
 	if err != nil {
 		return nil, err
 	}
-	fe.NotesSum = binary.LittleEndian.Uint64(sum.last[:])
+	fe.Weights.NotesSum = sums[fe.from[HeadPitch]]
 	return fe, nil
 }
 
@@ -163,74 +200,142 @@ func (t *tail) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// New wraps a frame model and a notes model, nil for none, refusing a model whose
-// file states no layout or another, a frame model whose inputs are not FrameSpec's,
-// whose heads do not start with its or that has one of the heads of what is struck
-// and not the other, and a notes model that does not read the harmonic stack or
-// lacks one of notesHeads.
-func New(m, notes *transformer.Model) (*FrontEnd, error) {
-	for _, model := range []struct {
-		name string
-		m    *transformer.Model
-	}{{"frame model", m}, {"notes model", notes}} {
-		if model.m == nil {
-			continue
-		}
-		switch v, ok := model.m.Config().Constant(Layout); {
-		case !ok:
-			return nil, fmt.Errorf("ripmodels: the %s's file states no frame layout, these frames are layout %d (%s)", model.name, audio.RipLayout, layoutName)
-		case v != audio.RipLayout:
-			return nil, fmt.Errorf("ripmodels: the %s's file states frame layout %g, these frames are layout %d (%s)", model.name, v, audio.RipLayout, layoutName)
-		}
-	}
-	want, got := FrameSpec(), m.Config()
-	if got.Inputs != want.Inputs || got.Channels != 2 && got.Channels != 4 {
-		return nil, fmt.Errorf("ripmodels: frame model reads %d inputs in %d channels, want %d in two, each plane's bands in dB over its level and the level, fine then sharp, or four, then each plane's PCEN and their mean", got.Inputs, got.Channels, want.Inputs)
-	}
-	if len(got.Outputs) < len(want.Outputs) || !slices.Equal(got.Outputs[:len(want.Outputs)], want.Outputs) {
-		return nil, fmt.Errorf("ripmodels: frame model's heads are %v, want %v first", got.Outputs, want.Outputs)
-	}
-	named := func(h transformer.Head) bool { return h.Name == HeadStruck || h.Name == HeadStruckVel }
-	if slices.ContainsFunc(got.Outputs, named) {
-		for _, name := range [...]string{HeadStruck, HeadStruckVel} {
-			if !slices.Contains(got.Outputs, transformer.Head{Name: name, Size: 1}) {
-				return nil, fmt.Errorf("ripmodels: frame model has no head %q of 1: what is struck is read from %q and %q or from neither", name, HeadStruck, HeadStruckVel)
+// New wraps a frame model and any others, each head read from the one model
+// that gives it: the frame model's own, or a model's over the harmonic stack in
+// their place where one gives the notes. It refuses a model whose file states no
+// layout or another, one that hears neither the band frames nor the stack, a
+// frame model that hears the stack or lacks one of FrameSpec's heads by name, two
+// models that give one head, a head given of another size, one of what is struck
+// without the other, and notes that lack one of their core.
+func New(frame *transformer.Model, others ...*transformer.Model) (*FrontEnd, error) {
+	models := append([]*transformer.Model{frame}, others...)
+	fe := &FrontEnd{Models: models, from: map[string]int{}, stack: make([]bool, len(models))}
+	names := make([]string, len(models))
+	for i, m := range models {
+		names[i] = fmt.Sprintf("model %d", i+1)
+		c := m.Config()
+		bands := c.Inputs == audio.RipBands+1 && (c.Channels == 2 || c.Channels == 4)
+		switch {
+		case i == 0 && !bands:
+			return nil, fmt.Errorf("ripmodels: frame model reads %d inputs in %d channels, want %d in two, each plane's bands in dB over its level and the level, fine then sharp, or four, then each plane's PCEN and their mean", c.Inputs, c.Channels, audio.RipBands+1)
+		case i == 0:
+			names[i] = "frame model"
+		case c.Inputs == stackBins+1 && c.Channels == stackChannels:
+			if fe.stack[i] = true; !slices.Contains(fe.stack[:i], true) {
+				names[i] = "notes model"
 			}
+		case !bands:
+			return nil, fmt.Errorf("ripmodels: %s reads %d inputs in %d channels, neither the band frames' %d in two or four nor the harmonic stack's %d in %d", names[i], c.Inputs, c.Channels, audio.RipBands+1, stackBins+1, stackChannels)
+		}
+		switch v, ok := c.Constant(Layout); {
+		case !ok:
+			return nil, fmt.Errorf("ripmodels: the %s's file states no frame layout, these frames are layout %d (%s)", names[i], audio.RipLayout, layoutName)
+		case v != audio.RipLayout:
+			return nil, fmt.Errorf("ripmodels: the %s's file states frame layout %g, these frames are layout %d (%s)", names[i], v, audio.RipLayout, layoutName)
 		}
 	}
-	if notes == nil {
-		return &FrontEnd{Frame: m}, nil
-	}
-	n := audio.RipPiano.Len()
-	if got := notes.Config(); got.Inputs != stackBins+1 || got.Channels != stackChannels {
-		return nil, fmt.Errorf("ripmodels: notes model reads %d inputs in %d channels, want the harmonic stack's %d in %d", got.Inputs, got.Channels, stackBins+1, stackChannels)
-	}
-	for _, h := range notesHeads {
-		head := transformer.Head{Name: h.name, Size: h.per*n + h.frame}
-		if head.Size == 0 {
-			head = want.Outputs[slices.IndexFunc(want.Outputs, func(o transformer.Head) bool { return o.Name == h.name })]
+	stacked := slices.Contains(fe.stack, true)
+	sized := func(i int, h head) (bool, error) { // whether model i names h, and of its size
+		k := slices.IndexFunc(models[i].Config().Outputs, func(o transformer.Head) bool { return o.Name == h.name })
+		if k < 0 {
+			return false, nil
 		}
-		i := slices.IndexFunc(notes.Config().Outputs, func(o transformer.Head) bool { return o.Name == h.name })
-		if i < 0 && h.optional {
-			continue
+		if got := models[i].Config().Outputs[k].Size; got != h.of().Size {
+			return true, fmt.Errorf("ripmodels: %s has no head %q of %d, its is of %d", names[i], h.name, h.of().Size, got)
 		}
-		if i < 0 || notes.Config().Outputs[i] != head {
-			return nil, fmt.Errorf("ripmodels: notes model has no head %q of %d", h.name, head.Size)
+		return true, nil
+	}
+	for _, h := range heads {
+		if has, err := sized(0, h); h.frameCore && (err != nil || !has) {
+			return nil, cmp.Or(err, fmt.Errorf("ripmodels: frame model has no head %q of %d", h.name, h.of().Size))
+		}
+		for i := range models {
+			if fe.stack[i] != (h.stack && stacked) { // a model of the other side's is read for none of it
+				continue
+			}
+			if has, err := sized(i, h); err != nil {
+				return nil, err
+			} else if !has {
+				continue
+			}
+			if was, ok := fe.from[h.name]; ok {
+				return nil, fmt.Errorf("ripmodels: the %s and %s both give head %q", names[was], names[i], h.name)
+			}
+			fe.from[h.name] = i
+		}
+		if _, ok := fe.from[h.name]; h.notesCore && stacked && !ok {
+			return nil, fmt.Errorf("ripmodels: no model over the harmonic stack gives head %q of %d", h.name, h.of().Size)
 		}
 	}
-	if lo, hi := sureSpread(notes); lo != hi {
-		return nil, fmt.Errorf("ripmodels: notes model's %q head says %g to %g as what it hears changes; the trainer's export writes its row zero, the measure its bias", HeadSure, lo, hi)
+	struck, hit := fe.from[HeadStruck]
+	vel, hard := fe.from[HeadStruckVel]
+	if hit != hard || struck != vel {
+		at, lacks := struck, HeadStruckVel
+		if !hit {
+			at, lacks = vel, HeadStruck
+		}
+		return nil, fmt.Errorf("ripmodels: %s has no head %q of 1: what is struck is read from %q and %q of one model or from neither", names[at], lacks, HeadStruck, HeadStruckVel)
 	}
-	return &FrontEnd{Frame: m, Notes: notes}, nil
+	if i, ok := fe.from[HeadSure]; ok {
+		if lo, hi := sureSpread(models[i]); lo != hi {
+			return nil, fmt.Errorf("ripmodels: %s's %q head says %g to %g as what it hears changes; the trainer's export writes its row zero, the measure its bias", names[i], HeadSure, lo, hi)
+		}
+	}
+	var err error
+	if fe.Weights.Notes, err = fe.digest(rowHeads[0]); err == nil {
+		fe.Weights.Frame, err = fe.digest(rowHeads[1])
+	}
+	return fe, err
 }
 
-// sureSpread is the least and the most a notes model's sure head says over a
-// probe of frames unlike each other, one number where its row is zero as the
-// export writes it
+// digest is what the heads of names that the models give read
+// (transformer.Model.Digest): one model's digest of those it gives, and of
+// several each one's digest in their order through FNV-1a 64
+func (fe *FrontEnd) digest(names []string) (uint64, error) {
+	var sums []uint64
+	for i, m := range fe.Models {
+		var given []string
+		for _, name := range names {
+			if at, ok := fe.from[name]; ok && at == i {
+				given = append(given, name)
+			}
+		}
+		if len(given) == 0 {
+			continue
+		}
+		d, err := m.Digest(given...)
+		if err != nil {
+			return 0, err
+		}
+		sums = append(sums, d)
+	}
+	if len(sums) == 1 {
+		return sums[0], nil
+	}
+	h := fnv.New64a()
+	for _, d := range sums {
+		h.Write(binary.LittleEndian.AppendUint64(nil, d))
+	}
+	return h.Sum64(), nil
+}
+
+// gives says whether model i gives any head the decoders read
+func (fe *FrontEnd) gives(i int) bool {
+	for _, at := range fe.from {
+		if at == i {
+			return true
+		}
+	}
+	return false
+}
+
+// sureSpread is the least and the most a model's sure head says over a probe of
+// frames unlike each other, one number where its row is zero as the export
+// writes it
 func sureSpread(notes *transformer.Model) (lo, hi float32) {
 	probe := make([][]float32, 4)
 	for t := range probe {
-		probe[t] = make([]float32, stackChannels*notes.Config().Inputs)
+		probe[t] = make([]float32, notes.Config().Channels*notes.Config().Inputs)
 		for i := range probe[t] {
 			probe[t][i] = float32(math.Sin(float64((t + 1) * (i + 1))))
 		}
@@ -245,27 +350,46 @@ func sureSpread(notes *transformer.Model) (lo, hi float32) {
 	return lo, hi
 }
 
-// Hear runs the recording's band frames through the frame model, and the notes
-// model when there is one, and reads their heads into frames: the onset and drum
+// Hear runs the recording's band frames, or their harmonic stack, through each
+// model that gives a head, and reads the heads into frames: the onset and drum
 // scores as strengths, the pitch scores as salience and chroma, the wave scores
-// and voice genes, and where a model has them the strikes, releases, velocities,
-// family shares, beat, downbeat, what is struck, cents and what plays each pitch.
+// and voice genes, and where a model gives them the strikes, releases,
+// velocities, family shares, beat, downbeat, what is struck, cents and what
+// plays each pitch.
 func (fe *FrontEnd) Hear(x []float64, rate int, _ audio.RipParams) (*audio.RipFrames, error) {
 	in := features(audio.BandFrames(x, rate), fe.pcen())
-	out := fe.Frame.Forward(fe.planes(in))
-	var notes [][]float32
-	if fe.Notes != nil {
-		notes = fe.Notes.Forward(stacked(in))
+	var stack [][]float32
+	outs := make([][][]float32, len(fe.Models))
+	for i, m := range fe.Models {
+		switch {
+		case !fe.gives(i):
+		case fe.stack[i]:
+			if stack == nil {
+				stack = stacked(in)
+			}
+			outs[i] = m.Forward(stack)
+		default:
+			outs[i] = m.Forward(planes(m, in))
+		}
 	}
-	return fe.read(out, notes), nil
+	return fe.read(outs), nil
 }
 
-// pcen says whether the models hear the PCEN planes
-func (fe *FrontEnd) pcen() bool { return fe.Frame.Config().Channels == 4 || fe.Notes != nil }
+// pcen says whether the models hear the PCEN planes: one over the stack, which
+// stacks all four, or over the band frames in four channels
+func (fe *FrontEnd) pcen() bool {
+	for i, m := range fe.Models {
+		if fe.gives(i) && (fe.stack[i] || m.Config().Channels == 4) {
+			return true
+		}
+	}
+	return false
+}
 
-// planes is each frame of features as the frame model reads it, in its channels
-func (fe *FrontEnd) planes(in [][]float32) [][]float32 {
-	cfg := fe.Frame.Config()
+// planes is each frame of features as a model over the band frames reads it, in
+// its channels
+func planes(m *transformer.Model, in [][]float32) [][]float32 {
+	cfg := m.Config()
 	planes := make([][]float32, len(in))
 	for t, f := range in {
 		planes[t] = f[:cfg.Inputs*max(cfg.Channels, 1)]
@@ -273,17 +397,17 @@ func (fe *FrontEnd) planes(in [][]float32) [][]float32 {
 	return planes
 }
 
-// read reads the heads of the frame model's outputs, and the notes model's for
-// the same frames when it has one, into frames
-func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
-	// head is a head's scores at frame t, from the model that gives it; nil for none
+// read reads the heads of each model's outputs for the same frames into frames,
+// each from the model that gives it
+func (fe *FrontEnd) read(outs [][][]float32) *audio.RipFrames {
+	// head is a head's scores at frame t; nil for none
 	head := func(name string, t int) []float32 {
-		if fe.Notes != nil && slices.ContainsFunc(notesHeads, func(h notesHead) bool { return h.name == name }) {
-			return fe.Notes.Slice(notes[t], name)
+		if i, ok := fe.from[name]; ok {
+			return fe.Models[i].Slice(outs[i][t], name)
 		}
-		return fe.Frame.Slice(out[t], name)
+		return nil
 	}
-	n, rg := len(out), audio.RipPiano
+	n, rg := len(outs[0]), audio.RipPiano
 	f := &audio.RipFrames{Hop: audio.RipFrameSec, Range: rg, Flux: make([]float64, n),
 		Salience:   make([]float32, 0, n*rg.Len()),
 		Strike:     make([]float32, 0, n*rg.Len()),
@@ -305,14 +429,16 @@ func (fe *FrontEnd) read(out, notes [][]float32) *audio.RipFrames {
 	if n > 0 && head(HeadStruck, 0) != nil {
 		f.Struck, f.StruckVel = make([]float64, n), make([]float64, n)
 	}
-	if n > 0 && fe.Notes != nil {
-		if head(HeadCents, 0) != nil {
-			f.Cents, f.CentsError = make([]float32, 0, n*rg.Len()), make([]float32, 0, n*rg.Len())
-		}
+	if n > 0 && head(HeadCents, 0) != nil {
+		f.Cents, f.CentsError = make([]float32, 0, n*rg.Len()), make([]float32, 0, n*rg.Len())
+	}
+	if n > 0 && head(HeadPitchFamily, 0) != nil {
 		f.VoiceAt, f.Voices = make([]uint8, 0, n*audio.RipVoiceCells), make([]uint8, 0, n*audio.RipVoiceCells*audio.RipVoiceSize)
+	}
+	if n > 0 && head(HeadSure, 0) != nil {
 		f.Sure = float64(head(HeadSure, 0)[0])
 	}
-	for t := range out {
+	for t := range n {
 		f.Flux[t] = sigmoid(head(HeadOnset, t)[0])
 		for d, v := range head(HeadDrums, t) {
 			f.Onset[d][t] = sigmoid(v)
@@ -399,22 +525,33 @@ const earStep = 0.5
 
 // Ear hears a recording as it plays, each frame through each model once
 // (transformer's Stream): a step of frames is given once the frames the models
-// read after them are in, the frame model's reach or fe.Ahead, and the notes
-// model's at least, each scaled by the loudest sample heard when it came, alike
-// whatever the blocks; asked for the spectrum, each has its mel bands.
+// read after them are in, the frame model's reach or fe.Ahead, and each model's
+// over the harmonic stack at least, each scaled by the loudest sample heard when
+// it came, alike whatever the blocks; asked for the spectrum, each has its mel
+// bands.
 func (fe *FrontEnd) Ear(_ audio.RipParams, spectrum bool) (audio.RipEar, error) {
-	e := &ear{fe: fe, bands: audio.NewBandStream(), step: int(math.Round(earStep / audio.RipFrameSec)), ahead: fe.Frame.Reach()}
+	e := &ear{fe: fe, bands: audio.NewBandStream(), step: int(math.Round(earStep / audio.RipFrameSec)), ahead: fe.Models[0].Reach(),
+		models: make([]*heard, len(fe.Models))}
 	if spectrum {
 		e.mel = audio.NewMelStream()
 	}
 	if fe.Ahead > 0 {
 		e.ahead = min(e.ahead, int(math.Round(fe.Ahead/audio.RipFrameSec)))
 	}
-	if fe.Notes != nil {
-		e.ahead = max(e.ahead, fe.Notes.Reach())
-		e.notes = &heard{s: fe.Notes.Stream(fe.Notes.Reach())}
+	for i, m := range fe.Models {
+		if fe.gives(i) && fe.stack[i] {
+			e.ahead = max(e.ahead, m.Reach())
+		}
 	}
-	e.model = &heard{s: fe.Frame.Stream(e.ahead)}
+	for i, m := range fe.Models {
+		switch {
+		case !fe.gives(i):
+		case fe.stack[i]:
+			e.models[i] = &heard{s: m.Stream(m.Reach())}
+		default:
+			e.models[i] = &heard{s: m.Stream(e.ahead)}
+		}
+	}
 	return e, nil
 }
 
@@ -430,7 +567,7 @@ type ear struct {
 	// frames the models have taken, the next to give, the frames a frame waits
 	// for before it is given, and the frames given at once
 	taken, next, ahead, step int
-	model, notes             *heard
+	models                   []*heard // each model's that gives a head, nil for one that gives none
 	// the spectrum's stream when asked, and its frames' mel bands not yet given
 	mel      *audio.MelStream
 	spectrum []float32
@@ -459,15 +596,16 @@ func (h *heard) give(n int) [][]float32 {
 // Hear takes the next samples at RipRate and returns the frames heard, each step
 // as soon as the samples that finish the frames it waits for are in
 func (e *ear) Hear(x []float64) (*audio.RipFrames, error) {
-	var out, notes [][]float32
+	outs := make([][][]float32, len(e.models))
 	for {
 		k := min(max(e.ready()-e.n, 0), len(x))
 		e.write(x[:k])
 		if x = x[k:]; e.n < e.ready() {
-			return e.give(out, notes), nil
+			return e.give(outs), nil
 		}
-		o, n := e.hear(e.next+e.step, false)
-		out, notes = append(out, o...), append(notes, n...)
+		for i, o := range e.hear(e.next+e.step, false) {
+			outs[i] = append(outs[i], o...)
+		}
 	}
 }
 
@@ -481,10 +619,10 @@ func (e *ear) Close() (*audio.RipFrames, error) {
 }
 
 // give is the frames the models' outputs say, with their spectrum when asked
-func (e *ear) give(out, notes [][]float32) *audio.RipFrames {
-	f := e.fe.read(out, notes)
+func (e *ear) give(outs [][][]float32) *audio.RipFrames {
+	f := e.fe.read(outs)
 	if e.mel != nil {
-		n := len(out) * audio.RipMelBands
+		n := len(outs[0]) * audio.RipMelBands
 		f.Spectrum, e.spectrum = e.spectrum[:n:n], e.spectrum[n:]
 	}
 	return f
@@ -535,26 +673,35 @@ func scaled(e [][]float64, peak float64) [][]float32 {
 }
 
 // hear runs the fresh frames through the models, against the loudest sample
-// heard, the recording's last when end, and gives their outputs for frames next
-// to upto
-func (e *ear) hear(upto int, end bool) (out, notes [][]float32) {
+// heard, the recording's last when end, and gives each model's outputs for
+// frames next to upto
+func (e *ear) hear(upto int, end bool) [][][]float32 {
 	if c := e.avgPeak / e.peak; c < 1 { // the average against the loudest sample now
 		for b := range e.avg {
 			e.avg[b] *= c * c
 		}
 	}
 	e.avgPeak = e.peak
-	var in [][]float32
+	var in, stack [][]float32
 	in, e.avg = featuresFrom(scaled(e.fresh, e.peak), e.fe.pcen(), e.avg)
 	e.taken, e.fresh = e.taken+len(e.fresh), e.fresh[:0]
-	e.model.take(e.fe.planes(in), end)
-	out = e.model.give(upto - e.next)
-	if e.notes != nil {
-		e.notes.take(stacked(in), end)
-		notes = e.notes.give(upto - e.next)
+	outs := make([][][]float32, len(e.models))
+	for i, h := range e.models {
+		switch {
+		case h == nil:
+			continue
+		case e.fe.stack[i]:
+			if stack == nil {
+				stack = stacked(in)
+			}
+			h.take(stack, end)
+		default:
+			h.take(planes(e.fe.Models[i], in), end)
+		}
+		outs[i] = h.give(upto - e.next)
 	}
 	e.next = upto
-	return out, notes
+	return outs
 }
 
 // bandFloor is the energy 80 dB under a full-scale sine's, where the logarithm floors
