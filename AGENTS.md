@@ -67,6 +67,10 @@ agent would otherwise rediscover, add it there in the same PR.
 - Nothing lands unused: a parameter whose default leaves its path off, or a
   frame field no decoder reads, has an item in `doc/todo.md` naming the reading
   with trained models that decides it and the date it is deleted by.
+- A head added to the models from now on is optional: a file without it loads,
+  its decoder runs without it, and a test shows the rip without it. `FrameSpec`'s
+  twelve and the notes' own are the core, refused by name when missing
+  (`ripmodels`' `heads`).
 
 ## Tests
 

@@ -990,10 +990,12 @@ played with, so a rip through it also names the voices its registers were played
 with (`Rip.Voices`), the family playing the highest note (`RipFrames.Family`,
 shares over `RipFamilies`: piano, guitar, voice, bass, strings, winds, synth,
 drums or unknown), which no decoder reads yet, and the beat and the bar line
-(`ripmodels.HeadBeat`, `HeadDownbeat`, after the family in `FrameSpec`; a file
-whose heads do not start with `FrameSpec`'s is refused, and a head after them is
-read by nothing but the two of what is struck of no pitch, `HeadStruck` and
-`HeadStruckVel`, which a file has both of or neither).
+(`ripmodels.HeadBeat`, `HeadDownbeat`). A head is read by its name wherever a
+file lays it: a file without one of `FrameSpec`'s twelve, or with one of another
+size, is refused by the head's name, and a head no decoder reads is ignored.
+Every head added since those twelve is optional, its decoder running without it,
+as the two of what is struck of no pitch are (`HeadStruck`, `HeadStruckVel`,
+which a model gives both of or neither).
 From strikes both registers' notes start where a pitch is struck, as hard
 as it was, and last while
 it sounds or until it is let go (`Release`, the pitch ringing on as far as a new
@@ -1068,9 +1070,11 @@ says what plays each pitch (below), a line's voice is its own notes' instead.
 Either plays with one oscillator, as that mean of two would beat, and a fade
 that keeps the line's long notes within 12 dB to their end (`lasting`).
 
-`ripmodels.Load` reads the frame model's weight file into a front end, and a
-second file may give the notes (rip-train, stapes' trainer, writes both): a
-notes model (`ripmodels.NotesSpec`, the trainer's PitchNet), a cell net
+`ripmodels.Load` reads the frame model's weight file into a front end, then any
+number of others, each head read from the one model that gives it and two that
+give one head refused by its name. A second file may give the notes (rip-train,
+stapes' trainer, writes both): a notes model (`ripmodels.NotesSpec`, the
+trainer's PitchNet), a cell net
 (`transformer.Cells`) of convolutions alone with the same weights at every
 pitch, gives the pitch, voicing, strike, release and velocity heads, and the
 frame model the onsets, the drums, the wave and voice genes, the family, the
@@ -1150,12 +1154,17 @@ ringing term means a kept note of its pitch sounds at its start, never another
 candidate. A stage standardizes the row by its fit's mean and spread and reads
 it through two hidden layers with ReLU and one output through a sigmoid. A
 judge loads from a file of its own (`LoadRipJudge`), which names the row and
-the notes weights it was fitted on by the checksum their file ends in
-(`ripmodels.FrontEnd.NotesSum`), and is refused with any other notes model or a
-row this package does not build:
+what it was read through, `RipWeights`: the digests of the heads the row reads
+(`transformer`'s `Model.Digest`), of the notes model (pitch, strike, release,
+velocity and cents, from whichever gives them) and of the frame model (the onset),
+which `ripmodels.FrontEnd.Weights` holds. So a judge outlives a pass that grows
+or trains other heads alone on either model, and is refused through another
+trunk, naming the model, or with a row this package does not build. A file of
+version 1 names the checksum the notes weights' file ends in instead, and loads
+with those weights alone:
 
 ```
-"VIFJ"  u32 version (1)  u32 row version  u32 row size  u32 hidden 1  u32 hidden 2  u64 notes checksum
+"VIFJ"  u32 version (2)  u32 row version  u32 row size  u32 hidden 1  u32 hidden 2  u64 notes digest  u64 frame digest
 the reported notes' stage, then the dropped strikes':
   mean[row] spread[row]  w1[h1 x row] b1[h1]  w2[h2 x h1] b2[h2]  w3[h2] b3[1]
 u64 FNV-1a 64 of all before it; little-endian, float32, an output's inputs together

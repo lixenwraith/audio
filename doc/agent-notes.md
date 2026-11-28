@@ -702,10 +702,20 @@ that a document now states, and link the document instead.
   range reaches them.
 - **The own-pitch and steady-rise rules read the frames' tuning** as the
   accounting and `bright` do.
-- **A rip reads no frame head of a notes model but the measure.** `notesHeads`
-  names `voicing`, which `New` therefore asks of the file, and `read` never
-  reads it; the onset, drums, wave and voice are the frame model's. So what a
-  notes model's pooled regions hold moves no rip, only its trainer's loss.
+- **A rip reads no frame head of a notes model but the measure.** `heads`
+  holds `voicing` in the notes' core, which `New` therefore asks of a model
+  over the stack, and `read` never reads it; the onset, drums, wave and voice
+  are the frame model's. So what a notes model's pooled regions hold moves no
+  rip, only its trainer's loss.
+- **`NewRandom` draws a transformer's output layer last**, so a config with a
+  head appended is the same model with that head's rows after: a test's heads
+  pass, whose other heads give the start's outputs (check it, as
+  `TestAJudgeOutlivesAHeadsPassAndNotItsTrunk` does). A cell net's frame head
+  appended is the same, its output layer drawn last; a cell head is not.
+- **A head goes to a file of its own by renaming.** A saved file's head renamed
+  to an unknown name of the same length, its checksum written again, is the same
+  weights with a head no decoder reads (`renamed`); every head but one renamed
+  gives a file that gives that head alone, beside a model whose own is renamed.
 - A `Rip` carries its `RipParams`, so a digest of rips' JSON taken before and
   after a new parameter differs on every rip, a zeroed `Params` too, since it
   marshals the new keys: hash each rip's JSON with the `Params` key deleted.
