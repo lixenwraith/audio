@@ -409,7 +409,7 @@ func (s *RipStream) hold(f *RipFrames, x []float64, ev ripEvents, end bool) erro
 	ev.root, ev.scale = f.key(g, s.p)
 	s.held, s.track, s.meter, s.tempo = true, tr, g.m, bpm
 	s.root, s.scale, s.start = ev.root, ev.scale, s.w0+t
-	s.rip = &Rip{BPM: int(math.Round(bpm)), Meter: g.m, Tuning: f.Tuning, Range: f.Pitches(), Root: ev.root, Scale: ev.scale, Downbeat: float64(s.w0+g.lines[0]) * f.Hop, Params: s.p}
+	s.rip = &Rip{BPM: int(math.Round(bpm)), Meter: g.m, Tuning: f.Tuning, Range: f.Pitches(), Root: ev.root, Scale: ev.scale, Downbeat: float64(s.w0+g.lines[0]) * f.Hop, Path: tr.path, Params: s.p}
 	shift := g.shift(slices.Concat(ev.melody, ev.bass))
 	return s.freeze(f, x, g, ev, 0, shift, end)
 }
@@ -426,7 +426,7 @@ func (s *RipStream) follow(f *RipFrames, x []float64, ev ripEvents, end bool) er
 	from := s.line - s.w0
 	lines := []int{from}
 	var tr ripTrack
-	if s.p.Joint == 1 && s.track.heard { // the joint path on from the line, at the last frozen bar's tempo
+	if s.track.path == PathJoint { // the joint path on from the line, at the last frozen bar's tempo
 		if g, _, t := f.jointGrid(s.p, []Meter{s.meter}, s.rp.given(), from, float64(s.line-s.prev)); g.bars() > 0 {
 			lines, tr = g.lines, t
 		}
