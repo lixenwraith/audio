@@ -464,10 +464,11 @@ did, on 223 of 399 generated loops and on 9 of 40 E-GMD takes. What is left here
   §9](audio.md#9-ripping-a-recording)), the margin a kind of sound's ([stapes'
   todo](https://github.com/lixenwraith/stapes/blob/main/doc/todo.md#a-set-a-kind-of-sound)).
   The heads favour the joint path's grid where they mislead, so on recordings
-  no fit saw the choice reads every line and beat of 87 of 126 generated loops
-  where the tracked path reads 74 and the better of the two a recording 94, of
-  13 of 40 E-GMD takes where 13 and 18, and of a lone guitar no more than the
-  tracked path, which reads right every guitar recording the joint path does.
+  no fit saw the choice reads every line and beat of 89 of 126 generated loops
+  where the tracked path reads 74 and the better of the two a recording 94
+  (the odd meters 13 of 20 where none), of 15 of 40 E-GMD takes where 13 and
+  18, and of a lone guitar as many as the tracked path, whose grid it leaves
+  on one recording for the joint path's at half its tempo.
   Left: a measure that sees a grid at half or double the tempo the heads mark
   (the beat head between beats, the downbeat head halfway through a bar), the
   joint path's costs fitted by kind, and a real mix with its bars given.

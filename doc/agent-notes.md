@@ -933,8 +933,8 @@ that a document now states, and link the document instead.
   rank of the heads (`claims`, `above`), their log-odds summed at any two
   thresholds and a logistic fit over a dozen such terms chose no better, and
   grids at a ratio of either path's tempo, which raise the better of the
-  candidates a recording by a third, were chosen worse: so `grid_margin` is a
-  kind of sound's.
+  candidates a recording (E-GMD's 18 of 40 right to 23), were chosen worse: so
+  `grid_margin` is a kind of sound's.
 - **A note's end has six rules and no fit.** `until`, the glides, the ring-on,
   a brought-back strike's cut, a candidate's own end and the bass path's cut
   each move it, up to three in turn on one note. With trained heads an end
