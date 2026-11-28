@@ -923,17 +923,18 @@ that a document now states, and link the document instead.
   1.8 GB over 12,000. A change to it is held by the old function kept beside it
   in a scratch test, over random notes of quantized lengths and strengths, whose
   costs tie.
-- **The joint path at its defaults loses a lone guitar.** With trained heads it
-  read every line and beat right on 29 of 298 GuitarSet recordings where the
-  present path reads 118, and on 132 of 264 generated loops where 94, the
-  meters the present path never offers among them; with the labels as the
-  heads, its ceiling, it reads all 298. Its four costs were set on labels and
-  built heads, never on a trained beat head where no drum plays, and `joint` is
-  one switch for every recording (`grid`).
-- **A rip does not say which grid it took.** Where the beat head ranks its
-  beats no better than chance the bars are the cues' (`track`, and `grid` where
-  the heads' readings hold no bar), and `Samples` drops `ripTrack.heard`: a
-  reading by recording cannot tell the heads' grid from the cues'.
+- **The heads favour the grid that follows them.** The joint path's grid is
+  the path that best fits the beat and downbeat heads, so where they mislead (a
+  downbeat head marking beat three, a beat head a kit's eighths at half its
+  quarters, a guitar's beats under `joint_beat`) its wrong grid agrees with them
+  more than the tracked path's right one: of the fit side's recordings with
+  drums where one path alone read every line and beat, the heads' means took
+  the joint path's on 33 of its 40 and the tracked path's on 18 of its 26. A
+  rank of the heads (`claims`, `above`), their log-odds summed at any two
+  thresholds and a logistic fit over a dozen such terms chose no better, and
+  grids at a ratio of either path's tempo, which raise the better of the
+  candidates a recording (E-GMD's 18 of 40 right to 23), were chosen worse: so
+  `grid_margin` is a kind of sound's.
 - **A note's end has six rules and no fit.** `until`, the glides, the ring-on,
   a brought-back strike's cut, a candidate's own end and the bass path's cut
   each move it, up to three in turn on one note. With trained heads an end

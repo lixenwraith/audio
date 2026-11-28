@@ -2385,12 +2385,12 @@ func TestRipReadsADetunedRecording(t *testing.T) {
 // a beat on every beat marked, under either decoder, offline and streamed, the
 // first bar and the last holding their kicks; beats marked alone open bars too
 func TestTheBarsReachWhatTheRecordingHolds(t *testing.T) {
-	for _, joint := range []int{0, 1} { // two beats before the first line and after the last, nothing struck
+	for _, margin := range eitherPath { // two beats before the first line and after the last, nothing struck
 		p := DefaultRipParams()
-		p.Joint = joint
+		p.GridMargin = margin
 		g, _, _, err := Ripper{}.grid(headFrames(500, 1000, 40, 0, 4, 2), ripEvents{}, p, true)
 		if err != nil || len(g.lines) != 5 || !every(g.lines, -80, 160) {
-			t.Errorf("joint %d: %v, lines %v: want five, every 160 frames from -80 to 560", joint, err, g.lines)
+			t.Errorf("grid_margin %g: %v, lines %v: want five, every 160 frames from -80 to 560", margin, err, g.lines)
 		}
 	}
 	const bpm, bars = 160, 8
@@ -2420,16 +2420,16 @@ func TestTheBarsReachWhatTheRecordingHolds(t *testing.T) {
 				}
 			}
 		}
-		for _, joint := range []int{0, 1} {
+		for _, margin := range eitherPath {
 			for _, stream := range []bool{false, true} {
 				p := DefaultRipParams()
-				p.Joint = joint
+				p.GridMargin = margin
 				g := *f
 				r, err := framesRip(Ripper{Params: p, Stages: true}, &g, x, stream)
 				if err != nil {
 					t.Fatal(err)
 				}
-				name := fmt.Sprintf("from beat %d, joint %d, streamed %v", from, joint, stream)
+				name := fmt.Sprintf("from beat %d, grid_margin %g, streamed %v", from, margin, stream)
 				want := bars + min(from%BeatsPerBar, 1) // a pickup and a closing bar about seven whole
 				kicked := func(b, pos int) bool {
 					return slices.ContainsFunc(r.Bars[b].Drums[InstrKick], func(s Step) bool { return s.Pos == pos })
@@ -2550,15 +2550,15 @@ func TestWhatIsHeardAtTheStartKeepsItsNearestStep(t *testing.T) {
 				kicks = append(kicks, float64(l)*RipFrameSec)
 			}
 		}
-		for _, joint := range []int{0, 1} {
+		for _, margin := range eitherPath {
 			for _, stream := range []bool{false, true} {
 				p := DefaultRipParams()
-				p.Joint = joint
+				p.GridMargin = margin
 				r, err := framesRip(Ripper{Params: p}, startFrames(n, beat, per, c.line, c.at), x, stream)
 				if err != nil {
 					t.Fatal(err)
 				}
-				name := fmt.Sprintf("the first line at frame %d, the first hit at %d, joint %d, streamed %v", c.line, c.at, joint, stream)
+				name := fmt.Sprintf("the first line at frame %d, the first hit at %d, grid_margin %g, streamed %v", c.line, c.at, margin, stream)
 				sub, half := r.Meter.Beat(), 30/float64(r.BPM)/StepsPerBeat
 				sums := func(b, pos int) float64 { // a step's time before stepAt's floor
 					i := b*r.Meter.Beats() + pos/sub
@@ -3352,6 +3352,10 @@ func headFrames(n, on, beat, first, per, line int) *RipFrames {
 	return f
 }
 
+// eitherPath is the grid margins that give the tracked path's grid alone and
+// the joint path's wherever it gives one
+var eitherPath = []float64{ripGridAlone, -2}
+
 // every reports whether each frame of at lies within a frame of first plus a
 // whole number of step
 func every(at []int, first, step int) bool {
@@ -3752,7 +3756,7 @@ func TestFiveHeardBeatsHoldABarWhateverTheOnsetsInsideThem(t *testing.T) {
 // a line on every mark and the last on the recording's last frame, unheard
 func TestTheJointPathReadsEveryMeterTheCorpusStates(t *testing.T) {
 	p := DefaultRipParams()
-	p.Joint = 1
+	p.GridMargin = -2
 	const bars = 6
 	for _, c := range []struct {
 		beat, per int
@@ -3764,6 +3768,31 @@ func TestTheJointPathReadsEveryMeterTheCorpusStates(t *testing.T) {
 		g, bpm, tr, err := Ripper{}.grid(f, ripEvents{}, p, true)
 		if err != nil || !tr.heard || g.m != c.want || math.Abs(bpm-c.tempo) > 1.5 || g.bars() != bars || !every(g.lines, c.beat, c.per*c.beat) {
 			t.Errorf("a line every %d beats of %d frames: %s at %.1f bpm, lines %v (%v); want %s at %.1f, %d bars", c.per, c.beat, g.m, bpm, g.lines, err, c.want, c.tempo, bars)
+		}
+	}
+}
+
+// TestTheGridIsTheOneTheHeadsAgreeWithMore: heads marking a line every fifth
+// beat, which the tracked path reads in no meter of its own, give the joint
+// path's 5/4 at grid_margin 0 and the tracked path's grid at the default,
+// offline and streamed, each rip saying which; with no head the cues'
+func TestTheGridIsTheOneTheHeadsAgreeWithMore(t *testing.T) {
+	const beat, bars = 40, 8
+	for _, c := range []struct {
+		margin float64
+		path   RipPath
+	}{{0, PathJoint}, {DefaultRipParams().GridMargin, PathTracked}, {0, PathCues}} {
+		for _, stream := range []bool{false, true} {
+			p := DefaultRipParams()
+			p.GridMargin = c.margin
+			f := headFrames(beat*(bars*5+1)+1, beat, beat, beat, 5, 0)
+			if c.path == PathCues {
+				f.Beat, f.Downbeat = nil, nil
+			}
+			r, err := headRip(Ripper{Params: p}, f, stream)
+			if err != nil || r.Path != c.path || (r.Meter == Meter{5, 4}) != (c.path == PathJoint) {
+				t.Errorf("grid_margin %g, streamed %v, want %s: %s from %s (%v)", c.margin, stream, c.path, r.Meter, r.Path, err)
+			}
 		}
 	}
 }
@@ -3795,7 +3824,7 @@ func TestTheJointPathFollowsATempoThatMoves(t *testing.T) {
 		}
 	}
 	p := DefaultRipParams()
-	p.Joint = 1
+	p.GridMargin = -2
 	for _, stream := range []bool{false, true} {
 		r, err := headRip(Ripper{Params: p}, f, stream)
 		if err != nil {
@@ -3828,7 +3857,7 @@ func TestAMeterBesides44NeedsTheJointMargin(t *testing.T) {
 		want   Meter
 	}{{0, Meter{2, 4}}, {DefaultRipParams().JointMargin, Meter{}}} {
 		p := DefaultRipParams()
-		p.Joint, p.JointMargin = 1, c.margin
+		p.GridMargin, p.JointMargin = -2, c.margin
 		if g, _, _, err := (Ripper{}).grid(f, ripEvents{}, p, true); err != nil || g.m != c.want {
 			t.Errorf("joint_margin %g: %s (%v), want %s", c.margin, g.m, err, c.want)
 		}
@@ -3855,12 +3884,12 @@ func TestFramesWithoutTheHeadsDecodeByTheOnsetsAndTheCues(t *testing.T) {
 	f := headFrames(n, beat, beat, 0, 4, 1)
 	f.Beat, f.Downbeat = nil, nil
 	hits := [InstrClap][]ripHit{InstrKick: hitsEvery(n, beat, 4, 0), InstrSnare: hitsEvery(n, beat, 4, 2)}
-	for _, joint := range []int{0, 1} {
+	for _, margin := range eitherPath {
 		p := DefaultRipParams()
-		p.Joint = joint
+		p.GridMargin = margin
 		g, bpm, _, err := Ripper{}.grid(f, ripEvents{hits: hits}, p, true)
 		if err != nil || g.m != (Meter{}) || math.Abs(bpm-60/(beat*f.Hop)) > 1 || !every(g.lines, 0, 4*beat) {
-			t.Errorf("joint %d: %s at %.1f bpm, lines %v (%v): want 4/4 on the kicks, every %d frames from 0", joint, g.m, bpm, g.lines[:min(len(g.lines), 6)], err, 4*beat)
+			t.Errorf("grid_margin %g: %s at %.1f bpm, lines %v (%v): want 4/4 on the kicks, every %d frames from 0", margin, g.m, bpm, g.lines[:min(len(g.lines), 6)], err, 4*beat)
 		}
 	}
 }

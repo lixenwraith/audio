@@ -783,11 +783,10 @@ heard: offline the rip is that of the frames without them.
   on beats tracked on the head, or by the cues where its first bars' heads gave
   no reading: it consults the downbeat head for its first bars alone.
 
-**The joint path** (`joint` 1; `jointGrid`) decides the tempo, the bar line and
-the meter as one path over the heads, in place of the readings above, where the
-frames carry them and the beat head ranks its beats over chance; `joint` 0, the
-default, reads them as above, and frames without the heads are the cues' under
-either. A state is a beat's place in its bar and its tempo, a quarter among 55
+**The joint path** (`jointGrid`) decides the tempo, the bar line and the meter
+as one path over the heads, beside the readings above, where the frames carry
+them and the beat head ranks its beats over chance; frames without the heads are
+the cues'. A state is a beat's place in its bar and its tempo, a quarter among 55
 from 40 to 200 a minute 3% apart, the beat any whole frames within half that
 of its tempo's, so the tempo moves within a recording. A beat on a frame scores
 the beat head's log-odds there, at its highest within a frame, less those of
@@ -803,10 +802,22 @@ misses a line a longer bar by chance. Its lines are the beats on a bar's first
 place, each at the middle of the frames the beat head holds its peak on, the
 last bar's end on at the last bar's beat where it falls within half a beat past
 the frames; its tempo is the bars' median in quarters. A pinned meter is read
-alone, a tempo given holds the path within 6% of it. A stream holds its first
-bars' meter as above and goes on from each frozen line on the path in that
-meter, its tempo starting at the last frozen bar's, the downbeat head read at
-every bar. Three minutes of 4/4 decode in 0.45 s and 7.6 MB.
+alone, a tempo given holds the path within 6% of it. Three minutes of 4/4
+decode in 0.45 s and 7.6 MB.
+
+**The grid is the one the heads agree with** (`grid`). At `grid_margin` 2, the
+default, the joint path is not run and the grid is the readings' (the tracked
+path), as before it. Under 2 the joint path's grid is decoded too, each laid
+over what is heard (`reach`), and taken where the beat head's mean at its beats
+and the downbeat head's at its lines (`heads`) pass the tracked one's by the
+margin (-2 wherever it gives one), either where the other gives no bar, the
+cues' where neither does; a rip says which (`Rip.Path`: `tracked`, `joint`,
+`cues`, `pinned`). The heads favour the joint path's grid, which follows them
+where they mislead (a downbeat head marking the half bar, a beat head an
+eighth), so a kind of sound's set turns the choice on (stapes' sets a kind).
+A stream holds its first bars' path and meter and, where they are the joint
+path's, goes on from each frozen line on that path in that meter, its tempo
+starting at the last frozen bar's, the downbeat head read at every bar.
 
 Pitch salience sums a candidate's partials, the bass register's from its first
 three, read from a window four times longer as well as the rip's own, the two
@@ -963,8 +974,8 @@ margins are among them (`tempo_comb`, `beat_comb_2` to `4`, `beat_cut_2`, `beat_
 `bar_beat`, `bar_accent`, `bar_head`, `bar_move`, `meter_margin`, `meter_head`,
 `repeat_margin`, `near_margin`, `near_repeat`), each at the value the decoders
 were written with, so a document that names none leaves a rip without the
-heads as it was, and the joint path's (`joint`, an integer as `harmonics` is,
-`joint_move`, `joint_beat`, `joint_line`, `joint_margin`), and the key's
+heads as it was, the joint path's (`joint_move`, `joint_beat`, `joint_line`,
+`joint_margin`) and the grid's choice (`grid_margin`), and the key's
 (`key_bars`, `key_bar`).
 `DefaultRipParams` is the hand-set start. The engine grades a set itself:
 `RenderMusic` plays registered patterns offline in a meter, `ExpectedRip` is the

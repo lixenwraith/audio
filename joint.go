@@ -214,7 +214,7 @@ func (f *RipFrames) jointGrid(p RipParams, meters []Meter, given float64, from i
 	slices.Sort(tempos)
 	tempo := min(max((tempos[(len(tempos)-1)/2]+tempos[len(tempos)/2])/2, MinBPM), MaxBPM)
 	rd := ripReading{m: m, pulses: beats, unit: m.Beat(), stride: 1, tempo: tempo}
-	return g, tempo, ripTrack{bpm: tempo, period: last, k: 1, pulses: beats, rd: rd, heard: true}
+	return g, tempo, ripTrack{bpm: tempo, period: last, k: 1, pulses: beats, rd: rd, heard: true, path: PathJoint}
 }
 
 // centre is the frame within two of t the beat head peaks on, the middle of the
