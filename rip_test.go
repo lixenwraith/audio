@@ -3352,12 +3352,9 @@ func headFrames(n, on, beat, first, per, line int) *RipFrames {
 	return f
 }
 
-// eitherPath is the grid margins that give the tracked path's grid and the joint
-// path's wherever it gives one, and trackedPath the defaults on the first
-var (
-	eitherPath  = []float64{2, -2}
-	trackedPath = func() RipParams { p := DefaultRipParams(); p.GridMargin = 2; return p }()
-)
+// eitherPath is the grid margins that give the tracked path's grid alone and
+// the joint path's wherever it gives one
+var eitherPath = []float64{ripGridAlone, -2}
 
 // every reports whether each frame of at lies within a frame of first plus a
 // whole number of step
@@ -3418,11 +3415,11 @@ func heardLoop(t *testing.T, ae *AudioEngine, slots [MusicSlots]PatternID, m Met
 	return x, f
 }
 
-// ripHeard rips x through the frames given on the tracked path, f.plain() for
-// the cues' rip, offline or streamed
+// ripHeard rips x through the frames given, f.plain() for the cues' rip,
+// offline or streamed
 func ripHeard(t *testing.T, x []float64, f *RipFrames, stream bool) *Rip {
 	t.Helper()
-	r, err := framesRip(Ripper{Params: trackedPath}, f, x, stream)
+	r, err := framesRip(Ripper{}, f, x, stream)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3451,11 +3448,10 @@ func TestTheTempoIsTheBeatHeadsWhereTheOnsetsMisleadIt(t *testing.T) {
 	}
 }
 
-// barsOf decodes the bars of frames with no events but the hits given, on the
-// tracked path
+// barsOf decodes the bars of frames with no events but the hits given
 func barsOf(t *testing.T, f *RipFrames, hits [InstrClap][]ripHit) (ripGrid, float64) {
 	t.Helper()
-	g, bpm, _, err := Ripper{}.grid(f, ripEvents{hits: hits}, trackedPath, true)
+	g, bpm, _, err := Ripper{}.grid(f, ripEvents{hits: hits}, DefaultRipParams(), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3735,7 +3731,7 @@ func TestATempoGivenReadsTheMeterOfTheNoteTheHeadMarks(t *testing.T) {
 	}{{40, 3, Meter{3, 4}}, {20, 6, Meter{6, 8}}} {
 		f := headFrames(n, c.beat, c.beat, 0, c.per, 1)
 		hits := [InstrClap][]ripHit{InstrHihat: hitsEvery(n, c.beat, 1, 0)}
-		g, bpm, _, err := Ripper{Grid: &RipGrid{BPM: 129, Downbeat: -1}}.grid(f, ripEvents{hits: hits}, trackedPath, true)
+		g, bpm, _, err := Ripper{Grid: &RipGrid{BPM: 129, Downbeat: -1}}.grid(f, ripEvents{hits: hits}, DefaultRipParams(), true)
 		if err != nil || g.m != c.want || bpm != 129 || !every(g.lines, c.beat, c.per*c.beat) {
 			t.Errorf("a head marking every %d frames, a line every %d: %s at %.1f, lines %v, %v; want %s at 129, a line every %d frames", c.beat, c.per, g.m, bpm, g.lines[:min(len(g.lines), 4)], err, c.want, c.per*c.beat)
 		}
@@ -3778,14 +3774,14 @@ func TestTheJointPathReadsEveryMeterTheCorpusStates(t *testing.T) {
 
 // TestTheGridIsTheOneTheHeadsAgreeWithMore: heads marking a line every fifth
 // beat, which the tracked path reads in no meter of its own, give the joint
-// path's 5/4 at grid_margin 0 and the tracked path's grid at 2, offline and
-// streamed, each rip saying which; with no head the cues'
+// path's 5/4 at grid_margin 0 and the tracked path's grid at the default,
+// offline and streamed, each rip saying which; with no head the cues'
 func TestTheGridIsTheOneTheHeadsAgreeWithMore(t *testing.T) {
 	const beat, bars = 40, 8
 	for _, c := range []struct {
 		margin float64
 		path   RipPath
-	}{{0, PathJoint}, {2, PathTracked}, {0, PathCues}} {
+	}{{0, PathJoint}, {DefaultRipParams().GridMargin, PathTracked}, {0, PathCues}} {
 		for _, stream := range []bool{false, true} {
 			p := DefaultRipParams()
 			p.GridMargin = c.margin

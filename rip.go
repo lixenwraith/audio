@@ -71,7 +71,7 @@ type RipParams struct {
 	JointBeat   float64 `toml:"joint_beat"`   // the beat head's posterior over which a beat of the joint path counts for it, under which against it
 	JointLine   float64 `toml:"joint_line"`   // the downbeat head's, at a bar line of the path
 	JointMargin float64 `toml:"joint_margin"` // how far another meter's path must score over 4/4's, in the heads' log-odds, for its meter to be read
-	GridMargin  float64 `toml:"grid_margin"`  // how much more the heads must agree with the joint path's grid than with the tracked path's for the rip to take it; -2 takes it wherever it gives one, 2 never
+	GridMargin  float64 `toml:"grid_margin"`  // how much more the heads must agree with the joint path's grid than with the tracked path's for the rip to take it; -2 takes it wherever it gives one, and ripGridAlone, the default, runs the tracked path alone
 
 	KeyBars float64 `toml:"key_bars"` // what a key whose scale's tones fit best gains for the share of the music's bars whose chord is its tonic chord
 	KeyBar  float64 `toml:"key_bar"`  // the share of a bar's music a bar must hold to be one of the music's bars
@@ -100,7 +100,7 @@ func DefaultRipParams() RipParams {
 		TempoComb: 0.5, BeatComb2: 0.8, BeatComb3: 0.5, BeatComb4: 0.6, BeatCut2: 0.7, BeatCut3: 0.33,
 		BarLine: 1, BarBeat: 1, BarAccent: 0.5, BarHead: 1, BarMove: 2,
 		MeterMargin: 0.35, MeterHead: 1, RepeatMargin: 0.03, NearMargin: 0.07, NearRepeat: 0.015,
-		JointMove: 100, JointBeat: 0.3, JointLine: 0.3, JointMargin: 3,
+		JointMove: 100, JointBeat: 0.3, JointLine: 0.3, JointMargin: 3, GridMargin: ripGridAlone,
 		KeyBars: 1, KeyBar: 0.5,
 	}
 }
@@ -162,7 +162,7 @@ var ripGenes = []ripGene{
 	{"joint_beat", 0.02, 0.9, func(p *RipParams) *float64 { return &p.JointBeat }},
 	{"joint_line", 0.02, 0.9, func(p *RipParams) *float64 { return &p.JointLine }},
 	{"joint_margin", 0, 10, func(p *RipParams) *float64 { return &p.JointMargin }},
-	{"grid_margin", -2, 2, func(p *RipParams) *float64 { return &p.GridMargin }},
+	{"grid_margin", -2, ripGridAlone, func(p *RipParams) *float64 { return &p.GridMargin }},
 	{"key_bars", 0, 3, func(p *RipParams) *float64 { return &p.KeyBars }},
 	{"key_bar", 0.1, 1, func(p *RipParams) *float64 { return &p.KeyBar }},
 }
@@ -932,6 +932,11 @@ type ripTrack struct {
 	path   RipPath
 }
 
+// ripGridAlone is the grid margin at which the joint path is not run: a rip
+// under no set reads the tracked path's grid alone, the heads' agreement with a
+// grid lying between 0 and 2
+const ripGridAlone = 2
+
 // RipPath is what decoded a rip's grid: the Ripper's Grid; the onsets and the
 // cues where no head is heard or the heads give no reading; or over the heads
 // the beats tracked and the bars read over them, or the joint path
@@ -948,8 +953,9 @@ func (p RipPath) String() string { return [...]string{"pinned", "cues", "tracked
 
 // grid is the bars the Ripper pins, or decodes from the frames and events, and
 // their tempo; decoded over the whole recording, they reach what it ends on.
-// Over the heads it is the tracked path's grid, or the joint path's where the
-// heads agree with it by GridMargin more than with that one, or either alone.
+// Over the heads it is the tracked path's grid, or under a GridMargin below
+// ripGridAlone the joint path's where the heads agree with it by GridMargin
+// more than with that one, or either alone.
 func (rp Ripper) grid(f *RipFrames, ev ripEvents, p RipParams, whole bool) (ripGrid, float64, ripTrack, error) {
 	var bpm float64
 	var g ripGrid
@@ -975,7 +981,7 @@ func (rp Ripper) grid(f *RipFrames, ev ripEvents, p RipParams, whole bool) (ripG
 		if g.bars() > 0 {
 			g = ev.reach(f, g, tr, whole)
 		}
-		if tr.heard {
+		if tr.heard && p.GridMargin < ripGridAlone {
 			meters := ripJointMeters[:]
 			if rp.Meter != nil {
 				if err := rp.Meter.check(); err != nil {

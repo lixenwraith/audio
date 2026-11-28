@@ -805,15 +805,16 @@ the frames; its tempo is the bars' median in quarters. A pinned meter is read
 alone, a tempo given holds the path within 6% of it. Three minutes of 4/4
 decode in 0.45 s and 7.6 MB.
 
-**The grid is the one the heads agree with** (`grid`): the readings' (the
-tracked path) and the joint path's, each laid over what is heard (`reach`),
-and the joint path's where the beat head's mean at its beats and the downbeat
-head's at its lines (`heads`) pass the tracked one's by `grid_margin` (0; -2
-takes the joint path's wherever it gives one, 2 never), either where the other
-gives no bar, the cues' where neither does; a rip says which (`Rip.Path`:
-`tracked`, `joint`, `cues`, `pinned`). The heads favour the joint path's grid,
-which follows them where they mislead (a downbeat head marking the half bar, a
-beat head an eighth), so the margin is a kind of sound's (stapes' sets a kind).
+**The grid is the one the heads agree with** (`grid`). At `grid_margin` 2, the
+default, the joint path is not run and the grid is the readings' (the tracked
+path), as before it. Under 2 the joint path's grid is decoded too, each laid
+over what is heard (`reach`), and taken where the beat head's mean at its beats
+and the downbeat head's at its lines (`heads`) pass the tracked one's by the
+margin (-2 wherever it gives one), either where the other gives no bar, the
+cues' where neither does; a rip says which (`Rip.Path`: `tracked`, `joint`,
+`cues`, `pinned`). The heads favour the joint path's grid, which follows them
+where they mislead (a downbeat head marking the half bar, a beat head an
+eighth), so a kind of sound's set turns the choice on (stapes' sets a kind).
 A stream holds its first bars' path and meter and, where they are the joint
 path's, goes on from each frozen line on that path in that meter, its tempo
 starting at the last frozen bar's, the downbeat head read at every bar.

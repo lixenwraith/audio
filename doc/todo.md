@@ -459,19 +459,20 @@ did, on 223 of 399 generated loops and on 9 of 40 E-GMD takes. What is left here
   head is not read again once they freeze. Reading it at every bar is the
   sections thread's; the joint path reads it at every bar, in its first bars'
   meter.
-- **The grid's choice.** The joint path's grid is taken where the heads agree
-  with it by `grid_margin` more than with the tracked path's ([Audio
-  §9](audio.md#9-ripping-a-recording)), the margin a kind of sound's ([stapes'
+- **The grid's choice.** Under a kind's set whose `grid_margin` is under 2
+  the joint path's grid is taken where the heads agree with it by that much more
+  than with the tracked path's ([Audio §9](audio.md#9-ripping-a-recording)); only
+  drums have one ([stapes'
   todo](https://github.com/lixenwraith/stapes/blob/main/doc/todo.md#a-set-a-kind-of-sound)).
   The heads favour the joint path's grid where they mislead, so on recordings
-  no fit saw the choice reads every line and beat of 89 of 126 generated loops
+  no fit saw the choice reads every line and beat of 86 of 126 generated loops
   where the tracked path reads 74 and the better of the two a recording 94
-  (the odd meters 13 of 20 where none), of 15 of 40 E-GMD takes where 13 and
-  18, and of a lone guitar as many as the tracked path, whose grid it leaves
-  on one recording for the joint path's at half its tempo.
-  Left: a measure that sees a grid at half or double the tempo the heads mark
-  (the beat head between beats, the downbeat head halfway through a bar), the
-  joint path's costs fitted by kind, and a real mix with its bars given.
+  (the odd meters 10 of 20 where none), and of 15 of 40 E-GMD takes where 13
+  and 18. Grids at a ratio of either path's tempo raise the better of the
+  candidates (E-GMD's 18 to 23) and no measure of the heads tried picks among
+  them better than the tracked path: the heads as trained do not tell a phase
+  or a ratio. Left: the joint path's costs fitted by kind, and a real mix with
+  its bars given.
 - **Half and double bars** are not offered (2 and 8 heard beats), nor 5/4
   and 7/8, but on the joint path. 12/8 is, as two bars of 6/8 where the head stands at its lines
   over 6/8's along the same stretch: a 6/8 whose head marks every other line
